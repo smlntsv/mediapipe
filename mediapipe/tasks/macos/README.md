@@ -19,20 +19,27 @@ import MediaPipeTasksMac
 
 ## Scope
 
-macOS arm64 · model loaded from file path · `CGImage` input · landmarks for all
-three tasks (Hand 21, Pose 33, Face 478) plus hand handedness, face blendshapes
-(52) and the 4×4 transformation matrix.
+macOS arm64 · model loaded from file path · landmarks for all three tasks
+(Hand 21, Pose 33, Face 478) plus hand handedness, face blendshapes (52) and the
+4×4 transformation matrix.
 
+- **Input**: `CGImage` and `CVPixelBuffer` (`kCVPixelFormatType_32BGRA`).
+  `CVPixelBuffer` is converted BGRA→tightly-packed RGBA via vImage (the same
+  RGBA path as `CGImage`), locking the buffer read-only.
 - **Delegate**: both `.cpu` and `.gpu` (Metal) work with the default
   GPU-capable artifact (see "GPU delegate" below). With a CPU-only artifact,
   `.gpu` throws `MediaPipeError.unsupportedDelegate` — it never silently falls
   back to CPU.
-- **Running mode**: `.image` (`detect(cgImage:)`) and `.video`
-  (`detectForVideo(cgImage:timestampInMilliseconds:)`). Calling the wrong method
-  for the configured mode throws `MediaPipeError.invalidRunningMode`.
+- **Running mode**: `.image` (`detect(cgImage:)` / `detect(pixelBuffer:)`) and
+  `.video` (`detectForVideo(…:timestampInMilliseconds:)`). Calling the wrong
+  method for the configured mode throws `MediaPipeError.invalidRunningMode`.
 
-Live-stream mode, `CVPixelBuffer`/`NSImage` input, and segmentation masks are
-future milestones.
+Live-stream mode, `NSImage` input, other pixel formats, and segmentation masks
+are future milestones.
+
+> **Distribution:** the artifact is **not portable yet** — it dynamically links
+> MacPorts OpenCV from `/opt/local`. See [PACKAGING.md](PACKAGING.md) for the
+> `otool -L` breakdown and the bundling / static-linking options.
 
 ```swift
 // VIDEO mode example (timestamps must be monotonically increasing):

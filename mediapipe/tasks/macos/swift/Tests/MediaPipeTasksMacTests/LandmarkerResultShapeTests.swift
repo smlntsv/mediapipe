@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import CoreGraphics
+import CoreVideo
 import ImageIO
 import XCTest
 
@@ -43,6 +44,34 @@ final class LandmarkerResultShapeTests: XCTestCase {
             throw XCTSkip("Could not load test image at \(path)")
         }
         return image
+    }
+
+    /// Renders a CGImage into a `kCVPixelFormatType_32BGRA` CVPixelBuffer.
+    private func makeBGRAPixelBuffer(from cgImage: CGImage) throws -> CVPixelBuffer {
+        let w = cgImage.width, h = cgImage.height
+        var pb: CVPixelBuffer?
+        let attrs: [CFString: Any] = [
+            kCVPixelBufferCGImageCompatibilityKey: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey: true,
+        ]
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault, w, h, kCVPixelFormatType_32BGRA, attrs as CFDictionary, &pb)
+        guard status == kCVReturnSuccess, let buffer = pb else {
+            throw XCTSkip("CVPixelBufferCreate failed (\(status))")
+        }
+        CVPixelBufferLockBaseAddress(buffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+        // 32BGRA == little-endian + premultipliedFirst.
+        let bitmapInfo = CGImageAlphaInfo.premultipliedFirst.rawValue
+            | CGBitmapInfo.byteOrder32Little.rawValue
+        guard let ctx = CGContext(
+            data: CVPixelBufferGetBaseAddress(buffer), width: w, height: h,
+            bitsPerComponent: 8, bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: bitmapInfo) else {
+            throw XCTSkip("CGContext for CVPixelBuffer failed")
+        }
+        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: w, height: h))
+        return buffer
     }
 
     func testHandLandmarkerResultShape() throws {
@@ -280,6 +309,80 @@ final class LandmarkerResultShapeTests: XCTestCase {
         let gpuMs = try bench(.gpu)
         print("[GPUVideoBenchmark] pose VIDEO ms/frame — CPU: \(String(format: "%.2f", cpuMs)), "
               + "GPU: \(String(format: "%.2f", gpuMs)) (\(frames) frames, report-only)")
+    }
+
+    // MARK: - CVPixelBuffer input
+
+    func testHandLandmarkerPixelBufferImageMode() throws {
+        guard let model = env("MP_HAND_MODEL"), let imagePath = env("MP_HAND_IMAGE") else {
+            throw XCTSkip("Set MP_HAND_MODEL and MP_HAND_IMAGE to run this test.")
+        }
+        let cgImage = try loadCGImage(imagePath)
+        let pixelBuffer = try makeBGRAPixelBuffer(from: cgImage)
+        let options = HandLandmarkerOptions()
+        options.modelPath = model
+        options.numHands = 2
+        let landmarker = try HandLandmarker(options: options)
+
+        let pb = try landmarker.detect(pixelBuffer: pixelBuffer)
+        XCTAssertFalse(pb.landmarks.isEmpty, "expected a hand from the pixel buffer")
+        XCTAssertEqual(pb.landmarks[0].count, 21)
+        XCTAssertEqual(pb.worldLandmarks[0].count, 21)
+
+        // CVPixelBuffer (BGRA→RGBA) should match the CGImage path closely.
+        let cg = try landmarker.detect(cgImage: cgImage)
+        XCTAssertEqual(pb.landmarks.count, cg.landmarks.count)
+        var maxXY: Float = 0
+        for h in 0..<min(pb.landmarks.count, cg.landmarks.count) {
+            for i in 0..<min(pb.landmarks[h].count, cg.landmarks[h].count) {
+                maxXY = max(maxXY, abs(pb.landmarks[h][i].x - cg.landmarks[h][i].x))
+                maxXY = max(maxXY, abs(pb.landmarks[h][i].y - cg.landmarks[h][i].y))
+            }
+        }
+        XCTAssertLessThan(maxXY, 0.01, "pixelBuffer vs cgImage max x/y diff \(maxXY)")
+    }
+
+    func testPoseLandmarkerPixelBufferVideoMode() throws {
+        guard let model = env("MP_POSE_MODEL"), let imagePath = env("MP_POSE_IMAGE") else {
+            throw XCTSkip("Set MP_POSE_MODEL and MP_POSE_IMAGE to run this test.")
+        }
+        let pixelBuffer = try makeBGRAPixelBuffer(from: try loadCGImage(imagePath))
+        let options = PoseLandmarkerOptions()
+        options.modelPath = model
+        options.runningMode = .video
+        let landmarker = try PoseLandmarker(options: options)
+        for ts in [0, 33, 66] {
+            let result = try landmarker.detectForVideo(
+                pixelBuffer: pixelBuffer, timestampInMilliseconds: ts)
+            XCTAssertFalse(result.landmarks.isEmpty, "expected a pose at t=\(ts)ms")
+            XCTAssertEqual(result.landmarks[0].count, 33)
+        }
+    }
+
+    func testPixelBufferVideoBenchmark() throws {
+        guard let model = env("MP_POSE_MODEL"), let imagePath = env("MP_POSE_IMAGE") else {
+            throw XCTSkip("Set MP_POSE_MODEL and MP_POSE_IMAGE to run this test.")
+        }
+        let pixelBuffer = try makeBGRAPixelBuffer(from: try loadCGImage(imagePath))
+        let frames = 20
+
+        func bench(_ delegate: MediaPipeDelegate) throws -> Double {
+            let o = PoseLandmarkerOptions()
+            o.modelPath = model; o.delegate = delegate; o.runningMode = .video
+            let lm = try PoseLandmarker(options: o)
+            _ = try lm.detectForVideo(pixelBuffer: pixelBuffer, timestampInMilliseconds: 0)
+            let start = ProcessInfo.processInfo.systemUptime
+            for i in 1...frames {
+                _ = try lm.detectForVideo(pixelBuffer: pixelBuffer, timestampInMilliseconds: i * 33)
+            }
+            return (ProcessInfo.processInfo.systemUptime - start) / Double(frames) * 1000.0
+        }
+        let cpuMs = try bench(.cpu)
+        let gpuMs = mediaPipeGPUArtifactAvailable ? try bench(.gpu) : -1
+        print("[PixelBufferVideoBenchmark] pose VIDEO (CVPixelBuffer) ms/frame — "
+              + "CPU: \(String(format: "%.2f", cpuMs)), "
+              + "GPU: \(gpuMs < 0 ? "n/a" : String(format: "%.2f", gpuMs)) "
+              + "(\(frames) frames, report-only)")
     }
 
     func testFaceLandmarkerBlendshapesAndMatrices() throws {

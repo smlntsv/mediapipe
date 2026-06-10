@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import CoreGraphics
+import CoreVideo
 import Foundation
 import MediaPipeTasksObjC
 
@@ -116,6 +117,23 @@ public final class FaceLandmarker {
                                timestampInMilliseconds: Int) throws -> FaceLandmarkerResult {
         try requireRunningMode(.video, actual: runningMode, method: "detectForVideo(cgImage:timestampInMilliseconds:)")
         let image = try MPCImage(cgImage: cgImage)
+        return FaceLandmarkerResult(
+            try impl.detect(forVideoImage: image, timestampMs: Int64(timestampInMilliseconds)))
+    }
+
+    /// Runs face landmark detection on a `CVPixelBuffer` (`kCVPixelFormatType_32BGRA`).
+    /// Requires `.image` mode.
+    public func detect(pixelBuffer: CVPixelBuffer) throws -> FaceLandmarkerResult {
+        try requireRunningMode(.image, actual: runningMode, method: "detect(pixelBuffer:)")
+        return FaceLandmarkerResult(try impl.detect(try MPCImage(pixelBuffer: pixelBuffer)))
+    }
+
+    /// Runs face landmark detection on a `CVPixelBuffer` video frame
+    /// (`kCVPixelFormatType_32BGRA`). Requires `.video` mode.
+    public func detectForVideo(pixelBuffer: CVPixelBuffer,
+                               timestampInMilliseconds: Int) throws -> FaceLandmarkerResult {
+        try requireRunningMode(.video, actual: runningMode, method: "detectForVideo(pixelBuffer:timestampInMilliseconds:)")
+        let image = try MPCImage(pixelBuffer: pixelBuffer)
         return FaceLandmarkerResult(
             try impl.detect(forVideoImage: image, timestampMs: Int64(timestampInMilliseconds)))
     }

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import CoreGraphics
+import CoreVideo
 import Foundation
 import MediaPipeTasksObjC
 
@@ -97,6 +98,23 @@ public final class PoseLandmarker {
                                timestampInMilliseconds: Int) throws -> PoseLandmarkerResult {
         try requireRunningMode(.video, actual: runningMode, method: "detectForVideo(cgImage:timestampInMilliseconds:)")
         let image = try MPCImage(cgImage: cgImage)
+        return PoseLandmarkerResult(
+            try impl.detect(forVideoImage: image, timestampMs: Int64(timestampInMilliseconds)))
+    }
+
+    /// Runs pose landmark detection on a `CVPixelBuffer` (`kCVPixelFormatType_32BGRA`).
+    /// Requires `.image` mode.
+    public func detect(pixelBuffer: CVPixelBuffer) throws -> PoseLandmarkerResult {
+        try requireRunningMode(.image, actual: runningMode, method: "detect(pixelBuffer:)")
+        return PoseLandmarkerResult(try impl.detect(try MPCImage(pixelBuffer: pixelBuffer)))
+    }
+
+    /// Runs pose landmark detection on a `CVPixelBuffer` video frame
+    /// (`kCVPixelFormatType_32BGRA`). Requires `.video` mode.
+    public func detectForVideo(pixelBuffer: CVPixelBuffer,
+                               timestampInMilliseconds: Int) throws -> PoseLandmarkerResult {
+        try requireRunningMode(.video, actual: runningMode, method: "detectForVideo(pixelBuffer:timestampInMilliseconds:)")
+        let image = try MPCImage(pixelBuffer: pixelBuffer)
         return PoseLandmarkerResult(
             try impl.detect(forVideoImage: image, timestampMs: Int64(timestampInMilliseconds)))
     }
