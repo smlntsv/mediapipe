@@ -1,0 +1,3 @@
+# This directory holds the locally-generated MediaPipeTasksC.xcframework,
+# produced by ../../build_macos_xcframework.sh. The generated xcframework is
+# gitignored; only this .gitkeep is tracked so the path exists in a fresh clone.

@@ -1,0 +1,18 @@
+Force the apple_support exec-tool linker (wrapped_clang / wrapped_clang_pp /
+libtool) to emit an LC_UUID load command.
+
+Xcode 26's linker (ld-prime) can produce these universal exec tools without an
+LC_UUID, and macOS 26's dyld refuses to load a Mach-O that has no LC_UUID
+("missing LC_UUID load command"), which breaks every C/C++ compile action.
+Passing -Wl,-random_uuid makes ld always write a UUID.
+
+--- a/crosstool/universal_exec_tool.bzl
++++ b/crosstool/universal_exec_tool.bzl
+@@ -39,6 +39,7 @@
+     -arch arm64 \
+     -arch x86_64 \
+     -O3 \
++    -Wl,-random_uuid \
+     -o $@ \
+     $(SRCS)
+ """,

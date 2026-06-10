@@ -1,0 +1,2 @@
+# Patches applied to external Bazel modules for the native macOS build.
+exports_files(glob(["*.patch"]))

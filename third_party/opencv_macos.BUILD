@@ -35,24 +35,31 @@ exports_files(["LICENSE"])
 # "include/opencv4/opencv2/**/*.h*" and the include prefix needs to be set to
 # "include/opencv4".
 
-PREFIX = "opt/opencv@3"
+# Configured for MacPorts OpenCV 3 (`sudo port install opencv3`).
+# With the WORKSPACE `macos_opencv` repository rooted at "/opt", the MacPorts
+# layout is:
+#   /opt/local/lib/opencv3/libopencv_*.dylib
+#   /opt/local/include/opencv3/opencv2/**
+PREFIX = "local"
+
+OPENCV_SUBDIR = "opencv3"
 
 cc_library(
     name = "opencv",
     srcs = glob(
         [
-            paths.join(PREFIX, "lib/libopencv_core.dylib"),
-            paths.join(PREFIX, "lib/libopencv_calib3d.dylib"),
-            paths.join(PREFIX, "lib/libopencv_features2d.dylib"),
-            paths.join(PREFIX, "lib/libopencv_highgui.dylib"),
-            paths.join(PREFIX, "lib/libopencv_imgcodecs.dylib"),
-            paths.join(PREFIX, "lib/libopencv_imgproc.dylib"),
-            paths.join(PREFIX, "lib/libopencv_video.dylib"),
-            paths.join(PREFIX, "lib/libopencv_videoio.dylib"),
+            paths.join(PREFIX, "lib", OPENCV_SUBDIR, "libopencv_core.dylib"),
+            paths.join(PREFIX, "lib", OPENCV_SUBDIR, "libopencv_calib3d.dylib"),
+            paths.join(PREFIX, "lib", OPENCV_SUBDIR, "libopencv_features2d.dylib"),
+            paths.join(PREFIX, "lib", OPENCV_SUBDIR, "libopencv_highgui.dylib"),
+            paths.join(PREFIX, "lib", OPENCV_SUBDIR, "libopencv_imgcodecs.dylib"),
+            paths.join(PREFIX, "lib", OPENCV_SUBDIR, "libopencv_imgproc.dylib"),
+            paths.join(PREFIX, "lib", OPENCV_SUBDIR, "libopencv_video.dylib"),
+            paths.join(PREFIX, "lib", OPENCV_SUBDIR, "libopencv_videoio.dylib"),
         ],
     ),
-    hdrs = glob([paths.join(PREFIX, "include/opencv2/**/*.h*")]),
-    includes = [paths.join(PREFIX, "include/")],
+    hdrs = glob([paths.join(PREFIX, "include", OPENCV_SUBDIR, "opencv2/**/*.h*")]),
+    includes = [paths.join(PREFIX, "include", OPENCV_SUBDIR)],
     linkstatic = 1,
     visibility = ["//visibility:public"],
 )

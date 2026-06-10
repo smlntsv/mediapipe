@@ -5,3 +5,13 @@ mediapipe/provisioning_profile.mobileprovision
 node_modules/
 .configure.bazelrc
 .user.bazelrc
+
+# Swift Package Manager (macOS Tasks package)
+.idea/
+.build/
+.swiftpm/
+Package.resolved
+# Generated binary artifacts for the macOS Swift package (built locally by
+# mediapipe/tasks/macos/build_macos_xcframework.sh, not committed).
+mediapipe/tasks/macos/swift/Artifacts/*
+!mediapipe/tasks/macos/swift/Artifacts/.gitkeep

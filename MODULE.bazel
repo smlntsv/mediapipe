@@ -14,6 +14,17 @@ single_version_override(
     version = "7.10.0",
 )
 
+# apple_support is patched so its exec tools (wrapped_clang/libtool) emit an
+# LC_UUID. Xcode 26's linker can omit it, and macOS 26's dyld then refuses to
+# load the tool ("missing LC_UUID load command"), breaking every compile action.
+bazel_dep(name = "apple_support", version = "1.23.1", repo_name = "build_bazel_apple_support")
+single_version_override(
+    module_name = "apple_support",
+    version = "1.23.1",
+    patch_strip = 1,
+    patches = ["//mediapipe/tasks/macos/patches:apple_support_lc_uuid.patch"],
+)
+
 bazel_dep(name = "rules_kotlin", version = "1.9.6")
 bazel_dep(name = "rules_shell", version = "0.4.1")
 bazel_dep(name = "rules_pkg", version = "1.0.1")
