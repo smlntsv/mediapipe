@@ -1,0 +1,4 @@
+# Models and build artifacts are not committed.
+models/*.task
+.build/
+*.app/
