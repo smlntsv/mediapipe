@@ -35,7 +35,26 @@ BUILD_VERSION="${MPP_BUILD_VERSION:-0.0.1-dev}"
 MPP_ROOT_DIR="$(git rev-parse --show-toplevel)"
 ARTIFACTS_DIR="${MPP_ROOT_DIR}/mediapipe/tasks/macos/swift/Artifacts"
 WORK_DIR="$(mktemp -d)"
-trap 'rm -rf "${WORK_DIR}"' EXIT
+
+# In-tree source patches this run applied (see step 0). They are reversed on exit
+# so the working tree is left exactly as we found it — the BUILT dylib contains
+# the patched code, but `git status` stays clean.
+APPLIED_TREE_PATCHES=()
+
+cleanup() {
+  if (( ${#APPLIED_TREE_PATCHES[@]} > 0 )); then
+    cd "${MPP_ROOT_DIR}" || true
+    local p
+    for p in "${APPLIED_TREE_PATCHES[@]}"; do
+      if git apply --reverse --check "${p}" >/dev/null 2>&1; then
+        git apply --reverse "${p}" \
+          && echo "==> restored upstream source (un-applied $(basename "${p}"))"
+      fi
+    done
+  fi
+  rm -rf "${WORK_DIR}"
+}
+trap cleanup EXIT
 
 BAZEL_TARGET="//mediapipe/tasks/c:mediapipe_macos"
 # `mediapipe_macos` genrule emits libmediapipe.dylib next to the target package.
@@ -63,6 +82,10 @@ cd "${MPP_ROOT_DIR}"
 # mediapipe_macos_gpu_texture_cache_flush.patch: flushes the Metal + OpenGL
 # texture caches once per frame on the macOS CVPixelBuffer GPU path so sustained
 # VIDEO inference doesn't leak IOSurfaces (see the patch header for the full why).
+#
+# The patch is applied only for the duration of the build and is REVERSED on exit
+# by cleanup() (the two upstream files are committed pristine), so a release build
+# never leaves mediapipe/gpu/*.cc showing as modified in `git status`.
 apply_tree_patch() {
   local patch="$1"
   if [[ ! -f "${patch}" ]]; then
@@ -70,10 +93,13 @@ apply_tree_patch() {
     exit 1
   fi
   if git apply --reverse --check "${patch}" >/dev/null 2>&1; then
+    # Already applied before this run (e.g. left over from an interrupted build):
+    # leave it as-is and don't schedule a reversal we didn't cause.
     echo "==> patch already applied: $(basename "${patch}")"
   elif git apply --check "${patch}" >/dev/null 2>&1; then
     git apply "${patch}"
-    echo "==> applied patch: $(basename "${patch}")"
+    APPLIED_TREE_PATCHES+=("${patch}")
+    echo "==> applied patch (will be reversed on exit): $(basename "${patch}")"
   else
     echo "error: ${patch} neither applies cleanly nor is already applied." >&2
     echo "       (the target source may have diverged — reconcile the patch.)" >&2
