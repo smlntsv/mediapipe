@@ -39,9 +39,10 @@ are future milestones.
 
 > **Distribution:** the default artifact links MacPorts OpenCV from `/opt/local`
 > (fine for local dev, not portable). Build with **`MP_BUNDLE_DEPS=1`** to bundle
-> all non-system dylibs into the framework for a portable release. See
-> [PACKAGING.md](PACKAGING.md) — and note the **GPL license caveat** for the
-> current video-codec dependencies before shipping externally.
+> the non-system dylibs into the framework for a portable release. OpenCV is
+> trimmed to `core` + `imgproc`, so a bundled release is just **3 dylibs / ~4.7 MB**
+> (`libopencv_core`, `libopencv_imgproc`, `libz`) — **no GPL/LGPL codecs**, ~29 MB
+> xcframework. See [PACKAGING.md](PACKAGING.md).
 
 ```swift
 // VIDEO mode example (timestamps must be monotonically increasing):

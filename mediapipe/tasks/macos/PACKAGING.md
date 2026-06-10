@@ -7,9 +7,11 @@
   that's fine on a dev machine that has `opencv3` installed.
 - **Release / distribution:** build with `MP_BUNDLE_DEPS=1` to bundle all
   non-system dylibs into the framework (Option A, below). ✅ implemented &
-  validated — but first read the **license implications**: the current MacPorts
-  OpenCV tree pulls in GPL codecs (x264/x265 via ffmpeg). Pursue **Option C**
-  (trim `videoio`/`highgui`) before shipping a closed-source product.
+  validated.
+- OpenCV is **trimmed to `core` + `imgproc`** (Option C, below), so the bundle
+  is just **3 dylibs / 4.7 MB** (`libopencv_core`, `libopencv_imgproc`, `libz`)
+  and contains **no GPL/LGPL** code — no ffmpeg/x264/x265/libvpx. The bundled
+  xcframework is **~29 MB** total.
 
 ## The dependency (why it isn't portable by default)
 
@@ -81,31 +83,20 @@ Validated: `swift build`, `swift test` (16 tests), and the macOS `.app`
 (`ParitySmokeTest`) all run against the bundled artifact, and `otool -L` shows
 **0** `/opt/local` references anywhere in the framework or the `.app`.
 
-#### Size impact
+#### Size & license (with the trimmed OpenCV from Option C)
 
-The MacPorts `opencv3` dependency tree is large: **95 dylibs, ~112 MB**. The
-xcframework grows from ~25 MB (unbundled) to ~140 MB. Most of the weight is the
-video stack pulled in by OpenCV `videoio` (ffmpeg + codecs) — see below.
+With OpenCV trimmed to `core` + `imgproc` (Option C), bundling pulls in just:
 
-#### ⚠️ Third-party license implications (READ BEFORE DISTRIBUTING)
+| Bundled dylib | License |
+| --- | --- |
+| `libopencv_core.3.4.dylib` | OpenCV BSD-3-Clause |
+| `libopencv_imgproc.3.4.dylib` | OpenCV BSD-3-Clause |
+| `libz.1.dylib` | zlib (permissive) |
 
-The bundled tree is **not** all permissive. Notable members:
-
-- **OpenCV** (BSD-3-Clause) and **libjpeg/libpng/libtiff/libwebp/openjp2/
-  freetype/harfbuzz/zlib/lzma/zstd** — permissive (BSD/MIT/zlib-like); require
-  attribution only.
-- **ffmpeg** (`libavcodec/avformat/avutil/swscale/swresample`) — LGPL-2.1+ at
-  minimum, pulled in by OpenCV `videoio`.
-- **x264** and **x265** and parts of the ffmpeg build — **GPL**. Bundling these
-  would impose **GPL** obligations on a redistributed binary.
-
-**Do not ship the fully-bundled artifact as-is for a closed-source product.**
-The video codecs (ffmpeg/x264/x265/libvpx) are only present because OpenCV's
-`videoio`/`highgui` modules are linked, and the vision landmarker tasks do not
-use them at runtime. The right fix before release is **Option C** (drop
-`videoio`/`highgui`), which removes ffmpeg/x264/x265 entirely — eliminating both
-the GPL concern and the bulk of the size — leaving only BSD/permissive OpenCV
-core + image codecs to bundle.
+**3 dylibs, ~4.7 MB**; the full bundled xcframework is **~29 MB**. **No GPL or
+LGPL** code is bundled — no ffmpeg/`libav*`/x264/x265/libvpx. (For comparison,
+the *untrimmed* OpenCV tree was 95 dylibs / ~112 MB and **did** pull GPL codecs;
+see Option C for why.)
 
 ### Option B — Static-link OpenCV (robust, long-term)
 
@@ -123,21 +114,30 @@ Link OpenCV statically so there is no runtime OpenCV dependency at all:
 - Pros: single self-contained binary, no bundled dylib tree, simplest to ship.
 - Cons: the source build needs the foreign_cc fix; static OpenCV must be sourced.
 
-### Option C — Trim the OpenCV surface (complementary)
+### Option C — Trim the OpenCV surface ✅ IMPLEMENTED
 
-The vision landmarker tasks likely do not need all of OpenCV
-(`highgui`/`videoio`/`calib3d` are probably unused at runtime for
-Hand/Pose/Face). Auditing and dropping unused OpenCV modules shrinks whatever
-must be bundled or statically linked. Out of scope here, but worth doing before
-a real release.
+The Hand/Pose/Face vision tasks only use OpenCV `core` (cv::Mat) and `imgproc`
+(resize/cvtColor/warpAffine). `third_party/opencv_macos.BUILD` is trimmed to
+exactly those two modules — deliberately excluding `videoio`, `highgui`,
+`video`, `calib3d`, and `features2d`. `imgcodecs` is **not** needed either,
+because the wrapper feeds raw RGBA (`MpImageCreateFromUint8Data`) rather than
+decoding image files.
+
+Result: the GPU-capable artifact links **only** `libopencv_core` +
+`libopencv_imgproc`, and bundling drops from 95 dylibs/112 MB to **3 dylibs/
+4.7 MB** with **no GPL/LGPL** codecs. Verified: `swift test` (16),
+the macOS `.app`, GPU delegate, and Hand/Pose/Face parity all still pass; `otool`
+shows no ffmpeg/`libav*`/x264/x265/libvpx and no `/opt/local` paths.
+
+To add a module back (only if a future feature needs it), uncomment it in
+`third_party/opencv_macos.BUILD` — but avoid `videoio`/`highgui` to keep the
+artifact GPL-free.
 
 ## Recommendation
 
-- **Now:** Option A (`MP_BUNDLE_DEPS=1`) is implemented and gives a portable
-  artifact for internal testing / non-redistributed use.
-- **Before any external release:** apply **Option C** (drop OpenCV
-  `videoio`/`highgui`) so the bundle no longer contains ffmpeg/x264/x265 — this
-  removes the GPL exposure and ~most of the 112 MB — then bundle the remaining
-  BSD/permissive libs with Option A.
+- **Ship-ready (internal / permissive):** Option C (trimmed OpenCV) + Option A
+  (`MP_BUNDLE_DEPS=1`) — implemented. Produces a portable, ~29 MB, BSD/zlib-only
+  GPU-capable artifact. Include the OpenCV (BSD-3) and zlib license texts in your
+  distribution's third-party notices.
 - **Long-term:** Option B (static OpenCV via a fixed `OPENCV=source` build) for a
   single self-contained binary with no bundled dylib tree.

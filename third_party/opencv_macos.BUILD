@@ -44,18 +44,17 @@ PREFIX = "local"
 
 OPENCV_SUBDIR = "opencv3"
 
+# Trimmed to the minimal modules the Hand/Pose/Face vision tasks need
+# (Option C). Deliberately EXCLUDES videoio/highgui/video/calib3d/features2d so
+# the artifact does not pull in ffmpeg/x264/x265 (GPL) or GUI stacks. Add a
+# module back here only if the link reports its symbols as undefined.
 cc_library(
     name = "opencv",
     srcs = glob(
         [
             paths.join(PREFIX, "lib", OPENCV_SUBDIR, "libopencv_core.dylib"),
-            paths.join(PREFIX, "lib", OPENCV_SUBDIR, "libopencv_calib3d.dylib"),
-            paths.join(PREFIX, "lib", OPENCV_SUBDIR, "libopencv_features2d.dylib"),
-            paths.join(PREFIX, "lib", OPENCV_SUBDIR, "libopencv_highgui.dylib"),
-            paths.join(PREFIX, "lib", OPENCV_SUBDIR, "libopencv_imgcodecs.dylib"),
             paths.join(PREFIX, "lib", OPENCV_SUBDIR, "libopencv_imgproc.dylib"),
-            paths.join(PREFIX, "lib", OPENCV_SUBDIR, "libopencv_video.dylib"),
-            paths.join(PREFIX, "lib", OPENCV_SUBDIR, "libopencv_videoio.dylib"),
+            # paths.join(PREFIX, "lib", OPENCV_SUBDIR, "libopencv_imgcodecs.dylib"),
         ],
     ),
     hdrs = glob([paths.join(PREFIX, "include", OPENCV_SUBDIR, "opencv2/**/*.h*")]),
