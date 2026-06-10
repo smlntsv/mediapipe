@@ -37,8 +37,9 @@ public enum RunningMode: String, Sendable, Codable {
 /// The default macOS `MediaPipeTasksC.xcframework` is built CPU-only
 /// (`--define MEDIAPIPE_DISABLE_GPU=1`), so requesting `.gpu` throws
 /// `MediaPipeError.unsupportedDelegate` rather than silently running on CPU.
-/// Flip this to `true` only when shipping a GPU-capable artifact.
-let mediaPipeGPUArtifactAvailable = false
+/// Flip this to `true` only when shipping a GPU-capable artifact (built with
+/// `MP_ENABLE_GPU=1 build_macos_xcframework.sh`).
+let mediaPipeGPUArtifactAvailable = true
 
 /// Throws `unsupportedDelegate` if `.gpu` is requested against a CPU-only build.
 func checkDelegate(_ delegate: MediaPipeDelegate) throws {

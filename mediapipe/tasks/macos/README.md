@@ -23,8 +23,9 @@ macOS arm64 · model loaded from file path · `CGImage` input · landmarks for a
 three tasks (Hand 21, Pose 33, Face 478) plus hand handedness, face blendshapes
 (52) and the 4×4 transformation matrix.
 
-- **Delegate**: `.cpu` works. `.gpu` throws `MediaPipeError.unsupportedDelegate`
-  on the shipped artifact (see "GPU delegate" below) — it never silently falls
+- **Delegate**: both `.cpu` and `.gpu` (Metal) work with the default
+  GPU-capable artifact (see "GPU delegate" below). With a CPU-only artifact,
+  `.gpu` throws `MediaPipeError.unsupportedDelegate` — it never silently falls
   back to CPU.
 - **Running mode**: `.image` (`detect(cgImage:)`) and `.video`
   (`detectForVideo(cgImage:timestampInMilliseconds:)`). Calling the wrong method
@@ -45,16 +46,25 @@ for (frame, tsMs) in frames {                       // frame: CGImage
 }
 ```
 
-### GPU delegate
+### GPU delegate (Metal)
 
-The shipped macOS artifact is **CPU-only** (built with
-`--define MEDIAPIPE_DISABLE_GPU=1`). A GPU-enabled build was attempted and
-**does not compile** for desktop macOS in this MediaPipe revision — the Metal
-path (`image_to_tensor_converter_metal.cc`) calls `MPPMetalHelper`
-`metalTextureWithGpuBuffer:`, a selector not available for this target. Until
-that is resolved upstream, `.gpu` is rejected with `unsupportedDelegate`. If a
-GPU-capable artifact is ever produced, flip `mediaPipeGPUArtifactAvailable` in
-`Modes.swift` to `true`.
+The default macOS artifact is **GPU-capable** and runs on Apple-silicon Metal
+(verified: `renderer: Apple M1 Pro`). It supports **both** `.cpu` and `.gpu`
+delegates; on a pose VIDEO benchmark the GPU delegate ran ~2× faster than CPU.
+
+Enabling GPU required one build-config fix: upstream defines
+`MEDIAPIPE_GPU_BUFFER_USE_CV_PIXEL_BUFFER` only for `!TARGET_OS_OSX`, so on macOS
+`MPPMetalHelper`'s `metalTextureWithGpuBuffer:` is not declared even though
+`image_to_tensor_converter_metal.cc` calls it. `build_macos_xcframework.sh`
+force-defines the macro for every C++/ObjC translation unit (`--copt` +
+`--objccopt`) and drops `MEDIAPIPE_DISABLE_GPU`. Required frameworks (Metal,
+MetalKit, CoreVideo, CoreMedia, AVFoundation, OpenGL) are linked automatically
+by MediaPipe's GPU targets.
+
+`mediaPipeGPUArtifactAvailable` in `Modes.swift` is `true` to match this
+artifact. To ship a smaller CPU-only build instead, run the build script with
+`MP_ENABLE_GPU=0` and set that flag to `false` (then `.gpu` is rejected with
+`unsupportedDelegate` — never a silent CPU fallback).
 
 ### Pose model size (lite / full / heavy)
 

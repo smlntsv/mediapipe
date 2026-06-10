@@ -53,11 +53,29 @@ fi
 cd "${MPP_ROOT_DIR}"
 
 # --- 1. Build the dylib -----------------------------------------------------
-echo "==> Building ${BAZEL_TARGET} for macOS arm64 (CPU, MacPorts OpenCV 3)..."
-"${BAZEL}" build -c opt \
-  --config=macos --config=darwin_arm64 \
-  --define MEDIAPIPE_DISABLE_GPU=1 \
-  "${BAZEL_TARGET}"
+# By default this builds a GPU-capable (Metal) artifact that supports BOTH the
+# .cpu and .gpu delegates. The GPU build drops MEDIAPIPE_DISABLE_GPU and force-
+# defines MEDIAPIPE_GPU_BUFFER_USE_CV_PIXEL_BUFFER (upstream gates it to
+# !TARGET_OS_OSX, but the CVPixelBuffer-backed Metal path is needed on macOS).
+# The macro MUST be defined for every C++/ObjC TU (it changes MPPMetalHelper's
+# interface), hence both --copt and --objccopt.
+#
+# Set MP_ENABLE_GPU=0 to build a smaller CPU-only artifact instead (then set
+# `mediaPipeGPUArtifactAvailable = false` in Modes.swift).
+if [[ "${MP_ENABLE_GPU:-1}" == "1" ]]; then
+  echo "==> Building ${BAZEL_TARGET} for macOS arm64 (GPU/Metal, MacPorts OpenCV 3)..."
+  "${BAZEL}" build -c opt \
+    --config=macos --config=darwin_arm64 \
+    --copt=-DMEDIAPIPE_GPU_BUFFER_USE_CV_PIXEL_BUFFER=1 \
+    --objccopt=-DMEDIAPIPE_GPU_BUFFER_USE_CV_PIXEL_BUFFER=1 \
+    "${BAZEL_TARGET}"
+else
+  echo "==> Building ${BAZEL_TARGET} for macOS arm64 (CPU, MacPorts OpenCV 3)..."
+  "${BAZEL}" build -c opt \
+    --config=macos --config=darwin_arm64 \
+    --define MEDIAPIPE_DISABLE_GPU=1 \
+    "${BAZEL_TARGET}"
+fi
 
 if [[ ! -f "${DYLIB_BAZEL_PATH}" ]]; then
   echo "error: expected dylib not found at ${DYLIB_BAZEL_PATH}" >&2

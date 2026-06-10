@@ -182,9 +182,10 @@ final class LandmarkerResultShapeTests: XCTestCase {
 
     // MARK: - Delegate
 
-    func testGPUDelegateUnsupportedOnCPUArtifact() {
-        // No model needed: the delegate check runs before native creation, and
-        // the default macOS artifact is CPU-only.
+    func testGPUDelegateUnsupportedOnCPUArtifact() throws {
+        try XCTSkipIf(mediaPipeGPUArtifactAvailable,
+                      "Artifact is GPU-capable; .gpu is accepted (see GPU parity tests).")
+        // The delegate check runs before native creation, so no model is needed.
         let options = HandLandmarkerOptions()
         options.modelPath = "/nonexistent.task"
         options.delegate = .gpu
@@ -193,6 +194,92 @@ final class LandmarkerResultShapeTests: XCTestCase {
                 return XCTFail("expected unsupportedDelegate, got \(error)")
             }
         }
+    }
+
+    // MARK: - GPU (only when a GPU-capable artifact is linked)
+
+    func testHandLandmarkerGPUParity() throws {
+        try XCTSkipUnless(mediaPipeGPUArtifactAvailable, "CPU-only artifact.")
+        guard let model = env("MP_HAND_MODEL"), let imagePath = env("MP_HAND_IMAGE") else {
+            throw XCTSkip("Set MP_HAND_MODEL and MP_HAND_IMAGE to run this test.")
+        }
+        let image = try loadCGImage(imagePath)
+
+        func run(_ delegate: MediaPipeDelegate) throws -> HandLandmarkerResult {
+            let o = HandLandmarkerOptions()
+            o.modelPath = model; o.numHands = 2; o.delegate = delegate
+            return try HandLandmarker(options: o).detect(cgImage: image)
+        }
+        let cpu = try run(.cpu)
+        let gpu = try run(.gpu)
+
+        // Same detection + landmark counts on both delegates.
+        XCTAssertEqual(gpu.landmarks.count, cpu.landmarks.count)
+        XCTAssertFalse(gpu.landmarks.isEmpty)
+        XCTAssertEqual(gpu.landmarks[0].count, 21)
+        XCTAssertEqual(gpu.worldLandmarks[0].count, 21)
+
+        // CPU vs GPU normalized x/y should agree closely.
+        var maxXY: Float = 0
+        for h in 0..<min(cpu.landmarks.count, gpu.landmarks.count) {
+            for i in 0..<min(cpu.landmarks[h].count, gpu.landmarks[h].count) {
+                maxXY = max(maxXY, abs(cpu.landmarks[h][i].x - gpu.landmarks[h][i].x))
+                maxXY = max(maxXY, abs(cpu.landmarks[h][i].y - gpu.landmarks[h][i].y))
+            }
+        }
+        XCTAssertLessThan(maxXY, 0.02, "CPU vs GPU max x/y diff \(maxXY)")
+    }
+
+    func testPoseLandmarkerGPUSmoke() throws {
+        try XCTSkipUnless(mediaPipeGPUArtifactAvailable, "CPU-only artifact.")
+        guard let model = env("MP_POSE_MODEL"), let imagePath = env("MP_POSE_IMAGE") else {
+            throw XCTSkip("Set MP_POSE_MODEL and MP_POSE_IMAGE to run this test.")
+        }
+        let image = try loadCGImage(imagePath)
+        let o = PoseLandmarkerOptions()
+        o.modelPath = model; o.delegate = .gpu
+        let result = try PoseLandmarker(options: o).detect(cgImage: image)
+        XCTAssertFalse(result.landmarks.isEmpty)
+        XCTAssertEqual(result.landmarks[0].count, 33)
+    }
+
+    func testFaceLandmarkerGPUSmoke() throws {
+        try XCTSkipUnless(mediaPipeGPUArtifactAvailable, "CPU-only artifact.")
+        guard let model = env("MP_FACE_MODEL"), let imagePath = env("MP_FACE_IMAGE") else {
+            throw XCTSkip("Set MP_FACE_MODEL and MP_FACE_IMAGE to run this test.")
+        }
+        let image = try loadCGImage(imagePath)
+        let o = FaceLandmarkerOptions()
+        o.modelPath = model; o.delegate = .gpu
+        let result = try FaceLandmarker(options: o).detect(cgImage: image)
+        XCTAssertFalse(result.faceLandmarks.isEmpty)
+        XCTAssertEqual(result.faceLandmarks[0].count, 478)
+    }
+
+    func testGPUVideoBenchmark() throws {
+        try XCTSkipUnless(mediaPipeGPUArtifactAvailable, "CPU-only artifact.")
+        guard let model = env("MP_POSE_MODEL"), let imagePath = env("MP_POSE_IMAGE") else {
+            throw XCTSkip("Set MP_POSE_MODEL and MP_POSE_IMAGE to run this test.")
+        }
+        let image = try loadCGImage(imagePath)
+        let frames = 20
+
+        func bench(_ delegate: MediaPipeDelegate) throws -> Double {
+            let o = PoseLandmarkerOptions()
+            o.modelPath = model; o.delegate = delegate; o.runningMode = .video
+            let lm = try PoseLandmarker(options: o)
+            // Warm up.
+            _ = try lm.detectForVideo(cgImage: image, timestampInMilliseconds: 0)
+            let start = ProcessInfo.processInfo.systemUptime
+            for i in 1...frames {
+                _ = try lm.detectForVideo(cgImage: image, timestampInMilliseconds: i * 33)
+            }
+            return (ProcessInfo.processInfo.systemUptime - start) / Double(frames) * 1000.0
+        }
+        let cpuMs = try bench(.cpu)
+        let gpuMs = try bench(.gpu)
+        print("[GPUVideoBenchmark] pose VIDEO ms/frame — CPU: \(String(format: "%.2f", cpuMs)), "
+              + "GPU: \(String(format: "%.2f", gpuMs)) (\(frames) frames, report-only)")
     }
 
     func testFaceLandmarkerBlendshapesAndMatrices() throws {
