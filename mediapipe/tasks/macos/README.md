@@ -138,8 +138,13 @@ with MediaPipe Web result handling:
   `worldLandmarks: [[Landmark]]`, `segmentationMasks: [MPMask]?`
   (`nil` until masks are implemented).
 - `FaceLandmarkerResult`: `faceLandmarks: [[NormalizedLandmark]]`,
-  `faceBlendshapes: [Classifications]`, `facialTransformationMatrixes: [Matrix]`
-  (the last two are empty until blendshape/matrix output is supported).
+  `faceBlendshapes: [Classifications]`, `facialTransformationMatrixes: [Matrix]`.
+  Set `FaceLandmarkerOptions.outputFaceBlendshapes` /
+  `.outputFacialTransformationMatrixes` to populate the last two (52 blendshapes
+  and a 4×4 matrix per face); otherwise they are empty.
+
+`NormalizedLandmark` and `Landmark` carry optional `visibility` / `presence`
+(populated for pose; `nil` for hand/face where the model omits them).
 
 ## Tests
 

@@ -12,18 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Umbrella header for the MediaPipeTasksObjC bridge module. This is an internal
-// implementation detail of the MediaPipeTasksMac Swift package; consumers should
-// import `MediaPipeTasksMac`, not this module.
-
-#import "MPCCategory.h"
-#import "MPCClassifications.h"
-#import "MPCFaceLandmarker.h"
-#import "MPCFaceLandmarkerResult.h"
-#import "MPCHandLandmarker.h"
-#import "MPCHandLandmarkerResult.h"
-#import "MPCImage.h"
-#import "MPCLandmark.h"
 #import "MPCMatrix.h"
-#import "MPCPoseLandmarker.h"
-#import "MPCPoseLandmarkerResult.h"
+
+@implementation MPCMatrix
+
+- (instancetype)initWithRows:(NSInteger)rows
+                     columns:(NSInteger)columns
+                        data:(NSArray<NSNumber *> *)data {
+  self = [super init];
+  if (self) {
+    _rows = rows;
+    _columns = columns;
+    _data = [data copy];
+  }
+  return self;
+}
+
+@end

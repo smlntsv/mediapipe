@@ -16,10 +16,14 @@
 
 @implementation MPCFaceLandmarkerResult
 
-- (instancetype)initWithLandmarks:(NSArray<NSArray<MPCLandmark *> *> *)landmarks {
+- (instancetype)initWithLandmarks:(NSArray<NSArray<MPCLandmark *> *> *)landmarks
+                      blendshapes:(NSArray<MPCClassifications *> *)blendshapes
+           transformationMatrixes:(NSArray<MPCMatrix *> *)transformationMatrixes {
   self = [super init];
   if (self) {
     _landmarks = [landmarks copy];
+    _blendshapes = [blendshapes copy];
+    _transformationMatrixes = [transformationMatrixes copy];
   }
   return self;
 }

@@ -30,6 +30,8 @@
       minFaceDetectionConfidence:(float)minFaceDetectionConfidence
        minFacePresenceConfidence:(float)minFacePresenceConfidence
            minTrackingConfidence:(float)minTrackingConfidence
+             outputFaceBlendshapes:(BOOL)outputFaceBlendshapes
+outputFacialTransformationMatrixes:(BOOL)outputFacialTransformationMatrixes
                             error:(NSError **)error {
   self = [super init];
   if (!self) {
@@ -44,8 +46,9 @@
   options.min_face_detection_confidence = minFaceDetectionConfidence;
   options.min_face_presence_confidence = minFacePresenceConfidence;
   options.min_tracking_confidence = minTrackingConfidence;
-  options.output_face_blendshapes = false;
-  options.output_facial_transformation_matrixes = false;
+  options.output_face_blendshapes = outputFaceBlendshapes ? true : false;
+  options.output_facial_transformation_matrixes =
+      outputFacialTransformationMatrixes ? true : false;
   options.result_callback = nullptr;
 
   char *errorMsg = NULL;
@@ -81,17 +84,43 @@
     return nil;
   }
 
-  // Deep-copy before closing the native result. Blendshapes and the facial
-  // transformation matrix are intentionally not surfaced in milestone 1.
+  // Deep-copy everything into ObjC objects before closing the native result.
   NSMutableArray<NSArray<MPCLandmark *> *> *landmarks =
       [NSMutableArray arrayWithCapacity:result.face_landmarks_count];
   for (uint32_t i = 0; i < result.face_landmarks_count; ++i) {
     [landmarks addObject:MPCCopyLandmarks(result.face_landmarks[i])];
   }
 
+  // Blendshapes: one MpCategories (classifier head) per face.
+  NSMutableArray<MPCClassifications *> *blendshapes =
+      [NSMutableArray arrayWithCapacity:result.face_blendshapes_count];
+  for (uint32_t i = 0; i < result.face_blendshapes_count; ++i) {
+    [blendshapes addObject:[[MPCClassifications alloc]
+                               initWithCategories:MPCCopyCategories(result.face_blendshapes[i])
+                                        headIndex:0
+                                         headName:nil]];
+  }
+
+  // Facial transformation matrices: column-major rows*cols floats per face.
+  NSMutableArray<MPCMatrix *> *matrixes =
+      [NSMutableArray arrayWithCapacity:result.facial_transformation_matrixes_count];
+  for (uint32_t i = 0; i < result.facial_transformation_matrixes_count; ++i) {
+    const MpMatrix &m = result.facial_transformation_matrixes[i];
+    const NSUInteger count = (NSUInteger)m.rows * (NSUInteger)m.cols;
+    NSMutableArray<NSNumber *> *data = [NSMutableArray arrayWithCapacity:count];
+    for (NSUInteger k = 0; k < count; ++k) {
+      [data addObject:@(m.data[k])];
+    }
+    [matrixes addObject:[[MPCMatrix alloc] initWithRows:(NSInteger)m.rows
+                                                columns:(NSInteger)m.cols
+                                                   data:data]];
+  }
+
   MpFaceLandmarkerCloseResult(&result);
 
-  return [[MPCFaceLandmarkerResult alloc] initWithLandmarks:landmarks];
+  return [[MPCFaceLandmarkerResult alloc] initWithLandmarks:landmarks
+                                                blendshapes:blendshapes
+                                     transformationMatrixes:matrixes];
 }
 
 - (void)dealloc {

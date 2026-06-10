@@ -26,17 +26,25 @@ public final class FaceLandmarkerOptions {
     public var minFaceDetectionConfidence: Float
     public var minFacePresenceConfidence: Float
     public var minTrackingConfidence: Float
+    /// Whether to output face blendshapes.
+    public var outputFaceBlendshapes: Bool
+    /// Whether to output facial transformation matrices.
+    public var outputFacialTransformationMatrixes: Bool
 
     public init(modelPath: String = "",
                 numFaces: Int = 1,
                 minFaceDetectionConfidence: Float = 0.5,
                 minFacePresenceConfidence: Float = 0.5,
-                minTrackingConfidence: Float = 0.5) {
+                minTrackingConfidence: Float = 0.5,
+                outputFaceBlendshapes: Bool = false,
+                outputFacialTransformationMatrixes: Bool = false) {
         self.modelPath = modelPath
         self.numFaces = numFaces
         self.minFaceDetectionConfidence = minFaceDetectionConfidence
         self.minFacePresenceConfidence = minFacePresenceConfidence
         self.minTrackingConfidence = minTrackingConfidence
+        self.outputFaceBlendshapes = outputFaceBlendshapes
+        self.outputFacialTransformationMatrixes = outputFacialTransformationMatrixes
     }
 }
 
@@ -57,9 +65,14 @@ public struct FaceLandmarkerResult: Sendable {
 
     init(_ result: MPCFaceLandmarkerResult) {
         faceLandmarks = result.landmarks.map { $0.map(NormalizedLandmark.init) }
-        // Blendshapes / transformation matrices are not requested in milestone 1.
-        faceBlendshapes = []
-        facialTransformationMatrixes = []
+        faceBlendshapes = result.blendshapes.map {
+            Classifications(categories: $0.categories.map(Category.init),
+                            headIndex: $0.headIndex,
+                            headName: $0.headName)
+        }
+        facialTransformationMatrixes = result.transformationMatrixes.map {
+            Matrix(rows: $0.rows, columns: $0.columns, data: $0.data.map(\.floatValue))
+        }
     }
 }
 
@@ -73,7 +86,9 @@ public final class FaceLandmarker {
             numFaces: options.numFaces,
             minFaceDetectionConfidence: options.minFaceDetectionConfidence,
             minFacePresenceConfidence: options.minFacePresenceConfidence,
-            minTrackingConfidence: options.minTrackingConfidence)
+            minTrackingConfidence: options.minTrackingConfidence,
+            outputFaceBlendshapes: options.outputFaceBlendshapes,
+            outputFacialTransformationMatrixes: options.outputFacialTransformationMatrixes)
     }
 
     /// Runs face landmark detection on a `CGImage`.

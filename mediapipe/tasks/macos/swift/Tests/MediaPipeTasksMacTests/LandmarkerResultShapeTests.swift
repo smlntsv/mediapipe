@@ -98,8 +98,31 @@ final class LandmarkerResultShapeTests: XCTestCase {
 
         XCTAssertFalse(result.faceLandmarks.isEmpty, "expected at least one face")
         XCTAssertEqual(result.faceLandmarks[0].count, 478)
-        // Blendshapes / transformation matrices are not requested in milestone 1.
+        // Not requested by default.
         XCTAssertTrue(result.faceBlendshapes.isEmpty)
         XCTAssertTrue(result.facialTransformationMatrixes.isEmpty)
+    }
+
+    func testFaceLandmarkerBlendshapesAndMatrices() throws {
+        guard let model = env("MP_FACE_MODEL"), let imagePath = env("MP_FACE_IMAGE") else {
+            throw XCTSkip("Set MP_FACE_MODEL and MP_FACE_IMAGE to run this test.")
+        }
+        let image = try loadCGImage(imagePath)
+        let options = FaceLandmarkerOptions()
+        options.modelPath = model
+        options.outputFaceBlendshapes = true
+        options.outputFacialTransformationMatrixes = true
+        let result = try FaceLandmarker(options: options).detect(cgImage: image)
+
+        XCTAssertFalse(result.faceLandmarks.isEmpty, "expected at least one face")
+        // One blendshape head per face, with categories populated.
+        XCTAssertEqual(result.faceBlendshapes.count, result.faceLandmarks.count)
+        XCTAssertFalse(result.faceBlendshapes[0].categories.isEmpty)
+        // One 4x4 transformation matrix per face.
+        XCTAssertEqual(result.facialTransformationMatrixes.count, result.faceLandmarks.count)
+        let m = result.facialTransformationMatrixes[0]
+        XCTAssertEqual(m.rows, 4)
+        XCTAssertEqual(m.columns, 4)
+        XCTAssertEqual(m.data.count, m.rows * m.columns)
     }
 }

@@ -14,20 +14,29 @@
 
 #import <Foundation/Foundation.h>
 
+#import "MPCClassifications.h"
 #import "MPCLandmark.h"
+#import "MPCMatrix.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
 // Result of face landmark detection. Each top-level array element corresponds
 // to one detected face. All data is fully copied out of native memory.
-// (Blendshapes and facial transformation matrices are out of scope for
-// milestone 1.)
 @interface MPCFaceLandmarkerResult : NSObject
 
 // Face landmarks in normalized image coordinates ([0, 1]), per face.
 @property(nonatomic, readonly) NSArray<NSArray<MPCLandmark *> *> *landmarks;
 
+// Face blendshapes, per face. Empty unless blendshape output was requested.
+@property(nonatomic, readonly) NSArray<MPCClassifications *> *blendshapes;
+
+// Facial transformation matrices, per face. Empty unless matrix output was
+// requested.
+@property(nonatomic, readonly) NSArray<MPCMatrix *> *transformationMatrixes;
+
 - (instancetype)initWithLandmarks:(NSArray<NSArray<MPCLandmark *> *> *)landmarks
+                      blendshapes:(NSArray<MPCClassifications *> *)blendshapes
+           transformationMatrixes:(NSArray<MPCMatrix *> *)transformationMatrixes
     NS_DESIGNATED_INITIALIZER;
 
 - (instancetype)init NS_UNAVAILABLE;

@@ -29,6 +29,8 @@ NS_ASSUME_NONNULL_BEGIN
                minFaceDetectionConfidence:(float)minFaceDetectionConfidence
                 minFacePresenceConfidence:(float)minFacePresenceConfidence
                     minTrackingConfidence:(float)minTrackingConfidence
+                      outputFaceBlendshapes:(BOOL)outputFaceBlendshapes
+        outputFacialTransformationMatrixes:(BOOL)outputFacialTransformationMatrixes
                                      error:(NSError **)error NS_DESIGNATED_INITIALIZER;
 
 - (instancetype)init NS_UNAVAILABLE;
