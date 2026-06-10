@@ -1,0 +1,2 @@
+# Parity outputs (web.json, macos.json) are written here by the test projects.
+# They are gitignored; only this .gitkeep is tracked.

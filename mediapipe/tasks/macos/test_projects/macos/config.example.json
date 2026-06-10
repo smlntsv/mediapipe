@@ -1,0 +1,8 @@
+{
+  "_comment": "Copy to config.json and use ABSOLUTE paths (a .app launched via `open` runs with cwd=/). build_app.sh generates a config.json pointing at ../shared automatically.",
+  "handModel": "/ABSOLUTE/PATH/mediapipe/tasks/macos/test_projects/shared/models/hand_landmarker.task",
+  "poseModel": "/ABSOLUTE/PATH/mediapipe/tasks/macos/test_projects/shared/models/pose_landmarker.task",
+  "faceModel": "/ABSOLUTE/PATH/mediapipe/tasks/macos/test_projects/shared/models/face_landmarker.task",
+  "image": "/ABSOLUTE/PATH/mediapipe/tasks/macos/test_projects/shared/test_image.jpg",
+  "output": "/ABSOLUTE/PATH/mediapipe/tasks/macos/test_projects/shared/output/macos.json"
+}

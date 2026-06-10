@@ -1,0 +1,20 @@
+# Downloaded models and generated outputs are NOT committed.
+shared/models/*
+!shared/models/.gitkeep
+shared/output/*
+!shared/output/.gitkeep
+shared/test_image.jpg
+shared/test_image_full_body.jpg
+
+# Web project
+web/node_modules/
+web/dist/
+web/public/assets/*
+!web/public/assets/.gitkeep
+# WASM runtime is copied from node_modules by setup_assets.sh.
+web/public/wasm/
+
+# macOS project
+macos/.build/
+macos/*.app/
+macos/config.json

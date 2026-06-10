@@ -1,0 +1,2 @@
+# MediaPipe .task models are downloaded here by ../download_models.sh.
+# They are gitignored (large binaries); only this .gitkeep is tracked.

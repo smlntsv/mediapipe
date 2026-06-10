@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MediaPipe Parity (Web)</title>
+    <style>
+      body { font-family: -apple-system, system-ui, sans-serif; margin: 2rem; }
+      #status { font-weight: 600; }
+      pre { background: #f4f4f4; padding: 1rem; max-height: 60vh; overflow: auto; }
+      img { max-width: 320px; border: 1px solid #ccc; }
+    </style>
+  </head>
+  <body>
+    <h1>MediaPipe Tasks-Vision parity reference</h1>
+    <p id="status">Loading…</p>
+    <img id="preview" alt="test image" />
+    <h2>Result JSON (saved to ../shared/output/web.json)</h2>
+    <pre id="output"></pre>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
