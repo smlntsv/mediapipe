@@ -37,9 +37,11 @@ macOS arm64 · model loaded from file path · landmarks for all three tasks
 Live-stream mode, `NSImage` input, other pixel formats, and segmentation masks
 are future milestones.
 
-> **Distribution:** the artifact is **not portable yet** — it dynamically links
-> MacPorts OpenCV from `/opt/local`. See [PACKAGING.md](PACKAGING.md) for the
-> `otool -L` breakdown and the bundling / static-linking options.
+> **Distribution:** the default artifact links MacPorts OpenCV from `/opt/local`
+> (fine for local dev, not portable). Build with **`MP_BUNDLE_DEPS=1`** to bundle
+> all non-system dylibs into the framework for a portable release. See
+> [PACKAGING.md](PACKAGING.md) — and note the **GPL license caveat** for the
+> current video-codec dependencies before shipping externally.
 
 ```swift
 // VIDEO mode example (timestamps must be monotonically increasing):

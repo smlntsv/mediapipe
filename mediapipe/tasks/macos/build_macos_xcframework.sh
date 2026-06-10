@@ -168,6 +168,94 @@ ln -sfn "Versions/Current/${FRAMEWORK_NAME}" "${FW}/${FRAMEWORK_NAME}"
 ln -sfn "Versions/Current/Headers" "${FW}/Headers"
 ln -sfn "Versions/Current/Resources" "${FW}/Resources"
 
+# --- 4b. (Opt-in) Bundle non-system dylibs for a portable release -----------
+# MP_BUNDLE_DEPS=1 recursively copies every non-system dynamic dependency (the
+# MacPorts OpenCV tree) into Versions/A/Libraries and rewrites install names so
+# the framework no longer references /opt/local at runtime. Bundled libs and the
+# framework binary reference each other via @rpath, anchored by @loader_path
+# rpaths (main binary: @loader_path/Libraries; each bundled lib: @loader_path).
+if [[ "${MP_BUNDLE_DEPS:-0}" == "1" ]]; then
+  echo "==> Bundling non-system dependencies (MP_BUNDLE_DEPS=1)..."
+  if ! command -v dylibbundler >/dev/null 2>&1; then
+    echo "error: dylibbundler is required for MP_BUNDLE_DEPS=1 but was not found." >&2
+    echo "       Install it with:  brew install dylibbundler" >&2
+    echo "                    or:  sudo port install dylibbundler" >&2
+    exit 1
+  fi
+
+  LIB_SUBDIR="Libraries"
+  # dylibbundler resolves -x/-d relative to cwd; run inside the version dir.
+  (
+    cd "${VERSION_DIR}"
+    dylibbundler \
+      --fix-file "${FRAMEWORK_NAME}" \
+      --bundle-deps \
+      --dest-dir "${LIB_SUBDIR}" \
+      --install-path "@rpath/" \
+      --search-path /opt/local/lib \
+      --search-path /opt/local/lib/opencv3 \
+      --overwrite-files --create-dir --no-codesign
+  )
+
+  # dylibbundler rewrites the binary's pre-existing (Bazel) rpaths to a bogus
+  # "@rpath/" entry — sometimes more than once, which yields a duplicate
+  # LC_RPATH that the linker rejects. Strip every "@rpath/" rpath, then add the
+  # ones we actually want.
+  strip_rpath_all() {
+    local bin="$1" rp="$2" n
+    while :; do
+      n="$(otool -l "${bin}" 2>/dev/null \
+        | awk -v r="${rp}" '/LC_RPATH/{f=1;next} f&&/ path /{if($2==r)c++;f=0} END{print c+0}')"
+      [[ "${n:-0}" -gt 0 ]] || break
+      install_name_tool -delete_rpath "${rp}" "${bin}" 2>/dev/null || break
+    done
+  }
+
+  # Anchor @rpath: the main binary finds bundled libs in ./Libraries; each
+  # bundled lib finds its siblings in its own directory.
+  strip_rpath_all "${VERSION_DIR}/${FRAMEWORK_NAME}" "@rpath/"
+  install_name_tool -add_rpath "@loader_path/${LIB_SUBDIR}" \
+    "${VERSION_DIR}/${FRAMEWORK_NAME}" 2>/dev/null || true
+  if [[ -d "${VERSION_DIR}/${LIB_SUBDIR}" ]]; then
+    for lib in "${VERSION_DIR}/${LIB_SUBDIR}"/*.dylib; do
+      strip_rpath_all "${lib}" "@rpath/"
+      install_name_tool -add_rpath "@loader_path" "${lib}" 2>/dev/null || true
+    done
+  fi
+
+  # Re-sign (install_name_tool invalidates signatures): libs first, then binary.
+  if [[ -d "${VERSION_DIR}/${LIB_SUBDIR}" ]]; then
+    for lib in "${VERSION_DIR}/${LIB_SUBDIR}"/*.dylib; do
+      codesign --force --sign - "${lib}" >/dev/null 2>&1 || true
+    done
+  fi
+  codesign --force --sign - "${VERSION_DIR}/${FRAMEWORK_NAME}" >/dev/null 2>&1 || true
+
+  # Verify portability: no dependency may point outside the allowed prefixes
+  # (/System, /usr/lib, @rpath, @loader_path, @executable_path).
+  echo "==> Verifying no non-portable (/opt/local etc.) dependencies remain..."
+  verify_portable() {
+    local f="$1" bad
+    bad="$(otool -L "${f}" | tail -n +2 | sed 's/^[[:space:]]*//' | awk '{print $1}' \
+      | grep -vE '^/System/|^/usr/lib/|^@rpath|^@loader_path|^@executable_path' || true)"
+    if [[ -n "${bad}" ]]; then
+      echo "error: non-portable dependency in ${f}:" >&2
+      echo "${bad}" | sed 's/^/    /' >&2
+      return 1
+    fi
+  }
+  verify_portable "${VERSION_DIR}/${FRAMEWORK_NAME}" || exit 1
+  bundled_count=0
+  if [[ -d "${VERSION_DIR}/${LIB_SUBDIR}" ]]; then
+    for lib in "${VERSION_DIR}/${LIB_SUBDIR}"/*.dylib; do
+      verify_portable "${lib}" || exit 1
+      bundled_count=$((bundled_count + 1))
+    done
+  fi
+  bundled_size="$(du -sh "${VERSION_DIR}/${LIB_SUBDIR}" 2>/dev/null | awk '{print $1}')"
+  echo "    OK: framework + ${bundled_count} bundled dylibs (${bundled_size:-?}) are portable."
+fi
+
 # --- 5. Create the xcframework ----------------------------------------------
 echo "==> Creating ${FRAMEWORK_NAME}.xcframework..."
 OUT_XCFRAMEWORK="${ARTIFACTS_DIR}/${FRAMEWORK_NAME}.xcframework"

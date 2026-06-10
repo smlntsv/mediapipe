@@ -1,6 +1,17 @@
 # Release packaging & portability (macOS)
 
-## Current state: NOT portable yet
+## TL;DR
+
+- **Local development:** build without `MP_BUNDLE_DEPS` (the default). The
+  artifact links MacPorts OpenCV from `/opt/local` and is **not portable**, but
+  that's fine on a dev machine that has `opencv3` installed.
+- **Release / distribution:** build with `MP_BUNDLE_DEPS=1` to bundle all
+  non-system dylibs into the framework (Option A, below). ✅ implemented &
+  validated — but first read the **license implications**: the current MacPorts
+  OpenCV tree pulls in GPL codecs (x264/x265 via ffmpeg). Pursue **Option C**
+  (trim `videoio`/`highgui`) before shipping a closed-source product.
+
+## The dependency (why it isn't portable by default)
 
 `otool -L` on the framework binary
 (`MediaPipeTasksC.xcframework/macos-arm64/MediaPipeTasksC.framework/MediaPipeTasksC`)
@@ -42,29 +53,59 @@ otool -L "$FW" | grep -v '/System/\|/usr/lib/\|MediaPipeTasksC.framework'   # no
 
 ## Proposed fixes
 
-### Option A — Bundle the dylibs into the framework (recommended, near-term)
+### Option A — Bundle the dylibs into the framework ✅ IMPLEMENTED
 
-Recursively copy all non-system dependencies into the framework and rewrite
-their install names to `@rpath`/`@loader_path`, then re-sign. The standard tool
-is [`dylibbundler`](https://github.com/auriamg/macdylibbundler)
-(`brew install dylibbundler` or `sudo port install dylibbundler`):
+`build_macos_xcframework.sh MP_BUNDLE_DEPS=1` produces a portable framework. It
+uses [`dylibbundler`](https://github.com/auriamg/macdylibbundler)
+(`brew install dylibbundler` or `sudo port install dylibbundler`; the script
+fails with install instructions if it's missing) to:
+
+1. recursively copy every non-system dynamic dependency into
+   `MediaPipeTasksC.framework/Versions/A/Libraries`;
+2. rewrite all install names (the framework's references to OpenCV, and the
+   bundled libs' references to each other) to `@rpath/<lib>`;
+3. anchor `@rpath` with `@loader_path` rpaths — the framework binary gets
+   `@loader_path/Libraries`, each bundled lib gets `@loader_path` (siblings) —
+   and strip the spurious `@rpath/` rpath dylibbundler leaves behind (which
+   would otherwise be a duplicate `LC_RPATH` the linker rejects);
+4. ad-hoc re-sign every bundled dylib and the framework binary;
+5. **verify** the framework binary and every bundled dylib reference only
+   `/System`, `/usr/lib`, `@rpath`, `@loader_path`, or `@executable_path` —
+   the build **fails** if any `/opt/local` (or other non-portable) path remains.
 
 ```bash
-FW_DIR=…/MediaPipeTasksC.framework/Versions/A
-dylibbundler -of -cd -b \
-  -x "$FW_DIR/MediaPipeTasksC" \
-  -d "$FW_DIR/Libraries" \
-  -p "@loader_path/Libraries"
-codesign --force --deep --sign - …/MediaPipeTasksC.framework
+MP_BUNDLE_DEPS=1 ./mediapipe/tasks/macos/build_macos_xcframework.sh
 ```
 
-- Pros: keeps the existing MacPorts-based build; produces a self-contained,
-  shippable framework.
-- Cons: bundles a tree of third-party dylibs (tens of MB) — track their licenses
-  (OpenCV is BSD; libjpeg/png/tiff/webp each have their own); must re-sign.
-- This would be added to `build_macos_xcframework.sh` behind an opt-in
-  (e.g. `MP_BUNDLE_DEPS=1`) once validated. It is **not** wired in yet because it
-  needs `dylibbundler` installed and its own validation pass.
+Validated: `swift build`, `swift test` (16 tests), and the macOS `.app`
+(`ParitySmokeTest`) all run against the bundled artifact, and `otool -L` shows
+**0** `/opt/local` references anywhere in the framework or the `.app`.
+
+#### Size impact
+
+The MacPorts `opencv3` dependency tree is large: **95 dylibs, ~112 MB**. The
+xcframework grows from ~25 MB (unbundled) to ~140 MB. Most of the weight is the
+video stack pulled in by OpenCV `videoio` (ffmpeg + codecs) — see below.
+
+#### ⚠️ Third-party license implications (READ BEFORE DISTRIBUTING)
+
+The bundled tree is **not** all permissive. Notable members:
+
+- **OpenCV** (BSD-3-Clause) and **libjpeg/libpng/libtiff/libwebp/openjp2/
+  freetype/harfbuzz/zlib/lzma/zstd** — permissive (BSD/MIT/zlib-like); require
+  attribution only.
+- **ffmpeg** (`libavcodec/avformat/avutil/swscale/swresample`) — LGPL-2.1+ at
+  minimum, pulled in by OpenCV `videoio`.
+- **x264** and **x265** and parts of the ffmpeg build — **GPL**. Bundling these
+  would impose **GPL** obligations on a redistributed binary.
+
+**Do not ship the fully-bundled artifact as-is for a closed-source product.**
+The video codecs (ffmpeg/x264/x265/libvpx) are only present because OpenCV's
+`videoio`/`highgui` modules are linked, and the vision landmarker tasks do not
+use them at runtime. The right fix before release is **Option C** (drop
+`videoio`/`highgui`), which removes ffmpeg/x264/x265 entirely — eliminating both
+the GPL concern and the bulk of the size — leaving only BSD/permissive OpenCV
+core + image codecs to bundle.
 
 ### Option B — Static-link OpenCV (robust, long-term)
 
@@ -92,7 +133,11 @@ a real release.
 
 ## Recommendation
 
-Ship-blocking for distribution. Near-term: **Option A (bundle with
-`dylibbundler`)** to get a portable artifact quickly. Long-term: **Option B
-(static OpenCV via a fixed `OPENCV=source` build)** for a clean self-contained
-binary, optionally combined with **Option C** to minimize size.
+- **Now:** Option A (`MP_BUNDLE_DEPS=1`) is implemented and gives a portable
+  artifact for internal testing / non-redistributed use.
+- **Before any external release:** apply **Option C** (drop OpenCV
+  `videoio`/`highgui`) so the bundle no longer contains ffmpeg/x264/x265 — this
+  removes the GPL exposure and ~most of the 112 MB — then bundle the remaining
+  BSD/permissive libs with Option A.
+- **Long-term:** Option B (static OpenCV via a fixed `OPENCV=source` build) for a
+  single self-contained binary with no bundled dylib tree.
