@@ -1,0 +1,104 @@
+# mediapipe_macos_gpu_texture_cache_flush.patch
+#
+# Bounds the macOS Metal GPU memory use for sustained VIDEO inference.
+#
+# Why this patch exists
+# ---------------------
+# On the macOS GPU path this package force-enables the CVPixelBuffer-backed
+# GpuBuffer path (-DMEDIAPIPE_GPU_BUFFER_USE_CV_PIXEL_BUFFER=1, gated to
+# !TARGET_OS_OSX upstream). Each input frame's CVPixelBuffer/IOSurface then has
+# TWO GPU textures created from it:
+#   * a GL texture in GpuBufferStorageCvPixelBuffer::GetTexture
+#     (CVOpenGLTextureCacheCreateTextureFromImage), used by Image::ConvertToGpu, and
+#   * a Metal texture in MPPMetalHelper -copyCVMetalTextureWithGpuBuffer:
+#     (CVMetalTextureCacheCreateTextureFromImage), used by
+#     image_to_tensor_converter_metal.cc.
+# Both CVOpenGLTextureCache and CVMetalTextureCache keep an internal reference to
+# the backing IOSurface until the cache is flushed. Upstream only flushes the GL
+# caches, and only under pool pressure (CvPixelBufferPoolWrapper::GetBuffer) — but
+# the desktop macOS CPU->GPU upload path allocates input buffers WITHOUT a pool
+# (CreateCVPixelBufferForImageFrame), so that flush never fires, and the Metal
+# cache is never flushed at all. Result: ~1 IOSurface leaks per inference and
+# memory grows without bound (a ~90 GB OOM on a sustained webcam feed).
+#
+# The fix: flush each texture cache once per frame, right before vending that
+# frame's texture, so the PREVIOUS frame's now-unreferenced textures are
+# recycled. The IOSurface is pinned by both caches, so both flushes are needed
+# for its refcount to reach zero. Flushing never invalidates textures still in
+# use (their CVMetalTexture/CVOpenGLTexture/MTLTexture keep them alive), and the
+# caches' age-based retention keeps in-flight async GPU work valid, so this is
+# safe to call every frame. After the patch, GPU memory ramps once to a small
+# bounded working set and stays flat (verified by the package's
+# MemoryStressTests). We deliberately do NOT set the cache max-texture-age to 0,
+# which would risk releasing a texture while async GPU work still references it.
+#
+# How/when it is applied
+# ----------------------
+# These are files in the mediapipe ROOT repository (not an external Bazel
+# module), so the MODULE.bazel single_version_override patch mechanism used for
+# apple_support_lc_uuid.patch (which only patches fetched EXTERNAL modules) does
+# not apply here. Instead, mediapipe/tasks/macos/build_macos_xcframework.sh
+# applies this patch idempotently (git apply, with a reverse --check guard)
+# before invoking Bazel, so a clean checkout builds the bounded-memory dylib
+# deterministically.
+#
+diff --git a/mediapipe/gpu/MPPMetalHelper.cc b/mediapipe/gpu/MPPMetalHelper.cc
+index c0a131fc2..6195f946e 100644
+--- a/mediapipe/gpu/MPPMetalHelper.cc
++++ b/mediapipe/gpu/MPPMetalHelper.cc
+@@ -204,11 +204,26 @@ class MetalHelperLegacySupport {
+       break;
+   }
+ 
++  CVMetalTextureCacheRef texture_cache =
++      _gpuResources->metal_shared().resources().mtlTextureCache;
++
++  // CVMetalTextureCacheCreateTextureFromImage retains an internal reference to
++  // the backing CVPixelBuffer/IOSurface for every texture it vends, and only
++  // releases those references when the cache is flushed. Without a periodic
++  // flush the cache pins every frame's pixel buffer, so the GpuBuffer pool can
++  // never recycle them and memory grows ~1 buffer/frame (a multi-GB-per-minute
++  // leak on sustained macOS Metal video; upstream's CvTextureCacheManager only
++  // flushes OpenGL caches — see metal_shared_resources.cc "register and flush
++  // metal caches too" TODO). Flush here, before creating this frame's texture,
++  // so the previous frame's now-unreferenced textures are recycled. This never
++  // invalidates textures still in use (their CVMetalTextureRef/MTLTexture keep
++  // them alive), so it is safe to call every frame.
++  CVMetalTextureCacheFlush(texture_cache, 0);
++
+   CVMetalTextureRef texture;
+   CVReturn err = CVMetalTextureCacheCreateTextureFromImage(
+-      NULL, _gpuResources->metal_shared().resources().mtlTextureCache,
+-      mediapipe::GetCVPixelBufferRef(gpuBuffer), NULL, metalPixelFormat, width,
+-      height, plane, &texture);
++      NULL, texture_cache, mediapipe::GetCVPixelBufferRef(gpuBuffer), NULL,
++      metalPixelFormat, width, height, plane, &texture);
+   ABSL_CHECK_EQ(err, kCVReturnSuccess);
+   return texture;
+ }
+diff --git a/mediapipe/gpu/gpu_buffer_storage_cv_pixel_buffer.cc b/mediapipe/gpu/gpu_buffer_storage_cv_pixel_buffer.cc
+index 5983758f9..ccd713bf2 100644
+--- a/mediapipe/gpu/gpu_buffer_storage_cv_pixel_buffer.cc
++++ b/mediapipe/gpu/gpu_buffer_storage_cv_pixel_buffer.cc
+@@ -33,6 +33,21 @@ GlTextureView GpuBufferStorageCvPixelBuffer::GetTexture(
+   auto gl_context = GlContext::GetCurrent();
+   ABSL_CHECK(gl_context);
+ #if TARGET_OS_OSX
++  // The CVOpenGLTextureCache retains an internal reference to the backing
++  // CVPixelBuffer/IOSurface for every texture it vends, releasing them only on
++  // flush. Upstream relies on CvTextureCacheManager::FlushTextureCaches(), which
++  // is invoked only when a *pooled* buffer allocation hits its threshold
++  // (CvPixelBufferPoolWrapper::GetBuffer). On desktop macOS the CPU->GPU upload
++  // path creates input pixel buffers WITHOUT a pool
++  // (CreateCVPixelBufferForImageFrame), so that flush never fires and the cache
++  // pins every frame's IOSurface — an unbounded ~1 buffer/frame leak in
++  // sustained video. Flush here, before vending this frame's texture, so the
++  // previous frame's now-unreferenced textures are recycled. This never
++  // invalidates textures still in use, so it is safe every frame. (The Metal
++  // texture cache is flushed analogously in MPPMetalHelper.cc; the IOSurface is
++  // pinned by both caches and is only freed once both release it.)
++  CVOpenGLTextureCacheFlush(gl_context->cv_texture_cache(), 0);
++
+   CVTextureType cv_texture_temp;
+   err = CVOpenGLTextureCacheCreateTextureFromImage(
+       kCFAllocatorDefault, gl_context->cv_texture_cache(), **this, NULL,

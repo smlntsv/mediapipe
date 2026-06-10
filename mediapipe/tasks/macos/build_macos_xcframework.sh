@@ -52,6 +52,36 @@ fi
 
 cd "${MPP_ROOT_DIR}"
 
+# --- 0. Apply in-tree source patches ----------------------------------------
+# Patches that live in mediapipe/tasks/macos/patches/ and target files in the
+# mediapipe ROOT repo (not external Bazel modules) are applied here, idempotently,
+# before the Bazel build. The MODULE.bazel single_version_override mechanism (used
+# for apple_support_lc_uuid.patch) only patches FETCHED EXTERNAL modules, so it
+# can't touch the root repo — hence this step. A clean checkout therefore builds
+# the patched (bounded-memory) dylib deterministically.
+#
+# mediapipe_macos_gpu_texture_cache_flush.patch: flushes the Metal + OpenGL
+# texture caches once per frame on the macOS CVPixelBuffer GPU path so sustained
+# VIDEO inference doesn't leak IOSurfaces (see the patch header for the full why).
+apply_tree_patch() {
+  local patch="$1"
+  if [[ ! -f "${patch}" ]]; then
+    echo "error: patch not found: ${patch}" >&2
+    exit 1
+  fi
+  if git apply --reverse --check "${patch}" >/dev/null 2>&1; then
+    echo "==> patch already applied: $(basename "${patch}")"
+  elif git apply --check "${patch}" >/dev/null 2>&1; then
+    git apply "${patch}"
+    echo "==> applied patch: $(basename "${patch}")"
+  else
+    echo "error: ${patch} neither applies cleanly nor is already applied." >&2
+    echo "       (the target source may have diverged — reconcile the patch.)" >&2
+    exit 1
+  fi
+}
+apply_tree_patch "mediapipe/tasks/macos/patches/mediapipe_macos_gpu_texture_cache_flush.patch"
+
 # --- 1. Build the dylib -----------------------------------------------------
 # By default this builds a GPU-capable (Metal) artifact that supports BOTH the
 # .cpu and .gpu delegates. The GPU build drops MEDIAPIPE_DISABLE_GPU and force-

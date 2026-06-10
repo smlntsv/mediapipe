@@ -62,12 +62,15 @@ The default macOS artifact is **GPU-capable** and runs on Apple-silicon Metal
 (verified: `renderer: Apple M1 Pro`). It supports **both** `.cpu` and `.gpu`
 delegates; on a pose VIDEO benchmark the GPU delegate ran ~2× faster than CPU.
 
-> ⚠️ **Known GPU memory leak (sustained VIDEO).** MediaPipe's macOS Metal
-> inference path leaks ~1 MB/frame, so long-running `.gpu` VIDEO use grows memory
-> unboundedly. **Use `.cpu` for sustained/real-time video** (it is leak-free and
-> fast enough — pose ~11 ms/frame). `.gpu` is fine for one-shot IMAGE inference.
-> See `samples/WebcamLandmarksDemo/MEMORY_NOTES.md` and the package's
-> `MemoryStressTests`.
+> ✅ **Sustained GPU VIDEO is bounded (a former leak is fixed).** Earlier builds
+> leaked ~1 MB/frame on the `.gpu` VIDEO path (IOSurfaces pinned by the Metal/GL
+> texture caches and never flushed), so long runs grew without bound. This is fixed
+> by flushing those caches once per frame on the macOS CVPixelBuffer path
+> (`MPPMetalHelper.cc`, `gpu_buffer_storage_cv_pixel_buffer.cc`). GPU memory now
+> ramps once to a small bounded working set and stays flat — the package's
+> `MemoryStressTests` assert a near-zero steady-state rate for `.cpu` **and**
+> `.gpu` (hand/pose/face). Full write-up:
+> `samples/WebcamLandmarksDemo/MEMORY_NOTES.md`.
 
 Enabling GPU required one build-config fix: upstream defines
 `MEDIAPIPE_GPU_BUFFER_USE_CV_PIXEL_BUFFER` only for `!TARGET_OS_OSX`, so on macOS

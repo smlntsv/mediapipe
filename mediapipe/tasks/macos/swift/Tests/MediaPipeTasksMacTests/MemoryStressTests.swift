@@ -78,13 +78,22 @@ final class MemoryStressTests: XCTestCase {
         return buffer
     }
 
-    /// Runs `body` `frames` times (each wrapped in autoreleasepool unless
-    /// MP_STRESS_NO_POOL=1) and returns the footprint growth in MB.
-    private func measureGrowth(label: String, warmup: Int = 5,
+    /// Runs `body` `measureFrames` times (each wrapped in autoreleasepool unless
+    /// MP_STRESS_NO_POOL=1), after `warmup` un-measured iterations, and returns
+    /// the footprint growth in MB across the measured window.
+    ///
+    /// `warmup` matters for the GPU path: the Metal/OpenGL texture caches keep a
+    /// bounded (≈1 second) working set of in-flight IOSurfaces, which fills up
+    /// once at the start. A large warmup absorbs that one-time ramp so the
+    /// measured window reflects *steady-state* growth — i.e. a true leak — rather
+    /// than the working-set fill.
+    private func measureGrowth(label: String, warmup: Int, measureFrames: Int,
                                _ body: (Int) throws -> Void) rethrows -> Double {
-        for i in 0..<warmup { try body(i) }
+        for i in 0..<warmup {
+            if usePool { try autoreleasepool { try body(i) } } else { try body(i) }
+        }
         let before = Self.footprintMB()
-        for i in 0..<frames {
+        for i in 0..<measureFrames {
             if usePool {
                 try autoreleasepool { try body(warmup + i) }
             } else {
@@ -93,64 +102,79 @@ final class MemoryStressTests: XCTestCase {
         }
         let after = Self.footprintMB()
         let growth = after - before
-        print(String(format: "[MemoryStress] %@: %d frames, footprint %.1f → %.1f MB (Δ %+.1f MB, pool=%@)",
-                     label, frames, before, after, growth, usePool ? "yes" : "no"))
+        print(String(format: "[MemoryStress] %@: %d warmup + %d frames, footprint %.1f → %.1f MB "
+                     + "(Δ %+.1f MB = %+.3f MB/frame, pool=%@)",
+                     label, warmup, measureFrames, before, after, growth,
+                     growth / Double(measureFrames), usePool ? "yes" : "no"))
         return growth
     }
 
-    // Allow generous headroom for one-time caches/arenas; a real per-frame leak
-    // over 1000 frames would dwarf this.
-    private let maxGrowthMB = 150.0
+    // CPU is leak-free, so a small warmup + modest window is enough.
+    private let cpuWarmup = 5
+    private var cpuFrames: Int { frames }
+    private let maxCPUGrowthMB = 150.0
+
+    // GPU: the per-frame Metal/GL texture-cache flush (MPPMetalHelper.cc,
+    // gpu_buffer_storage_cv_pixel_buffer.cc) makes the IOSurface working set
+    // bounded. A long warmup saturates that working set, then we assert the
+    // steady-state growth *rate* is near zero. The pre-fix leak was
+    // ~0.77–1.54 MB/frame, so this threshold catches a regression with wide
+    // margin while tolerating the bounded sawtooth (±~0.05 MB/frame at stress
+    // speed).
+    private let gpuWarmup = 1500
+    private let gpuFrames = 4000
+    private let maxGPURateMBPerFrame = 0.20
 
     // CPU stress (enforced: must stay bounded).
     func testHandStressCPU() throws { try assertCPUStable("hand", "MP_HAND_MODEL", "MP_HAND_IMAGE") }
     func testPoseStressCPU() throws { try assertCPUStable("pose", "MP_POSE_MODEL", "MP_POSE_IMAGE") }
     func testFaceStressCPU() throws { try assertCPUStable("face", "MP_FACE_MODEL", "MP_FACE_IMAGE") }
 
-    // GPU stress (known macOS leak — skips loudly if it grows; auto-passes if fixed).
-    func testHandStressGPU() throws { try reportGPU("hand", "MP_HAND_MODEL", "MP_HAND_IMAGE") }
-    func testPoseStressGPU() throws { try reportGPU("pose", "MP_POSE_MODEL", "MP_POSE_IMAGE") }
-    func testFaceStressGPU() throws { try reportGPU("face", "MP_FACE_MODEL", "MP_FACE_IMAGE") }
+    // GPU stress (enforced: steady-state must be bounded after the working-set ramp).
+    func testHandStressGPU() throws { try assertGPUBounded("hand", "MP_HAND_MODEL", "MP_HAND_IMAGE") }
+    func testPoseStressGPU() throws { try assertGPUBounded("pose", "MP_POSE_MODEL", "MP_POSE_IMAGE") }
+    func testFaceStressGPU() throws { try assertGPUBounded("face", "MP_FACE_MODEL", "MP_FACE_IMAGE") }
 
     private func assertCPUStable(_ kind: String, _ modelEnv: String, _ imageEnv: String) throws {
         guard let model = env(modelEnv), let img = env(imageEnv) else {
             throw XCTSkip("Set \(modelEnv) and \(imageEnv).")
         }
-        let growth = try measure(kind: kind, model: model, image: img, delegate: .cpu)
-        XCTAssertLessThan(growth, maxGrowthMB, "\(kind)/CPU grew \(growth) MB over \(frames) frames")
+        let growth = try measure(kind: kind, model: model, image: img, delegate: .cpu,
+                                 warmup: cpuWarmup, measureFrames: cpuFrames)
+        XCTAssertLessThan(growth, maxCPUGrowthMB, "\(kind)/CPU grew \(growth) MB over \(cpuFrames) frames")
     }
 
-    private func reportGPU(_ kind: String, _ modelEnv: String, _ imageEnv: String) throws {
+    private func assertGPUBounded(_ kind: String, _ modelEnv: String, _ imageEnv: String) throws {
         try XCTSkipUnless(mediaPipeGPUArtifactAvailable, "CPU-only artifact.")
         guard let model = env(modelEnv), let img = env(imageEnv) else {
             throw XCTSkip("Set \(modelEnv) and \(imageEnv).")
         }
-        let growth = try measure(kind: kind, model: model, image: img, delegate: .gpu)
-        if growth >= maxGrowthMB {
-            // KNOWN ISSUE: MediaPipe's macOS Metal GPU inference leaks ~1 MB/frame.
-            // Documented in WebcamLandmarksDemo/MEMORY_NOTES.md. Skip (loudly) rather
-            // than fail so the suite stays green; auto-passes if a future fix lands.
-            throw XCTSkip(String(
-                format: "KNOWN macOS GPU LEAK: %@/GPU grew %.0f MB over %d frames (~%.2f MB/frame). CPU is stable.",
-                kind, growth, frames, growth / Double(frames)))
-        }
+        // MP_STRESS_NO_POOL/MP_STRESS_FRAMES still apply to the CPU tests; the GPU
+        // test uses fixed warmup/window so the steady-state rate is meaningful.
+        let growth = try measure(kind: kind, model: model, image: img, delegate: .gpu,
+                                 warmup: gpuWarmup, measureFrames: gpuFrames)
+        let rate = growth / Double(gpuFrames)
+        XCTAssertLessThan(
+            rate, maxGPURateMBPerFrame,
+            "\(kind)/GPU leaked \(rate) MB/frame (\(growth) MB over \(gpuFrames) steady-state frames "
+            + "after \(gpuWarmup) warmup) — the macOS Metal texture-cache flush may have regressed.")
     }
 
     private func measure(kind: String, model: String, image: String,
-                         delegate: MediaPipeDelegate) throws -> Double {
+                         delegate: MediaPipeDelegate, warmup: Int, measureFrames: Int) throws -> Double {
         let pb = try bgraPixelBuffer(fromImageAt: image)
         switch kind {
         case "hand":
             let o = HandLandmarkerOptions(); o.modelPath = model; o.numHands = 2
             o.delegate = delegate; o.runningMode = .video
             let lm = try HandLandmarker(options: o)
-            return try measureGrowth(label: "hand/\(delegate.rawValue)") { ts in
+            return try measureGrowth(label: "hand/\(delegate.rawValue)", warmup: warmup, measureFrames: measureFrames) { ts in
                 _ = try lm.detectForVideo(pixelBuffer: pb, timestampInMilliseconds: ts + 1)
             }
         case "pose":
             let o = PoseLandmarkerOptions(); o.modelPath = model; o.delegate = delegate; o.runningMode = .video
             let lm = try PoseLandmarker(options: o)
-            return try measureGrowth(label: "pose/\(delegate.rawValue)") { ts in
+            return try measureGrowth(label: "pose/\(delegate.rawValue)", warmup: warmup, measureFrames: measureFrames) { ts in
                 _ = try lm.detectForVideo(pixelBuffer: pb, timestampInMilliseconds: ts + 1)
             }
         default:
@@ -158,7 +182,7 @@ final class MemoryStressTests: XCTestCase {
             o.outputFaceBlendshapes = true; o.outputFacialTransformationMatrixes = true
             o.delegate = delegate; o.runningMode = .video
             let lm = try FaceLandmarker(options: o)
-            return try measureGrowth(label: "face/\(delegate.rawValue)") { ts in
+            return try measureGrowth(label: "face/\(delegate.rawValue)", warmup: warmup, measureFrames: measureFrames) { ts in
                 _ = try lm.detectForVideo(pixelBuffer: pb, timestampInMilliseconds: ts + 1)
             }
         }

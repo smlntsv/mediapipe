@@ -1,2 +1,9 @@
-# Patches applied to external Bazel modules for the native macOS build.
+# Patches for the native macOS build.
+#
+#  * apple_support_lc_uuid.patch — applied to the FETCHED EXTERNAL apple_support
+#    module via MODULE.bazel's single_version_override(patches=[...]).
+#  * mediapipe_macos_gpu_texture_cache_flush.patch — targets files in THIS (root)
+#    repo, which the single_version_override mechanism cannot patch, so it is
+#    applied idempotently by mediapipe/tasks/macos/build_macos_xcframework.sh
+#    before the Bazel build.
 exports_files(glob(["*.patch"]))
