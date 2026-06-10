@@ -25,7 +25,8 @@ let package = Package(
         // (MpHandLandmarker*, MpImage*, ...). Not imported by Swift directly.
         .binaryTarget(
             name: "CMediaPipeTasksC",
-            path: "\(swiftRoot)/Artifacts/MediaPipeTasksC.xcframework"
+            url: "https://github.com/smlntsv/mediapipe/releases/download/v0.10.35-macos.1/MediaPipeTasksC.xcframework.zip",
+            checksum: "37038256ecb537c2c2a2c08a2c52a885aae4b4879521904debe8751f046e9587"
         ),
 
         // Objective-C++ bridge. Includes the MediaPipe C headers straight from the
