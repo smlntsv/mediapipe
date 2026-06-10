@@ -16,12 +16,21 @@
 
 #import "MPCError.h"
 
+#include <stdatomic.h>
+
 #include "mediapipe/tasks/c/core/common.h"  // MpErrorFree
 #include "mediapipe/tasks/c/vision/core/image.h"
+
+// Live-instance counter for ownership diagnostics (see +liveInstanceCount).
+static _Atomic(long) gMPCImageLiveCount = 0;
 
 @implementation MPCImage {
   // Exclusively owned native image; freed exactly once in -dealloc.
   MpImagePtr _image;
+}
+
++ (NSInteger)liveInstanceCount {
+  return (NSInteger)atomic_load(&gMPCImageLiveCount);
 }
 
 - (instancetype)initWithRGBAData:(NSData *)rgbaData
@@ -62,6 +71,7 @@
   }
 
   _image = image;
+  atomic_fetch_add(&gMPCImageLiveCount, 1);
   return self;
 }
 
@@ -73,6 +83,7 @@
   if (_image) {
     MpImageFree(_image);
     _image = NULL;
+    atomic_fetch_sub(&gMPCImageLiveCount, 1);
   }
 }
 

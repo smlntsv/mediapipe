@@ -24,7 +24,7 @@ extension MPCImage {
     /// converted to a tightly-packed RGBA8 buffer (the same representation used
     /// by the `CGImage` path) via a vImage channel permute, which also strips
     /// any per-row padding.
-    convenience init(pixelBuffer: CVPixelBuffer) throws {
+    public convenience init(pixelBuffer: CVPixelBuffer) throws {
         let format = CVPixelBufferGetPixelFormatType(pixelBuffer)
         guard format == kCVPixelFormatType_32BGRA else {
             throw MediaPipeError.invalidImage(

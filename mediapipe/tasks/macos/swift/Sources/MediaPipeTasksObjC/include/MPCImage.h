@@ -29,6 +29,10 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (instancetype)init NS_UNAVAILABLE;
 
+// Number of MPCImage instances currently alive (debug/ownership diagnostics).
+// Should stay near 0 during steady-state frame processing.
++ (NSInteger)liveInstanceCount;
+
 @end
 
 NS_ASSUME_NONNULL_END
