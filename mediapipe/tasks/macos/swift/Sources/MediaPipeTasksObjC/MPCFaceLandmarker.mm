@@ -20,8 +20,46 @@
 
 #include "mediapipe/tasks/c/vision/face_landmarker/face_landmarker.h"
 
+namespace {
+
+MPCFaceLandmarkerResult *BuildResult(const MpFaceLandmarkerResult &result) {
+  NSMutableArray<NSArray<MPCLandmark *> *> *landmarks =
+      [NSMutableArray arrayWithCapacity:result.face_landmarks_count];
+  for (uint32_t i = 0; i < result.face_landmarks_count; ++i) {
+    [landmarks addObject:MPCCopyLandmarks(result.face_landmarks[i])];
+  }
+
+  NSMutableArray<MPCClassifications *> *blendshapes =
+      [NSMutableArray arrayWithCapacity:result.face_blendshapes_count];
+  for (uint32_t i = 0; i < result.face_blendshapes_count; ++i) {
+    [blendshapes addObject:[[MPCClassifications alloc]
+                               initWithCategories:MPCCopyCategories(result.face_blendshapes[i])
+                                        headIndex:0
+                                         headName:nil]];
+  }
+
+  NSMutableArray<MPCMatrix *> *matrixes =
+      [NSMutableArray arrayWithCapacity:result.facial_transformation_matrixes_count];
+  for (uint32_t i = 0; i < result.facial_transformation_matrixes_count; ++i) {
+    const MpMatrix &m = result.facial_transformation_matrixes[i];
+    const NSUInteger count = (NSUInteger)m.rows * (NSUInteger)m.cols;
+    NSMutableArray<NSNumber *> *data = [NSMutableArray arrayWithCapacity:count];
+    for (NSUInteger k = 0; k < count; ++k) {
+      [data addObject:@(m.data[k])];
+    }
+    [matrixes addObject:[[MPCMatrix alloc] initWithRows:(NSInteger)m.rows
+                                                columns:(NSInteger)m.cols
+                                                   data:data]];
+  }
+
+  return [[MPCFaceLandmarkerResult alloc] initWithLandmarks:landmarks
+                                                blendshapes:blendshapes
+                                     transformationMatrixes:matrixes];
+}
+
+}  // namespace
+
 @implementation MPCFaceLandmarker {
-  // Exclusively owned native landmarker; closed exactly once in -dealloc.
   MpFaceLandmarkerPtr _landmarker;
 }
 
@@ -32,6 +70,8 @@
            minTrackingConfidence:(float)minTrackingConfidence
              outputFaceBlendshapes:(BOOL)outputFaceBlendshapes
 outputFacialTransformationMatrixes:(BOOL)outputFacialTransformationMatrixes
+                         delegate:(int)delegate
+                      runningMode:(int)runningMode
                             error:(NSError **)error {
   self = [super init];
   if (!self) {
@@ -40,8 +80,8 @@ outputFacialTransformationMatrixes:(BOOL)outputFacialTransformationMatrixes
 
   MpFaceLandmarkerOptions options{};
   options.base_options.model_asset_path = modelPath.UTF8String;
-  options.base_options.delegate = MP_DELEGATE_CPU;
-  options.running_mode = MP_RUNNING_MODE_IMAGE;
+  options.base_options.delegate = (MpDelegate)delegate;
+  options.running_mode = (MpRunningMode)runningMode;
   options.num_faces = (int)numFaces;
   options.min_face_detection_confidence = minFaceDetectionConfidence;
   options.min_face_presence_confidence = minFacePresenceConfidence;
@@ -83,44 +123,31 @@ outputFacialTransformationMatrixes:(BOOL)outputFacialTransformationMatrixes
     }
     return nil;
   }
-
-  // Deep-copy everything into ObjC objects before closing the native result.
-  NSMutableArray<NSArray<MPCLandmark *> *> *landmarks =
-      [NSMutableArray arrayWithCapacity:result.face_landmarks_count];
-  for (uint32_t i = 0; i < result.face_landmarks_count; ++i) {
-    [landmarks addObject:MPCCopyLandmarks(result.face_landmarks[i])];
-  }
-
-  // Blendshapes: one MpCategories (classifier head) per face.
-  NSMutableArray<MPCClassifications *> *blendshapes =
-      [NSMutableArray arrayWithCapacity:result.face_blendshapes_count];
-  for (uint32_t i = 0; i < result.face_blendshapes_count; ++i) {
-    [blendshapes addObject:[[MPCClassifications alloc]
-                               initWithCategories:MPCCopyCategories(result.face_blendshapes[i])
-                                        headIndex:0
-                                         headName:nil]];
-  }
-
-  // Facial transformation matrices: column-major rows*cols floats per face.
-  NSMutableArray<MPCMatrix *> *matrixes =
-      [NSMutableArray arrayWithCapacity:result.facial_transformation_matrixes_count];
-  for (uint32_t i = 0; i < result.facial_transformation_matrixes_count; ++i) {
-    const MpMatrix &m = result.facial_transformation_matrixes[i];
-    const NSUInteger count = (NSUInteger)m.rows * (NSUInteger)m.cols;
-    NSMutableArray<NSNumber *> *data = [NSMutableArray arrayWithCapacity:count];
-    for (NSUInteger k = 0; k < count; ++k) {
-      [data addObject:@(m.data[k])];
-    }
-    [matrixes addObject:[[MPCMatrix alloc] initWithRows:(NSInteger)m.rows
-                                                columns:(NSInteger)m.cols
-                                                   data:data]];
-  }
-
+  MPCFaceLandmarkerResult *out = BuildResult(result);
   MpFaceLandmarkerCloseResult(&result);
+  return out;
+}
 
-  return [[MPCFaceLandmarkerResult alloc] initWithLandmarks:landmarks
-                                                blendshapes:blendshapes
-                                     transformationMatrixes:matrixes];
+- (MPCFaceLandmarkerResult *)detectForVideoImage:(MPCImage *)image
+                                     timestampMs:(int64_t)timestampMs
+                                           error:(NSError **)error {
+  char *errorMsg = NULL;
+  MpFaceLandmarkerResult result{};
+  MpStatus status = MpFaceLandmarkerDetectForVideo(
+      _landmarker, image.imagePtr, /*options=*/nullptr, timestampMs, &result,
+      &errorMsg);
+  if (status != kMpOk) {
+    if (error) {
+      *error = MPCMakeError(status, errorMsg);
+    }
+    if (errorMsg) {
+      MpErrorFree(errorMsg);
+    }
+    return nil;
+  }
+  MPCFaceLandmarkerResult *out = BuildResult(result);
+  MpFaceLandmarkerCloseResult(&result);
+  return out;
 }
 
 - (void)dealloc {

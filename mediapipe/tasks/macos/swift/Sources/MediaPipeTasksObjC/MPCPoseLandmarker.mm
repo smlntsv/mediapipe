@@ -20,8 +20,26 @@
 
 #include "mediapipe/tasks/c/vision/pose_landmarker/pose_landmarker.h"
 
+namespace {
+
+MPCPoseLandmarkerResult *BuildResult(const MpPoseLandmarkerResult &result) {
+  NSMutableArray<NSArray<MPCLandmark *> *> *landmarks =
+      [NSMutableArray arrayWithCapacity:result.pose_landmarks_count];
+  for (uint32_t i = 0; i < result.pose_landmarks_count; ++i) {
+    [landmarks addObject:MPCCopyLandmarks(result.pose_landmarks[i])];
+  }
+  NSMutableArray<NSArray<MPCLandmark *> *> *worldLandmarks =
+      [NSMutableArray arrayWithCapacity:result.pose_world_landmarks_count];
+  for (uint32_t i = 0; i < result.pose_world_landmarks_count; ++i) {
+    [worldLandmarks addObject:MPCCopyLandmarks(result.pose_world_landmarks[i])];
+  }
+  return [[MPCPoseLandmarkerResult alloc] initWithLandmarks:landmarks
+                                            worldLandmarks:worldLandmarks];
+}
+
+}  // namespace
+
 @implementation MPCPoseLandmarker {
-  // Exclusively owned native landmarker; closed exactly once in -dealloc.
   MpPoseLandmarkerPtr _landmarker;
 }
 
@@ -30,6 +48,8 @@
       minPoseDetectionConfidence:(float)minPoseDetectionConfidence
        minPosePresenceConfidence:(float)minPosePresenceConfidence
            minTrackingConfidence:(float)minTrackingConfidence
+                         delegate:(int)delegate
+                      runningMode:(int)runningMode
                             error:(NSError **)error {
   self = [super init];
   if (!self) {
@@ -38,8 +58,8 @@
 
   MpPoseLandmarkerOptions options{};
   options.base_options.model_asset_path = modelPath.UTF8String;
-  options.base_options.delegate = MP_DELEGATE_CPU;
-  options.running_mode = MP_RUNNING_MODE_IMAGE;
+  options.base_options.delegate = (MpDelegate)delegate;
+  options.running_mode = (MpRunningMode)runningMode;
   options.num_poses = (int)numPoses;
   options.min_pose_detection_confidence = minPoseDetectionConfidence;
   options.min_pose_presence_confidence = minPosePresenceConfidence;
@@ -79,24 +99,31 @@
     }
     return nil;
   }
-
-  // Deep-copy before closing the native result.
-  NSMutableArray<NSArray<MPCLandmark *> *> *landmarks =
-      [NSMutableArray arrayWithCapacity:result.pose_landmarks_count];
-  for (uint32_t i = 0; i < result.pose_landmarks_count; ++i) {
-    [landmarks addObject:MPCCopyLandmarks(result.pose_landmarks[i])];
-  }
-
-  NSMutableArray<NSArray<MPCLandmark *> *> *worldLandmarks =
-      [NSMutableArray arrayWithCapacity:result.pose_world_landmarks_count];
-  for (uint32_t i = 0; i < result.pose_world_landmarks_count; ++i) {
-    [worldLandmarks addObject:MPCCopyLandmarks(result.pose_world_landmarks[i])];
-  }
-
+  MPCPoseLandmarkerResult *out = BuildResult(result);
   MpPoseLandmarkerCloseResult(&result);
+  return out;
+}
 
-  return [[MPCPoseLandmarkerResult alloc] initWithLandmarks:landmarks
-                                            worldLandmarks:worldLandmarks];
+- (MPCPoseLandmarkerResult *)detectForVideoImage:(MPCImage *)image
+                                     timestampMs:(int64_t)timestampMs
+                                           error:(NSError **)error {
+  char *errorMsg = NULL;
+  MpPoseLandmarkerResult result{};
+  MpStatus status = MpPoseLandmarkerDetectForVideo(
+      _landmarker, image.imagePtr, /*options=*/nullptr, timestampMs, &result,
+      &errorMsg);
+  if (status != kMpOk) {
+    if (error) {
+      *error = MPCMakeError(status, errorMsg);
+    }
+    if (errorMsg) {
+      MpErrorFree(errorMsg);
+    }
+    return nil;
+  }
+  MPCPoseLandmarkerResult *out = BuildResult(result);
+  MpPoseLandmarkerCloseResult(&result);
+  return out;
 }
 
 - (void)dealloc {

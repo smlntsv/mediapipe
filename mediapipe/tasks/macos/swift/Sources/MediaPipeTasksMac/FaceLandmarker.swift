@@ -16,8 +16,7 @@ import CoreGraphics
 import Foundation
 import MediaPipeTasksObjC
 
-/// Configuration for `FaceLandmarker`. Milestone 1: image mode, CPU delegate,
-/// landmarks only (blendshapes / transformation matrices are not yet exposed).
+/// Configuration for `FaceLandmarker`.
 public final class FaceLandmarkerOptions {
     /// Absolute path to a `face_landmarker.task` model file.
     public var modelPath: String
@@ -30,6 +29,10 @@ public final class FaceLandmarkerOptions {
     public var outputFaceBlendshapes: Bool
     /// Whether to output facial transformation matrices.
     public var outputFacialTransformationMatrixes: Bool
+    /// Accelerator to run on. Default `.cpu`.
+    public var delegate: MediaPipeDelegate
+    /// Running mode. Default `.image`.
+    public var runningMode: RunningMode
 
     public init(modelPath: String = "",
                 numFaces: Int = 1,
@@ -37,7 +40,9 @@ public final class FaceLandmarkerOptions {
                 minFacePresenceConfidence: Float = 0.5,
                 minTrackingConfidence: Float = 0.5,
                 outputFaceBlendshapes: Bool = false,
-                outputFacialTransformationMatrixes: Bool = false) {
+                outputFacialTransformationMatrixes: Bool = false,
+                delegate: MediaPipeDelegate = .cpu,
+                runningMode: RunningMode = .image) {
         self.modelPath = modelPath
         self.numFaces = numFaces
         self.minFaceDetectionConfidence = minFaceDetectionConfidence
@@ -45,6 +50,8 @@ public final class FaceLandmarkerOptions {
         self.minTrackingConfidence = minTrackingConfidence
         self.outputFaceBlendshapes = outputFaceBlendshapes
         self.outputFacialTransformationMatrixes = outputFacialTransformationMatrixes
+        self.delegate = delegate
+        self.runningMode = runningMode
     }
 }
 
@@ -54,11 +61,11 @@ public final class FaceLandmarkerOptions {
 public struct FaceLandmarkerResult: Sendable {
     /// Face landmarks in normalized image coordinates, per face.
     public var faceLandmarks: [[NormalizedLandmark]]
-    /// Face blendshapes, per face. Empty unless blendshape output is enabled
-    /// (not yet supported in milestone 1).
+    /// Face blendshapes, per face. Empty unless
+    /// `FaceLandmarkerOptions.outputFaceBlendshapes` is set.
     public var faceBlendshapes: [Classifications]
-    /// Facial transformation matrices, per face. Empty unless matrix output is
-    /// enabled (not yet supported in milestone 1).
+    /// Facial transformation matrices, per face. Empty unless
+    /// `FaceLandmarkerOptions.outputFacialTransformationMatrixes` is set.
     ///
     /// Note the MediaPipe Web spelling "Matrixes" is preserved intentionally.
     public var facialTransformationMatrixes: [Matrix]
@@ -76,11 +83,14 @@ public struct FaceLandmarkerResult: Sendable {
     }
 }
 
-/// Detects face landmarks on still images.
+/// Detects face landmarks on images (IMAGE mode) or video frames (VIDEO mode).
 public final class FaceLandmarker {
     private let impl: MPCFaceLandmarker
+    private let runningMode: RunningMode
 
     public init(options: FaceLandmarkerOptions) throws {
+        try checkDelegate(options.delegate)
+        runningMode = options.runningMode
         impl = try MPCFaceLandmarker(
             modelPath: options.modelPath,
             numFaces: options.numFaces,
@@ -88,13 +98,25 @@ public final class FaceLandmarker {
             minFacePresenceConfidence: options.minFacePresenceConfidence,
             minTrackingConfidence: options.minTrackingConfidence,
             outputFaceBlendshapes: options.outputFaceBlendshapes,
-            outputFacialTransformationMatrixes: options.outputFacialTransformationMatrixes)
+            outputFacialTransformationMatrixes: options.outputFacialTransformationMatrixes,
+            delegate: options.delegate.cValue,
+            runningMode: options.runningMode.cValue)
     }
 
-    /// Runs face landmark detection on a `CGImage`.
+    /// Runs face landmark detection on a still `CGImage`. Requires `.image` mode.
     public func detect(cgImage: CGImage) throws -> FaceLandmarkerResult {
+        try requireRunningMode(.image, actual: runningMode, method: "detect(cgImage:)")
         let image = try MPCImage(cgImage: cgImage)
-        let result = try impl.detect(image)
-        return FaceLandmarkerResult(result)
+        return FaceLandmarkerResult(try impl.detect(image))
+    }
+
+    /// Runs face landmark detection on a video frame. Requires `.video` mode.
+    /// Timestamps must be monotonically increasing.
+    public func detectForVideo(cgImage: CGImage,
+                               timestampInMilliseconds: Int) throws -> FaceLandmarkerResult {
+        try requireRunningMode(.video, actual: runningMode, method: "detectForVideo(cgImage:timestampInMilliseconds:)")
+        let image = try MPCImage(cgImage: cgImage)
+        return FaceLandmarkerResult(
+            try impl.detect(forVideoImage: image, timestampMs: Int64(timestampInMilliseconds)))
     }
 }

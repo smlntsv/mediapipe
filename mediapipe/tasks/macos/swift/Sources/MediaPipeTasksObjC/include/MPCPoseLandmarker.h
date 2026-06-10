@@ -24,17 +24,24 @@ NS_ASSUME_NONNULL_BEGIN
 // on deallocation.
 @interface MPCPoseLandmarker : NSObject
 
+// `delegate` and `runningMode` use the MediaPipe C enum integer values.
 - (nullable instancetype)initWithModelPath:(NSString *)modelPath
                                   numPoses:(NSInteger)numPoses
                minPoseDetectionConfidence:(float)minPoseDetectionConfidence
                 minPosePresenceConfidence:(float)minPosePresenceConfidence
                     minTrackingConfidence:(float)minTrackingConfidence
+                                  delegate:(int)delegate
+                               runningMode:(int)runningMode
                                      error:(NSError **)error NS_DESIGNATED_INITIALIZER;
 
 - (instancetype)init NS_UNAVAILABLE;
 
 - (nullable MPCPoseLandmarkerResult *)detectImage:(MPCImage *)image
                                             error:(NSError **)error;
+
+- (nullable MPCPoseLandmarkerResult *)detectForVideoImage:(MPCImage *)image
+                                              timestampMs:(int64_t)timestampMs
+                                                    error:(NSError **)error;
 
 @end
 

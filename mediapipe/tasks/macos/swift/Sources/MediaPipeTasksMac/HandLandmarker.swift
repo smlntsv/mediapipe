@@ -18,8 +18,15 @@ import MediaPipeTasksObjC
 
 /// Errors raised by the Swift layer of MediaPipeTasksMac. Errors originating in
 /// the native MediaPipe runtime surface as `NSError` from throwing calls.
-public enum MediaPipeError: Error {
+public enum MediaPipeError: Error, Equatable {
     case invalidImage(String)
+    /// The requested delegate is not available in the linked artifact (e.g.
+    /// `.gpu` against the CPU-only macOS build). The wrapper never silently
+    /// falls back to CPU.
+    case unsupportedDelegate(String)
+    /// A detection method was called that does not match the configured
+    /// `runningMode` (e.g. `detect(cgImage:)` on a `.video` landmarker).
+    case invalidRunningMode(String)
 }
 
 /// Configuration for `HandLandmarker`. Milestone 1: image mode, CPU delegate.
@@ -31,17 +38,25 @@ public final class HandLandmarkerOptions {
     public var minHandDetectionConfidence: Float
     public var minHandPresenceConfidence: Float
     public var minTrackingConfidence: Float
+    /// Accelerator to run on. Default `.cpu`.
+    public var delegate: MediaPipeDelegate
+    /// Running mode. Default `.image`.
+    public var runningMode: RunningMode
 
     public init(modelPath: String = "",
                 numHands: Int = 1,
                 minHandDetectionConfidence: Float = 0.5,
                 minHandPresenceConfidence: Float = 0.5,
-                minTrackingConfidence: Float = 0.5) {
+                minTrackingConfidence: Float = 0.5,
+                delegate: MediaPipeDelegate = .cpu,
+                runningMode: RunningMode = .image) {
         self.modelPath = modelPath
         self.numHands = numHands
         self.minHandDetectionConfidence = minHandDetectionConfidence
         self.minHandPresenceConfidence = minHandPresenceConfidence
         self.minTrackingConfidence = minTrackingConfidence
+        self.delegate = delegate
+        self.runningMode = runningMode
     }
 }
 
@@ -67,23 +82,38 @@ public struct HandLandmarkerResult: Sendable {
     }
 }
 
-/// Detects hand landmarks on still images.
+/// Detects hand landmarks on images (IMAGE mode) or video frames (VIDEO mode).
 public final class HandLandmarker {
     private let impl: MPCHandLandmarker
+    private let runningMode: RunningMode
 
     public init(options: HandLandmarkerOptions) throws {
+        try checkDelegate(options.delegate)
+        runningMode = options.runningMode
         impl = try MPCHandLandmarker(
             modelPath: options.modelPath,
             numHands: options.numHands,
             minHandDetectionConfidence: options.minHandDetectionConfidence,
             minHandPresenceConfidence: options.minHandPresenceConfidence,
-            minTrackingConfidence: options.minTrackingConfidence)
+            minTrackingConfidence: options.minTrackingConfidence,
+            delegate: options.delegate.cValue,
+            runningMode: options.runningMode.cValue)
     }
 
-    /// Runs hand landmark detection on a `CGImage`.
+    /// Runs hand landmark detection on a still `CGImage`. Requires `.image` mode.
     public func detect(cgImage: CGImage) throws -> HandLandmarkerResult {
+        try requireRunningMode(.image, actual: runningMode, method: "detect(cgImage:)")
         let image = try MPCImage(cgImage: cgImage)
-        let result = try impl.detect(image)
-        return HandLandmarkerResult(result)
+        return HandLandmarkerResult(try impl.detect(image))
+    }
+
+    /// Runs hand landmark detection on a video frame. Requires `.video` mode.
+    /// Timestamps must be monotonically increasing.
+    public func detectForVideo(cgImage: CGImage,
+                               timestampInMilliseconds: Int) throws -> HandLandmarkerResult {
+        try requireRunningMode(.video, actual: runningMode, method: "detectForVideo(cgImage:timestampInMilliseconds:)")
+        let image = try MPCImage(cgImage: cgImage)
+        return HandLandmarkerResult(
+            try impl.detect(forVideoImage: image, timestampMs: Int64(timestampInMilliseconds)))
     }
 }

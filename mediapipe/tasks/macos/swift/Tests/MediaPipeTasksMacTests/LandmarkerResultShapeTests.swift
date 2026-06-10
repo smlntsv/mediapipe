@@ -103,6 +103,98 @@ final class LandmarkerResultShapeTests: XCTestCase {
         XCTAssertTrue(result.facialTransformationMatrixes.isEmpty)
     }
 
+    // MARK: - VIDEO mode (CPU)
+
+    func testHandLandmarkerVideoMode() throws {
+        guard let model = env("MP_HAND_MODEL"), let imagePath = env("MP_HAND_IMAGE") else {
+            throw XCTSkip("Set MP_HAND_MODEL and MP_HAND_IMAGE to run this test.")
+        }
+        let image = try loadCGImage(imagePath)
+        let options = HandLandmarkerOptions()
+        options.modelPath = model
+        options.numHands = 2
+        options.delegate = .cpu
+        options.runningMode = .video
+        let landmarker = try HandLandmarker(options: options)
+        for ts in [0, 33, 66] {  // increasing timestamps (~30fps)
+            let result = try landmarker.detectForVideo(cgImage: image, timestampInMilliseconds: ts)
+            XCTAssertFalse(result.landmarks.isEmpty, "expected a hand at t=\(ts)ms")
+            XCTAssertEqual(result.landmarks[0].count, 21)
+            XCTAssertEqual(result.worldLandmarks[0].count, 21)
+        }
+        // IMAGE-mode method must reject a VIDEO landmarker.
+        XCTAssertThrowsError(try landmarker.detect(cgImage: image)) { error in
+            guard case MediaPipeError.invalidRunningMode = error else {
+                return XCTFail("expected invalidRunningMode, got \(error)")
+            }
+        }
+    }
+
+    func testPoseLandmarkerVideoMode() throws {
+        guard let model = env("MP_POSE_MODEL"), let imagePath = env("MP_POSE_IMAGE") else {
+            throw XCTSkip("Set MP_POSE_MODEL and MP_POSE_IMAGE to run this test.")
+        }
+        let image = try loadCGImage(imagePath)
+        let options = PoseLandmarkerOptions()
+        options.modelPath = model
+        options.runningMode = .video
+        let landmarker = try PoseLandmarker(options: options)
+        for ts in [0, 33, 66] {
+            let result = try landmarker.detectForVideo(cgImage: image, timestampInMilliseconds: ts)
+            XCTAssertFalse(result.landmarks.isEmpty, "expected a pose at t=\(ts)ms")
+            XCTAssertEqual(result.landmarks[0].count, 33)
+            XCTAssertEqual(result.worldLandmarks[0].count, 33)
+        }
+    }
+
+    func testFaceLandmarkerVideoMode() throws {
+        guard let model = env("MP_FACE_MODEL"), let imagePath = env("MP_FACE_IMAGE") else {
+            throw XCTSkip("Set MP_FACE_MODEL and MP_FACE_IMAGE to run this test.")
+        }
+        let image = try loadCGImage(imagePath)
+        let options = FaceLandmarkerOptions()
+        options.modelPath = model
+        options.runningMode = .video
+        let landmarker = try FaceLandmarker(options: options)
+        for ts in [0, 33, 66] {
+            let result = try landmarker.detectForVideo(cgImage: image, timestampInMilliseconds: ts)
+            XCTAssertFalse(result.faceLandmarks.isEmpty, "expected a face at t=\(ts)ms")
+            XCTAssertEqual(result.faceLandmarks[0].count, 478)
+        }
+    }
+
+    func testImageModeRejectsVideoCall() throws {
+        guard let model = env("MP_HAND_MODEL"), let imagePath = env("MP_HAND_IMAGE") else {
+            throw XCTSkip("Set MP_HAND_MODEL and MP_HAND_IMAGE to run this test.")
+        }
+        let image = try loadCGImage(imagePath)
+        let options = HandLandmarkerOptions()
+        options.modelPath = model  // default runningMode == .image
+        let landmarker = try HandLandmarker(options: options)
+        XCTAssertThrowsError(
+            try landmarker.detectForVideo(cgImage: image, timestampInMilliseconds: 0)
+        ) { error in
+            guard case MediaPipeError.invalidRunningMode = error else {
+                return XCTFail("expected invalidRunningMode, got \(error)")
+            }
+        }
+    }
+
+    // MARK: - Delegate
+
+    func testGPUDelegateUnsupportedOnCPUArtifact() {
+        // No model needed: the delegate check runs before native creation, and
+        // the default macOS artifact is CPU-only.
+        let options = HandLandmarkerOptions()
+        options.modelPath = "/nonexistent.task"
+        options.delegate = .gpu
+        XCTAssertThrowsError(try HandLandmarker(options: options)) { error in
+            guard case MediaPipeError.unsupportedDelegate = error else {
+                return XCTFail("expected unsupportedDelegate, got \(error)")
+            }
+        }
+    }
+
     func testFaceLandmarkerBlendshapesAndMatrices() throws {
         guard let model = env("MP_FACE_MODEL"), let imagePath = env("MP_FACE_IMAGE") else {
             throw XCTSkip("Set MP_FACE_MODEL and MP_FACE_IMAGE to run this test.")

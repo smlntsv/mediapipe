@@ -24,6 +24,7 @@ NS_ASSUME_NONNULL_BEGIN
 // on deallocation.
 @interface MPCFaceLandmarker : NSObject
 
+// `delegate` and `runningMode` use the MediaPipe C enum integer values.
 - (nullable instancetype)initWithModelPath:(NSString *)modelPath
                                   numFaces:(NSInteger)numFaces
                minFaceDetectionConfidence:(float)minFaceDetectionConfidence
@@ -31,12 +32,18 @@ NS_ASSUME_NONNULL_BEGIN
                     minTrackingConfidence:(float)minTrackingConfidence
                       outputFaceBlendshapes:(BOOL)outputFaceBlendshapes
         outputFacialTransformationMatrixes:(BOOL)outputFacialTransformationMatrixes
+                                  delegate:(int)delegate
+                               runningMode:(int)runningMode
                                      error:(NSError **)error NS_DESIGNATED_INITIALIZER;
 
 - (instancetype)init NS_UNAVAILABLE;
 
 - (nullable MPCFaceLandmarkerResult *)detectImage:(MPCImage *)image
                                             error:(NSError **)error;
+
+- (nullable MPCFaceLandmarkerResult *)detectForVideoImage:(MPCImage *)image
+                                              timestampMs:(int64_t)timestampMs
+                                                    error:(NSError **)error;
 
 @end
 

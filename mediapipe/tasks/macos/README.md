@@ -17,12 +17,59 @@ import MediaPipeTasksMac
   → MediaPipe runtime / TFLite
 ```
 
-## Milestone 1 scope
+## Scope
 
-macOS arm64 · CPU delegate · **image mode** · model loaded from file path ·
-`CGImage` input · landmarks (+ hand handedness) for all three tasks
-(Hand 21, Pose 33, Face 478). Video / live-stream / `CVPixelBuffer` / `NSImage` /
-face blendshapes & transformation matrices are future milestones.
+macOS arm64 · model loaded from file path · `CGImage` input · landmarks for all
+three tasks (Hand 21, Pose 33, Face 478) plus hand handedness, face blendshapes
+(52) and the 4×4 transformation matrix.
+
+- **Delegate**: `.cpu` works. `.gpu` throws `MediaPipeError.unsupportedDelegate`
+  on the shipped artifact (see "GPU delegate" below) — it never silently falls
+  back to CPU.
+- **Running mode**: `.image` (`detect(cgImage:)`) and `.video`
+  (`detectForVideo(cgImage:timestampInMilliseconds:)`). Calling the wrong method
+  for the configured mode throws `MediaPipeError.invalidRunningMode`.
+
+Live-stream mode, `CVPixelBuffer`/`NSImage` input, and segmentation masks are
+future milestones.
+
+```swift
+// VIDEO mode example (timestamps must be monotonically increasing):
+let options = PoseLandmarkerOptions()
+options.modelPath = "/path/to/pose_landmarker_lite.task"
+options.delegate = .cpu
+options.runningMode = .video
+let landmarker = try PoseLandmarker(options: options)
+for (frame, tsMs) in frames {                       // frame: CGImage
+    let result = try landmarker.detectForVideo(cgImage: frame, timestampInMilliseconds: tsMs)
+}
+```
+
+### GPU delegate
+
+The shipped macOS artifact is **CPU-only** (built with
+`--define MEDIAPIPE_DISABLE_GPU=1`). A GPU-enabled build was attempted and
+**does not compile** for desktop macOS in this MediaPipe revision — the Metal
+path (`image_to_tensor_converter_metal.cc`) calls `MPPMetalHelper`
+`metalTextureWithGpuBuffer:`, a selector not available for this target. Until
+that is resolved upstream, `.gpu` is rejected with `unsupportedDelegate`. If a
+GPU-capable artifact is ever produced, flip `mediaPipeGPUArtifactAvailable` in
+`Modes.swift` to `true`.
+
+### Pose model size (lite / full / heavy)
+
+Model size is **not** part of the package API — choose it on the consumer side
+by pointing `modelPath` at the desired `.task` file:
+
+```swift
+enum PoseModel {                                   // app-side helper, not in the package
+    static func path(_ size: String) -> String {  // "lite" | "full" | "heavy"
+        "/path/to/models/pose_landmarker_\(size).task"
+    }
+}
+let options = PoseLandmarkerOptions()
+options.modelPath = PoseModel.path("full")
+```
 
 ## Prerequisites
 

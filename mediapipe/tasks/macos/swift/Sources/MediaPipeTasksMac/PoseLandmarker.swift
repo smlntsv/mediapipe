@@ -25,17 +25,25 @@ public final class PoseLandmarkerOptions {
     public var minPoseDetectionConfidence: Float
     public var minPosePresenceConfidence: Float
     public var minTrackingConfidence: Float
+    /// Accelerator to run on. Default `.cpu`.
+    public var delegate: MediaPipeDelegate
+    /// Running mode. Default `.image`.
+    public var runningMode: RunningMode
 
     public init(modelPath: String = "",
                 numPoses: Int = 1,
                 minPoseDetectionConfidence: Float = 0.5,
                 minPosePresenceConfidence: Float = 0.5,
-                minTrackingConfidence: Float = 0.5) {
+                minTrackingConfidence: Float = 0.5,
+                delegate: MediaPipeDelegate = .cpu,
+                runningMode: RunningMode = .image) {
         self.modelPath = modelPath
         self.numPoses = numPoses
         self.minPoseDetectionConfidence = minPoseDetectionConfidence
         self.minPosePresenceConfidence = minPosePresenceConfidence
         self.minTrackingConfidence = minTrackingConfidence
+        self.delegate = delegate
+        self.runningMode = runningMode
     }
 }
 
@@ -58,23 +66,38 @@ public struct PoseLandmarkerResult: Sendable {
     }
 }
 
-/// Detects pose landmarks on still images.
+/// Detects pose landmarks on images (IMAGE mode) or video frames (VIDEO mode).
 public final class PoseLandmarker {
     private let impl: MPCPoseLandmarker
+    private let runningMode: RunningMode
 
     public init(options: PoseLandmarkerOptions) throws {
+        try checkDelegate(options.delegate)
+        runningMode = options.runningMode
         impl = try MPCPoseLandmarker(
             modelPath: options.modelPath,
             numPoses: options.numPoses,
             minPoseDetectionConfidence: options.minPoseDetectionConfidence,
             minPosePresenceConfidence: options.minPosePresenceConfidence,
-            minTrackingConfidence: options.minTrackingConfidence)
+            minTrackingConfidence: options.minTrackingConfidence,
+            delegate: options.delegate.cValue,
+            runningMode: options.runningMode.cValue)
     }
 
-    /// Runs pose landmark detection on a `CGImage`.
+    /// Runs pose landmark detection on a still `CGImage`. Requires `.image` mode.
     public func detect(cgImage: CGImage) throws -> PoseLandmarkerResult {
+        try requireRunningMode(.image, actual: runningMode, method: "detect(cgImage:)")
         let image = try MPCImage(cgImage: cgImage)
-        let result = try impl.detect(image)
-        return PoseLandmarkerResult(result)
+        return PoseLandmarkerResult(try impl.detect(image))
+    }
+
+    /// Runs pose landmark detection on a video frame. Requires `.video` mode.
+    /// Timestamps must be monotonically increasing.
+    public func detectForVideo(cgImage: CGImage,
+                               timestampInMilliseconds: Int) throws -> PoseLandmarkerResult {
+        try requireRunningMode(.video, actual: runningMode, method: "detectForVideo(cgImage:timestampInMilliseconds:)")
+        let image = try MPCImage(cgImage: cgImage)
+        return PoseLandmarkerResult(
+            try impl.detect(forVideoImage: image, timestampMs: Int64(timestampInMilliseconds)))
     }
 }

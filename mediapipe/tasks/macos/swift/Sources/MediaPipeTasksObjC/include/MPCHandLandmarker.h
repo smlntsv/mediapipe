@@ -24,19 +24,28 @@ NS_ASSUME_NONNULL_BEGIN
 // on deallocation.
 @interface MPCHandLandmarker : NSObject
 
+// `delegate` and `runningMode` use the MediaPipe C enum integer values
+// (MpDelegate / MpRunningMode).
 - (nullable instancetype)initWithModelPath:(NSString *)modelPath
                                   numHands:(NSInteger)numHands
                minHandDetectionConfidence:(float)minHandDetectionConfidence
                 minHandPresenceConfidence:(float)minHandPresenceConfidence
                     minTrackingConfidence:(float)minTrackingConfidence
+                                  delegate:(int)delegate
+                               runningMode:(int)runningMode
                                      error:(NSError **)error NS_DESIGNATED_INITIALIZER;
 
 - (instancetype)init NS_UNAVAILABLE;
 
-// Runs hand landmark detection on `image`. Returns a fully-copied result, or
-// nil with `error` set on failure.
+// Runs hand landmark detection on `image` (IMAGE running mode). Returns a
+// fully-copied result, or nil with `error` set on failure.
 - (nullable MPCHandLandmarkerResult *)detectImage:(MPCImage *)image
                                             error:(NSError **)error;
+
+// Runs hand landmark detection on a video frame (VIDEO running mode).
+- (nullable MPCHandLandmarkerResult *)detectForVideoImage:(MPCImage *)image
+                                              timestampMs:(int64_t)timestampMs
+                                                    error:(NSError **)error;
 
 @end
 

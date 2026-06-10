@@ -20,6 +20,33 @@
 
 #include "mediapipe/tasks/c/vision/hand_landmarker/hand_landmarker.h"
 
+namespace {
+
+// Deep-copies a native result into ObjC objects. Does NOT close the native
+// result (the caller owns that).
+MPCHandLandmarkerResult *BuildResult(const MpHandLandmarkerResult &result) {
+  NSMutableArray<NSArray<MPCLandmark *> *> *landmarks =
+      [NSMutableArray arrayWithCapacity:result.hand_landmarks_count];
+  for (uint32_t i = 0; i < result.hand_landmarks_count; ++i) {
+    [landmarks addObject:MPCCopyLandmarks(result.hand_landmarks[i])];
+  }
+  NSMutableArray<NSArray<MPCLandmark *> *> *worldLandmarks =
+      [NSMutableArray arrayWithCapacity:result.hand_world_landmarks_count];
+  for (uint32_t i = 0; i < result.hand_world_landmarks_count; ++i) {
+    [worldLandmarks addObject:MPCCopyLandmarks(result.hand_world_landmarks[i])];
+  }
+  NSMutableArray<NSArray<MPCCategory *> *> *handedness =
+      [NSMutableArray arrayWithCapacity:result.handedness_count];
+  for (uint32_t i = 0; i < result.handedness_count; ++i) {
+    [handedness addObject:MPCCopyCategories(result.handedness[i])];
+  }
+  return [[MPCHandLandmarkerResult alloc] initWithLandmarks:landmarks
+                                            worldLandmarks:worldLandmarks
+                                                handedness:handedness];
+}
+
+}  // namespace
+
 @implementation MPCHandLandmarker {
   // Exclusively owned native landmarker; closed exactly once in -dealloc.
   MpHandLandmarkerPtr _landmarker;
@@ -30,16 +57,18 @@
       minHandDetectionConfidence:(float)minHandDetectionConfidence
        minHandPresenceConfidence:(float)minHandPresenceConfidence
            minTrackingConfidence:(float)minTrackingConfidence
+                         delegate:(int)delegate
+                      runningMode:(int)runningMode
                             error:(NSError **)error {
   self = [super init];
   if (!self) {
     return nil;
   }
 
-  MpHandLandmarkerOptions options{};  // value-init: zeroes base_options, etc.
+  MpHandLandmarkerOptions options{};
   options.base_options.model_asset_path = modelPath.UTF8String;
-  options.base_options.delegate = MP_DELEGATE_CPU;
-  options.running_mode = MP_RUNNING_MODE_IMAGE;
+  options.base_options.delegate = (MpDelegate)delegate;
+  options.running_mode = (MpRunningMode)runningMode;
   options.num_hands = (int)numHands;
   options.min_hand_detection_confidence = minHandDetectionConfidence;
   options.min_hand_presence_confidence = minHandPresenceConfidence;
@@ -78,32 +107,31 @@
     }
     return nil;
   }
-
-  // Deep-copy EVERYTHING into Objective-C objects before closing the native
-  // result. After MpHandLandmarkerCloseResult, no native pointers remain live.
-  NSMutableArray<NSArray<MPCLandmark *> *> *landmarks =
-      [NSMutableArray arrayWithCapacity:result.hand_landmarks_count];
-  for (uint32_t i = 0; i < result.hand_landmarks_count; ++i) {
-    [landmarks addObject:MPCCopyLandmarks(result.hand_landmarks[i])];
-  }
-
-  NSMutableArray<NSArray<MPCLandmark *> *> *worldLandmarks =
-      [NSMutableArray arrayWithCapacity:result.hand_world_landmarks_count];
-  for (uint32_t i = 0; i < result.hand_world_landmarks_count; ++i) {
-    [worldLandmarks addObject:MPCCopyLandmarks(result.hand_world_landmarks[i])];
-  }
-
-  NSMutableArray<NSArray<MPCCategory *> *> *handedness =
-      [NSMutableArray arrayWithCapacity:result.handedness_count];
-  for (uint32_t i = 0; i < result.handedness_count; ++i) {
-    [handedness addObject:MPCCopyCategories(result.handedness[i])];
-  }
-
+  MPCHandLandmarkerResult *out = BuildResult(result);
   MpHandLandmarkerCloseResult(&result);
+  return out;
+}
 
-  return [[MPCHandLandmarkerResult alloc] initWithLandmarks:landmarks
-                                            worldLandmarks:worldLandmarks
-                                                handedness:handedness];
+- (MPCHandLandmarkerResult *)detectForVideoImage:(MPCImage *)image
+                                     timestampMs:(int64_t)timestampMs
+                                           error:(NSError **)error {
+  char *errorMsg = NULL;
+  MpHandLandmarkerResult result{};
+  MpStatus status = MpHandLandmarkerDetectForVideo(
+      _landmarker, image.imagePtr, /*options=*/nullptr, timestampMs, &result,
+      &errorMsg);
+  if (status != kMpOk) {
+    if (error) {
+      *error = MPCMakeError(status, errorMsg);
+    }
+    if (errorMsg) {
+      MpErrorFree(errorMsg);
+    }
+    return nil;
+  }
+  MPCHandLandmarkerResult *out = BuildResult(result);
+  MpHandLandmarkerCloseResult(&result);
+  return out;
 }
 
 - (void)dealloc {
