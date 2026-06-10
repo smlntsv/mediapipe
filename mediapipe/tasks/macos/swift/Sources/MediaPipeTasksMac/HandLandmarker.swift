@@ -46,7 +46,7 @@ public final class HandLandmarkerOptions {
 }
 
 /// Result of hand landmark detection. Each top-level element corresponds to one
-/// detected hand.
+/// detected hand. Mirrors the MediaPipe Tasks `HandLandmarkerResult` shape.
 public struct HandLandmarkerResult: Sendable {
     /// Hand landmarks in normalized image coordinates, per hand.
     public var landmarks: [[NormalizedLandmark]]
@@ -54,6 +54,11 @@ public struct HandLandmarkerResult: Sendable {
     public var worldLandmarks: [[Landmark]]
     /// Handedness classification, per hand.
     public var handedness: [[Category]]
+
+    /// Deprecated alias for `handedness`, kept for parity with older MediaPipe
+    /// result shapes.
+    @available(*, deprecated, renamed: "handedness")
+    public var handednesses: [[Category]] { handedness }
 
     init(_ result: MPCHandLandmarkerResult) {
         landmarks = result.landmarks.map { $0.map(NormalizedLandmark.init) }

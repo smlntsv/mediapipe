@@ -111,8 +111,8 @@ if let faceModel = arguments.faceModel {
         options.numFaces = 1
         let landmarker = try FaceLandmarker(options: options)
         let result = try landmarker.detect(cgImage: cgImage)
-        let count = result.landmarks.count
-        let perFace = result.landmarks.first?.count ?? 0
+        let count = result.faceLandmarks.count
+        let perFace = result.faceLandmarks.first?.count ?? 0
         print("FaceLandmarker: detected \(count) face\(count == 1 ? "" : "s"), \(perFace) landmarks")
     } catch {
         fail("FaceLandmarker failed: \(error.localizedDescription)")

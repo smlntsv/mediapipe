@@ -6,8 +6,13 @@ node_modules/
 .configure.bazelrc
 .user.bazelrc
 
-# Swift Package Manager (macOS Tasks package)
+# JetBrains IDE files
 .idea/
+
+# Bazel output symlinks/directories
+/bazel-*
+
+# Swift Package Manager (macOS Tasks package)
 .build/
 .swiftpm/
 Package.resolved

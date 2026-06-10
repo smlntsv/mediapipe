@@ -54,6 +54,15 @@ let package = Package(
             dependencies: ["MediaPipeTasksMac"],
             path: "\(swiftRoot)/Sources/Sample"
         ),
+
+        // Tests that verify result shapes/counts. They run only when the
+        // relevant model/image paths are provided via environment variables
+        // (see the test file); otherwise each case is skipped.
+        .testTarget(
+            name: "MediaPipeTasksMacTests",
+            dependencies: ["MediaPipeTasksMac"],
+            path: "\(swiftRoot)/Tests/MediaPipeTasksMacTests"
+        ),
     ],
     cxxLanguageStandard: .cxx20
 )

@@ -40,16 +40,21 @@ public final class PoseLandmarkerOptions {
 }
 
 /// Result of pose landmark detection. Each top-level element corresponds to one
-/// detected pose.
+/// detected pose. Mirrors the MediaPipe Tasks `PoseLandmarkerResult` shape.
 public struct PoseLandmarkerResult: Sendable {
     /// Pose landmarks in normalized image coordinates, per pose.
     public var landmarks: [[NormalizedLandmark]]
     /// Pose landmarks in world coordinates (meters), per pose.
     public var worldLandmarks: [[Landmark]]
+    /// Segmentation masks, per pose. `nil` until mask output is implemented
+    /// (not yet supported in milestone 1).
+    public var segmentationMasks: [MPMask]?
 
     init(_ result: MPCPoseLandmarkerResult) {
         landmarks = result.landmarks.map { $0.map(NormalizedLandmark.init) }
         worldLandmarks = result.worldLandmarks.map { $0.map(Landmark.init) }
+        // Masks are not requested in milestone 1.
+        segmentationMasks = nil
     }
 }
 

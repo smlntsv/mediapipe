@@ -41,13 +41,25 @@ public final class FaceLandmarkerOptions {
 }
 
 /// Result of face landmark detection. Each top-level element corresponds to one
-/// detected face (478 landmarks each for the standard model).
+/// detected face (478 landmarks each for the standard model). Mirrors the
+/// MediaPipe Tasks `FaceLandmarkerResult` shape.
 public struct FaceLandmarkerResult: Sendable {
     /// Face landmarks in normalized image coordinates, per face.
-    public var landmarks: [[NormalizedLandmark]]
+    public var faceLandmarks: [[NormalizedLandmark]]
+    /// Face blendshapes, per face. Empty unless blendshape output is enabled
+    /// (not yet supported in milestone 1).
+    public var faceBlendshapes: [Classifications]
+    /// Facial transformation matrices, per face. Empty unless matrix output is
+    /// enabled (not yet supported in milestone 1).
+    ///
+    /// Note the MediaPipe Web spelling "Matrixes" is preserved intentionally.
+    public var facialTransformationMatrixes: [Matrix]
 
     init(_ result: MPCFaceLandmarkerResult) {
-        landmarks = result.landmarks.map { $0.map(NormalizedLandmark.init) }
+        faceLandmarks = result.landmarks.map { $0.map(NormalizedLandmark.init) }
+        // Blendshapes / transformation matrices are not requested in milestone 1.
+        faceBlendshapes = []
+        facialTransformationMatrixes = []
     }
 }
 

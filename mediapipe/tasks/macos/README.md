@@ -125,6 +125,35 @@ print(result.landmarks.count)
 > Because the xcframework is gitignored, the package cannot be resolved straight
 > from a remote Git branch until the build script has produced the artifact.
 
+## Result shapes (MediaPipe parity)
+
+Result types mirror the MediaPipe Tasks Web/iOS shapes, with the nested
+per-instance structure preserved (no flattening) so app code can share logic
+with MediaPipe Web result handling:
+
+- `HandLandmarkerResult`: `landmarks: [[NormalizedLandmark]]`,
+  `worldLandmarks: [[Landmark]]`, `handedness: [[Category]]`
+  (plus a deprecated `handednesses` alias).
+- `PoseLandmarkerResult`: `landmarks: [[NormalizedLandmark]]`,
+  `worldLandmarks: [[Landmark]]`, `segmentationMasks: [MPMask]?`
+  (`nil` until masks are implemented).
+- `FaceLandmarkerResult`: `faceLandmarks: [[NormalizedLandmark]]`,
+  `faceBlendshapes: [Classifications]`, `facialTransformationMatrixes: [Matrix]`
+  (the last two are empty until blendshape/matrix output is supported).
+
+## Tests
+
+`swift test` runs result-shape/count assertions (Hand 21+21, Pose 33+33, Face
+478). They require real models/images, supplied via environment variables, and
+are **skipped** when unset:
+
+```bash
+MP_HAND_MODEL=hand_landmarker.task MP_HAND_IMAGE=hand.jpg \
+MP_POSE_MODEL=pose_landmarker.task MP_POSE_IMAGE=person.jpg \
+MP_FACE_MODEL=face_landmarker.task MP_FACE_IMAGE=person.jpg \
+swift test
+```
+
 ## Future distribution (not done yet)
 
 Once the artifact is stable: zip `MediaPipeTasksC.xcframework`, upload it to a
