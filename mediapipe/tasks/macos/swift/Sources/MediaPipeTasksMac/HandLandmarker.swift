@@ -28,6 +28,9 @@ public enum MediaPipeError: Error, Equatable {
     /// A detection method was called that does not match the configured
     /// `runningMode` (e.g. `detect(cgImage:)` on a `.video` landmarker).
     case invalidRunningMode(String)
+    /// A caller-supplied argument was invalid (e.g. a `rotationDegrees` that is
+    /// not a multiple of 90 in `ImageProcessingOptions`).
+    case invalidArgument(String)
 }
 
 /// Configuration for `HandLandmarker`. Milestone 1: image mode, CPU delegate.
@@ -102,36 +105,57 @@ public final class HandLandmarker {
     }
 
     /// Runs hand landmark detection on a still `CGImage`. Requires `.image` mode.
-    public func detect(cgImage: CGImage) throws -> HandLandmarkerResult {
+    public func detect(cgImage: CGImage,
+                       imageProcessingOptions: ImageProcessingOptions = ImageProcessingOptions())
+        throws -> HandLandmarkerResult {
         try requireRunningMode(.image, actual: runningMode, method: "detect(cgImage:)")
+        try imageProcessingOptions.validated()
         let image = try MPCImage(cgImage: cgImage)
-        return HandLandmarkerResult(try impl.detect(image))
+        return HandLandmarkerResult(try impl.detect(
+            image,
+            rotationDegrees: Int32(imageProcessingOptions.rotationDegrees)))
     }
 
     /// Runs hand landmark detection on a video frame. Requires `.video` mode.
     /// Timestamps must be monotonically increasing.
     public func detectForVideo(cgImage: CGImage,
-                               timestampInMilliseconds: Int) throws -> HandLandmarkerResult {
+                               timestampInMilliseconds: Int,
+                               imageProcessingOptions: ImageProcessingOptions = ImageProcessingOptions())
+        throws -> HandLandmarkerResult {
         try requireRunningMode(.video, actual: runningMode, method: "detectForVideo(cgImage:timestampInMilliseconds:)")
+        try imageProcessingOptions.validated()
         let image = try MPCImage(cgImage: cgImage)
-        return HandLandmarkerResult(
-            try impl.detect(forVideoImage: image, timestampMs: Int64(timestampInMilliseconds)))
+        return HandLandmarkerResult(try impl.detect(
+            forVideoImage: image,
+            rotationDegrees: Int32(imageProcessingOptions.rotationDegrees),
+            timestampMs: Int64(timestampInMilliseconds)))
     }
 
     /// Runs hand landmark detection on a `CVPixelBuffer` (`kCVPixelFormatType_32BGRA`).
     /// Requires `.image` mode.
-    public func detect(pixelBuffer: CVPixelBuffer) throws -> HandLandmarkerResult {
+    public func detect(pixelBuffer: CVPixelBuffer,
+                       imageProcessingOptions: ImageProcessingOptions = ImageProcessingOptions())
+        throws -> HandLandmarkerResult {
         try requireRunningMode(.image, actual: runningMode, method: "detect(pixelBuffer:)")
-        return HandLandmarkerResult(try impl.detect(try MPCImage(pixelBuffer: pixelBuffer)))
+        try imageProcessingOptions.validated()
+        let image = try MPCImage(pixelBuffer: pixelBuffer)
+        return HandLandmarkerResult(try impl.detect(
+            image,
+            rotationDegrees: Int32(imageProcessingOptions.rotationDegrees)))
     }
 
     /// Runs hand landmark detection on a `CVPixelBuffer` video frame
     /// (`kCVPixelFormatType_32BGRA`). Requires `.video` mode.
     public func detectForVideo(pixelBuffer: CVPixelBuffer,
-                               timestampInMilliseconds: Int) throws -> HandLandmarkerResult {
+                               timestampInMilliseconds: Int,
+                               imageProcessingOptions: ImageProcessingOptions = ImageProcessingOptions())
+        throws -> HandLandmarkerResult {
         try requireRunningMode(.video, actual: runningMode, method: "detectForVideo(pixelBuffer:timestampInMilliseconds:)")
+        try imageProcessingOptions.validated()
         let image = try MPCImage(pixelBuffer: pixelBuffer)
-        return HandLandmarkerResult(
-            try impl.detect(forVideoImage: image, timestampMs: Int64(timestampInMilliseconds)))
+        return HandLandmarkerResult(try impl.detect(
+            forVideoImage: image,
+            rotationDegrees: Int32(imageProcessingOptions.rotationDegrees),
+            timestampMs: Int64(timestampInMilliseconds)))
     }
 }

@@ -105,36 +105,57 @@ public final class FaceLandmarker {
     }
 
     /// Runs face landmark detection on a still `CGImage`. Requires `.image` mode.
-    public func detect(cgImage: CGImage) throws -> FaceLandmarkerResult {
+    public func detect(cgImage: CGImage,
+                       imageProcessingOptions: ImageProcessingOptions = ImageProcessingOptions())
+        throws -> FaceLandmarkerResult {
         try requireRunningMode(.image, actual: runningMode, method: "detect(cgImage:)")
+        try imageProcessingOptions.validated()
         let image = try MPCImage(cgImage: cgImage)
-        return FaceLandmarkerResult(try impl.detect(image))
+        return FaceLandmarkerResult(try impl.detect(
+            image,
+            rotationDegrees: Int32(imageProcessingOptions.rotationDegrees)))
     }
 
     /// Runs face landmark detection on a video frame. Requires `.video` mode.
     /// Timestamps must be monotonically increasing.
     public func detectForVideo(cgImage: CGImage,
-                               timestampInMilliseconds: Int) throws -> FaceLandmarkerResult {
+                               timestampInMilliseconds: Int,
+                               imageProcessingOptions: ImageProcessingOptions = ImageProcessingOptions())
+        throws -> FaceLandmarkerResult {
         try requireRunningMode(.video, actual: runningMode, method: "detectForVideo(cgImage:timestampInMilliseconds:)")
+        try imageProcessingOptions.validated()
         let image = try MPCImage(cgImage: cgImage)
-        return FaceLandmarkerResult(
-            try impl.detect(forVideoImage: image, timestampMs: Int64(timestampInMilliseconds)))
+        return FaceLandmarkerResult(try impl.detect(
+            forVideoImage: image,
+            rotationDegrees: Int32(imageProcessingOptions.rotationDegrees),
+            timestampMs: Int64(timestampInMilliseconds)))
     }
 
     /// Runs face landmark detection on a `CVPixelBuffer` (`kCVPixelFormatType_32BGRA`).
     /// Requires `.image` mode.
-    public func detect(pixelBuffer: CVPixelBuffer) throws -> FaceLandmarkerResult {
+    public func detect(pixelBuffer: CVPixelBuffer,
+                       imageProcessingOptions: ImageProcessingOptions = ImageProcessingOptions())
+        throws -> FaceLandmarkerResult {
         try requireRunningMode(.image, actual: runningMode, method: "detect(pixelBuffer:)")
-        return FaceLandmarkerResult(try impl.detect(try MPCImage(pixelBuffer: pixelBuffer)))
+        try imageProcessingOptions.validated()
+        let image = try MPCImage(pixelBuffer: pixelBuffer)
+        return FaceLandmarkerResult(try impl.detect(
+            image,
+            rotationDegrees: Int32(imageProcessingOptions.rotationDegrees)))
     }
 
     /// Runs face landmark detection on a `CVPixelBuffer` video frame
     /// (`kCVPixelFormatType_32BGRA`). Requires `.video` mode.
     public func detectForVideo(pixelBuffer: CVPixelBuffer,
-                               timestampInMilliseconds: Int) throws -> FaceLandmarkerResult {
+                               timestampInMilliseconds: Int,
+                               imageProcessingOptions: ImageProcessingOptions = ImageProcessingOptions())
+        throws -> FaceLandmarkerResult {
         try requireRunningMode(.video, actual: runningMode, method: "detectForVideo(pixelBuffer:timestampInMilliseconds:)")
+        try imageProcessingOptions.validated()
         let image = try MPCImage(pixelBuffer: pixelBuffer)
-        return FaceLandmarkerResult(
-            try impl.detect(forVideoImage: image, timestampMs: Int64(timestampInMilliseconds)))
+        return FaceLandmarkerResult(try impl.detect(
+            forVideoImage: image,
+            rotationDegrees: Int32(imageProcessingOptions.rotationDegrees),
+            timestampMs: Int64(timestampInMilliseconds)))
     }
 }

@@ -36,10 +36,13 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (instancetype)init NS_UNAVAILABLE;
 
+// `rotationDegrees` is a clockwise multiple of 90 applied before inference.
 - (nullable MPCPoseLandmarkerResult *)detectImage:(MPCImage *)image
+                                  rotationDegrees:(int)rotationDegrees
                                             error:(NSError **)error;
 
 - (nullable MPCPoseLandmarkerResult *)detectForVideoImage:(MPCImage *)image
+                                          rotationDegrees:(int)rotationDegrees
                                               timestampMs:(int64_t)timestampMs
                                                     error:(NSError **)error;
 

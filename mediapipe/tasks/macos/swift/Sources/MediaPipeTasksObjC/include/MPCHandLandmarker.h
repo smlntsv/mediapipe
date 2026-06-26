@@ -38,12 +38,15 @@ NS_ASSUME_NONNULL_BEGIN
 - (instancetype)init NS_UNAVAILABLE;
 
 // Runs hand landmark detection on `image` (IMAGE running mode). Returns a
-// fully-copied result, or nil with `error` set on failure.
+// fully-copied result, or nil with `error` set on failure. `rotationDegrees` is
+// a clockwise multiple of 90 applied before inference.
 - (nullable MPCHandLandmarkerResult *)detectImage:(MPCImage *)image
+                                  rotationDegrees:(int)rotationDegrees
                                             error:(NSError **)error;
 
 // Runs hand landmark detection on a video frame (VIDEO running mode).
 - (nullable MPCHandLandmarkerResult *)detectForVideoImage:(MPCImage *)image
+                                          rotationDegrees:(int)rotationDegrees
                                               timestampMs:(int64_t)timestampMs
                                                     error:(NSError **)error;
 

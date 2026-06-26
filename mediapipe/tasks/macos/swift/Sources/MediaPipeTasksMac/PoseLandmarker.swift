@@ -86,36 +86,57 @@ public final class PoseLandmarker {
     }
 
     /// Runs pose landmark detection on a still `CGImage`. Requires `.image` mode.
-    public func detect(cgImage: CGImage) throws -> PoseLandmarkerResult {
+    public func detect(cgImage: CGImage,
+                       imageProcessingOptions: ImageProcessingOptions = ImageProcessingOptions())
+        throws -> PoseLandmarkerResult {
         try requireRunningMode(.image, actual: runningMode, method: "detect(cgImage:)")
+        try imageProcessingOptions.validated()
         let image = try MPCImage(cgImage: cgImage)
-        return PoseLandmarkerResult(try impl.detect(image))
+        return PoseLandmarkerResult(try impl.detect(
+            image,
+            rotationDegrees: Int32(imageProcessingOptions.rotationDegrees)))
     }
 
     /// Runs pose landmark detection on a video frame. Requires `.video` mode.
     /// Timestamps must be monotonically increasing.
     public func detectForVideo(cgImage: CGImage,
-                               timestampInMilliseconds: Int) throws -> PoseLandmarkerResult {
+                               timestampInMilliseconds: Int,
+                               imageProcessingOptions: ImageProcessingOptions = ImageProcessingOptions())
+        throws -> PoseLandmarkerResult {
         try requireRunningMode(.video, actual: runningMode, method: "detectForVideo(cgImage:timestampInMilliseconds:)")
+        try imageProcessingOptions.validated()
         let image = try MPCImage(cgImage: cgImage)
-        return PoseLandmarkerResult(
-            try impl.detect(forVideoImage: image, timestampMs: Int64(timestampInMilliseconds)))
+        return PoseLandmarkerResult(try impl.detect(
+            forVideoImage: image,
+            rotationDegrees: Int32(imageProcessingOptions.rotationDegrees),
+            timestampMs: Int64(timestampInMilliseconds)))
     }
 
     /// Runs pose landmark detection on a `CVPixelBuffer` (`kCVPixelFormatType_32BGRA`).
     /// Requires `.image` mode.
-    public func detect(pixelBuffer: CVPixelBuffer) throws -> PoseLandmarkerResult {
+    public func detect(pixelBuffer: CVPixelBuffer,
+                       imageProcessingOptions: ImageProcessingOptions = ImageProcessingOptions())
+        throws -> PoseLandmarkerResult {
         try requireRunningMode(.image, actual: runningMode, method: "detect(pixelBuffer:)")
-        return PoseLandmarkerResult(try impl.detect(try MPCImage(pixelBuffer: pixelBuffer)))
+        try imageProcessingOptions.validated()
+        let image = try MPCImage(pixelBuffer: pixelBuffer)
+        return PoseLandmarkerResult(try impl.detect(
+            image,
+            rotationDegrees: Int32(imageProcessingOptions.rotationDegrees)))
     }
 
     /// Runs pose landmark detection on a `CVPixelBuffer` video frame
     /// (`kCVPixelFormatType_32BGRA`). Requires `.video` mode.
     public func detectForVideo(pixelBuffer: CVPixelBuffer,
-                               timestampInMilliseconds: Int) throws -> PoseLandmarkerResult {
+                               timestampInMilliseconds: Int,
+                               imageProcessingOptions: ImageProcessingOptions = ImageProcessingOptions())
+        throws -> PoseLandmarkerResult {
         try requireRunningMode(.video, actual: runningMode, method: "detectForVideo(pixelBuffer:timestampInMilliseconds:)")
+        try imageProcessingOptions.validated()
         let image = try MPCImage(pixelBuffer: pixelBuffer)
-        return PoseLandmarkerResult(
-            try impl.detect(forVideoImage: image, timestampMs: Int64(timestampInMilliseconds)))
+        return PoseLandmarkerResult(try impl.detect(
+            forVideoImage: image,
+            rotationDegrees: Int32(imageProcessingOptions.rotationDegrees),
+            timestampMs: Int64(timestampInMilliseconds)))
     }
 }

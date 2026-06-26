@@ -18,9 +18,20 @@
 #import "MPCImageInternal.h"
 #import "MPCMarshal.h"
 
+#include "mediapipe/tasks/c/vision/core/image_processing_options.h"
 #include "mediapipe/tasks/c/vision/pose_landmarker/pose_landmarker.h"
 
 namespace {
+
+// Builds the native image-processing options. Only rotation is exposed; the
+// landmarker tasks reject a region of interest. The returned struct is
+// value-typed; pass its address to the detect call.
+MpImageProcessingOptions MakeImageProcessingOptions(int rotationDegrees) {
+  MpImageProcessingOptions options{};
+  options.rotation_degrees = rotationDegrees;
+  options.has_region_of_interest = 0;
+  return options;
+}
 
 MPCPoseLandmarkerResult *BuildResult(const MpPoseLandmarkerResult &result) {
   NSMutableArray<NSArray<MPCLandmark *> *> *landmarks =
@@ -85,11 +96,13 @@ MPCPoseLandmarkerResult *BuildResult(const MpPoseLandmarkerResult &result) {
 }
 
 - (MPCPoseLandmarkerResult *)detectImage:(MPCImage *)image
+                         rotationDegrees:(int)rotationDegrees
                                    error:(NSError **)error {
   char *errorMsg = NULL;
   MpPoseLandmarkerResult result{};
+  MpImageProcessingOptions options = MakeImageProcessingOptions(rotationDegrees);
   MpStatus status = MpPoseLandmarkerDetectImage(
-      _landmarker, image.imagePtr, /*options=*/nullptr, &result, &errorMsg);
+      _landmarker, image.imagePtr, &options, &result, &errorMsg);
   if (status != kMpOk) {
     if (error) {
       *error = MPCMakeError(status, errorMsg);
@@ -105,12 +118,14 @@ MPCPoseLandmarkerResult *BuildResult(const MpPoseLandmarkerResult &result) {
 }
 
 - (MPCPoseLandmarkerResult *)detectForVideoImage:(MPCImage *)image
+                                 rotationDegrees:(int)rotationDegrees
                                      timestampMs:(int64_t)timestampMs
                                            error:(NSError **)error {
   char *errorMsg = NULL;
   MpPoseLandmarkerResult result{};
+  MpImageProcessingOptions options = MakeImageProcessingOptions(rotationDegrees);
   MpStatus status = MpPoseLandmarkerDetectForVideo(
-      _landmarker, image.imagePtr, /*options=*/nullptr, timestampMs, &result,
+      _landmarker, image.imagePtr, &options, timestampMs, &result,
       &errorMsg);
   if (status != kMpOk) {
     if (error) {
