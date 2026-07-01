@@ -8,8 +8,23 @@
 // otherwise SwiftPM will fail to resolve the `CMediaPipeTasksC` binary target.
 // See mediapipe/tasks/macos/README.md.
 import PackageDescription
+import Foundation
 
 let swiftRoot = "mediapipe/tasks/macos/swift"
+
+// Set MP_LOCAL_XCFRAMEWORK=1 to link the locally-built artifact under
+// Artifacts/ (produced by build_macos_xcframework.sh) instead of the released
+// binary. Used to test changes baked into the compiled MediaPipe graph.
+let useLocalXCFramework = ProcessInfo.processInfo.environment["MP_LOCAL_XCFRAMEWORK"] != nil
+
+let cMediaPipeTasksC: Target = useLocalXCFramework
+    ? .binaryTarget(
+        name: "CMediaPipeTasksC",
+        path: "\(swiftRoot)/Artifacts/MediaPipeTasksC.xcframework")
+    : .binaryTarget(
+        name: "CMediaPipeTasksC",
+        url: "https://github.com/smlntsv/mediapipe/releases/download/v0.10.35-macos.1/MediaPipeTasksC.xcframework.zip",
+        checksum: "37038256ecb537c2c2a2c08a2c52a885aae4b4879521904debe8751f046e9587")
 
 let package = Package(
     name: "MediaPipeTasksMac",
@@ -23,11 +38,8 @@ let package = Package(
     targets: [
         // Binary runtime only: the compiled macOS MediaPipe C symbols
         // (MpHandLandmarker*, MpImage*, ...). Not imported by Swift directly.
-        .binaryTarget(
-            name: "CMediaPipeTasksC",
-            url: "https://github.com/smlntsv/mediapipe/releases/download/v0.10.35-macos.1/MediaPipeTasksC.xcframework.zip",
-            checksum: "37038256ecb537c2c2a2c08a2c52a885aae4b4879521904debe8751f046e9587"
-        ),
+        // Remote release by default; local build when MP_LOCAL_XCFRAMEWORK=1.
+        cMediaPipeTasksC,
 
         // Objective-C++ bridge. Includes the MediaPipe C headers straight from the
         // repo source tree and links the binary above. Swift only ever sees the

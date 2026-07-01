@@ -81,6 +81,8 @@ void CppConvertToHandLandmarkerOptions(
   out->min_hand_detection_confidence = in.min_hand_detection_confidence;
   out->min_hand_presence_confidence = in.min_hand_presence_confidence;
   out->min_tracking_confidence = in.min_tracking_confidence;
+  out->roi_scale = in.roi_scale;
+  out->tracking_grace_frames = in.tracking_grace_frames;
 }
 
 absl::Status CppHandLandmarkerCreate(const MpHandLandmarkerOptions& options,

@@ -42,6 +42,21 @@ public final class HandLandmarkerOptions {
     public var minHandDetectionConfidence: Float
     public var minHandPresenceConfidence: Float
     public var minTrackingConfidence: Float
+    /// Scale factor for the frame-to-frame region of interest derived from the
+    /// previous frame's hand landmarks. Larger values (e.g. 2.5–3.0) expand the
+    /// tracking crop so a fast-moving hand stays inside it between frames, at the
+    /// cost of a looser crop. Default 2.0 (MediaPipe's historical value).
+    public var roiScale: Float
+    /// VIDEO mode only ("frames without a hand" grace): number of consecutive
+    /// frames a vanished hand's region of interest is kept in the tracking loop
+    /// before its track is dropped. While held, the palm detector stays skipped
+    /// and the landmark model keeps retrying the last-known region, so a hand
+    /// lost to momentary motion blur is re-acquired quickly and cheaply —
+    /// without lowering `minHandPresenceConfidence`. Keep small (2–3 frames,
+    /// ~70–100 ms at 30 fps): a truly departed hand occupies a tracking slot
+    /// for this many frames before the detector resumes looking for new hands.
+    /// Default 0 (drop immediately, MediaPipe's original behavior).
+    public var trackingGraceFrames: Int
     /// Accelerator to run on. Default `.cpu`.
     public var delegate: MediaPipeDelegate
     /// Running mode. Default `.image`.
@@ -52,6 +67,8 @@ public final class HandLandmarkerOptions {
                 minHandDetectionConfidence: Float = 0.5,
                 minHandPresenceConfidence: Float = 0.5,
                 minTrackingConfidence: Float = 0.5,
+                roiScale: Float = 2.0,
+                trackingGraceFrames: Int = 0,
                 delegate: MediaPipeDelegate = .cpu,
                 runningMode: RunningMode = .image) {
         self.modelPath = modelPath
@@ -59,6 +76,8 @@ public final class HandLandmarkerOptions {
         self.minHandDetectionConfidence = minHandDetectionConfidence
         self.minHandPresenceConfidence = minHandPresenceConfidence
         self.minTrackingConfidence = minTrackingConfidence
+        self.roiScale = roiScale
+        self.trackingGraceFrames = trackingGraceFrames
         self.delegate = delegate
         self.runningMode = runningMode
     }
@@ -100,6 +119,8 @@ public final class HandLandmarker {
             minHandDetectionConfidence: options.minHandDetectionConfidence,
             minHandPresenceConfidence: options.minHandPresenceConfidence,
             minTrackingConfidence: options.minTrackingConfidence,
+            roiScale: options.roiScale,
+            trackingGraceFrames: options.trackingGraceFrames,
             delegate: options.delegate.cValue,
             runningMode: options.runningMode.cValue)
     }

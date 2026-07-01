@@ -45,4 +45,12 @@ message HandLandmarkerGraphOptions {
   // Minimum confidence for hand landmarks tracking to be considered
   // successfully.
   optional float min_tracking_confidence = 4 [default = 0.5];
+
+  // In stream (VIDEO/LIVE_STREAM) mode: number of consecutive frames a
+  // vanished hand's ROI is kept in the tracking loop before its track is
+  // dropped. While held, the palm detector stays skipped and the landmark
+  // model keeps retrying the last-known region, so a hand lost to momentary
+  // motion blur is re-acquired quickly and cheaply. 0 (default) preserves the
+  // original drop-immediately behavior.
+  optional int32 tracking_grace_frames = 5 [default = 0];
 }

@@ -140,6 +140,8 @@ cc_library(
         "//mediapipe/tasks/cc/vision/hand_detector/proto:hand_detector_graph_options_cc_proto",
         "//mediapipe/tasks/cc/vision/hand_landmarker/calculators:hand_association_calculator",
         "//mediapipe/tasks/cc/vision/hand_landmarker/calculators:hand_association_calculator_cc_proto",
+        "//mediapipe/tasks/cc/vision/hand_landmarker/calculators:hand_rects_keep_alive_calculator",
+        "//mediapipe/tasks/cc/vision/hand_landmarker/calculators:hand_rects_keep_alive_calculator_cc_proto",
         "//mediapipe/tasks/cc/vision/hand_landmarker/calculators:hand_landmarks_deduplication_calculator",
         "//mediapipe/tasks/cc/vision/hand_landmarker/proto:hand_landmarker_graph_options_cc_proto",
         "//mediapipe/tasks/cc/vision/hand_landmarker/proto:hand_landmarks_detector_graph_options_cc_proto",

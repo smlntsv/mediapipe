@@ -40,6 +40,7 @@ limitations under the License.
 #include "mediapipe/tasks/cc/metadata/utils/zip_utils.h"
 #include "mediapipe/tasks/cc/vision/hand_detector/proto/hand_detector_graph_options.pb.h"
 #include "mediapipe/tasks/cc/vision/hand_landmarker/calculators/hand_association_calculator.pb.h"
+#include "mediapipe/tasks/cc/vision/hand_landmarker/calculators/hand_rects_keep_alive_calculator.pb.h"
 #include "mediapipe/tasks/cc/vision/hand_landmarker/proto/hand_landmarker_graph_options.pb.h"
 #include "mediapipe/tasks/cc/vision/hand_landmarker/proto/hand_landmarks_detector_graph_options.pb.h"
 #include "mediapipe/util/graph_builder_utils.h"
@@ -369,8 +370,26 @@ class HandLandmarkerGraph : public core::ModelTaskGraph {
         deduplicate[Output<std::vector<ClassificationList>>(
             "MULTI_CLASSIFICATIONS")];
 
-    // Back edge.
-    filtered_hand_rects_for_next_frame >> previous_loopback.In("LOOP");
+    // Back edge. With a positive tracking grace, a keep-alive calculator
+    // re-injects the ROI of a momentarily-vanished hand for up to
+    // tracking_grace_frames frames, so the palm detector stays skipped and the
+    // landmark model retries the last-known region instead of waiting for a
+    // full re-detection.
+    if (tasks_options.base_options().use_stream_mode() &&
+        tasks_options.tracking_grace_frames() > 0) {
+      auto& keep_alive = graph.AddNode("HandRectsKeepAliveCalculator");
+      auto& keep_alive_options =
+          keep_alive.GetOptions<HandRectsKeepAliveCalculatorOptions>();
+      keep_alive_options.set_max_miss_frames(
+          tasks_options.tracking_grace_frames());
+      keep_alive_options.set_min_similarity_threshold(
+          tasks_options.min_tracking_confidence());
+      filtered_hand_rects_for_next_frame >> keep_alive.In("");
+      keep_alive.Out("").Cast<std::vector<NormalizedRect>>() >>
+          previous_loopback.In("LOOP");
+    } else {
+      filtered_hand_rects_for_next_frame >> previous_loopback.In("LOOP");
+    }
 
     // TODO: Replace PassThroughCalculator with a calculator that
     // converts the pixel data to be stored on the target storage (CPU vs GPU).

@@ -31,6 +31,8 @@ NS_ASSUME_NONNULL_BEGIN
                minHandDetectionConfidence:(float)minHandDetectionConfidence
                 minHandPresenceConfidence:(float)minHandPresenceConfidence
                     minTrackingConfidence:(float)minTrackingConfidence
+                                  roiScale:(float)roiScale
+                      trackingGraceFrames:(NSInteger)trackingGraceFrames
                                   delegate:(int)delegate
                                runningMode:(int)runningMode
                                      error:(NSError **)error NS_DESIGNATED_INITIALIZER;

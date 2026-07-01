@@ -116,10 +116,12 @@ ConvertHandLandmarkerGraphOptionsProto(HandLandmarkerOptions* options) {
 
   // Configure hand landmark detector options.
   options_proto->set_min_tracking_confidence(options->min_tracking_confidence);
+  options_proto->set_tracking_grace_frames(options->tracking_grace_frames);
   auto* hand_landmarks_detector_graph_options =
       options_proto->mutable_hand_landmarks_detector_graph_options();
   hand_landmarks_detector_graph_options->set_min_detection_confidence(
       options->min_hand_presence_confidence);
+  hand_landmarks_detector_graph_options->set_roi_scale(options->roi_scale);
 
   return options_proto;
 }

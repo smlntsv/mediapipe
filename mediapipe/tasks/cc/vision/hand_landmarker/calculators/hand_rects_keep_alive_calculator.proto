@@ -1,0 +1,35 @@
+/* Copyright 2025 The MediaPipe Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto2";
+
+package mediapipe;
+
+import "mediapipe/framework/calculator.proto";
+
+message HandRectsKeepAliveCalculatorOptions {
+  extend mediapipe.CalculatorOptions {
+    optional HandRectsKeepAliveCalculatorOptions ext = 462713203;
+  }
+
+  // Maximum number of consecutive frames a vanished hand's rect is re-injected
+  // into the tracking loop before the track is dropped. 0 disables holding
+  // (pass-through).
+  optional int32 max_miss_frames = 1 [default = 0];
+
+  // Minimum IoU between a held rect and an incoming rect for the held hand to
+  // be considered recovered (or already covered) by that incoming rect.
+  optional float min_similarity_threshold = 2 [default = 0.5];
+}

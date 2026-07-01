@@ -68,6 +68,8 @@ MPCHandLandmarkerResult *BuildResult(const MpHandLandmarkerResult &result) {
       minHandDetectionConfidence:(float)minHandDetectionConfidence
        minHandPresenceConfidence:(float)minHandPresenceConfidence
            minTrackingConfidence:(float)minTrackingConfidence
+                         roiScale:(float)roiScale
+             trackingGraceFrames:(NSInteger)trackingGraceFrames
                          delegate:(int)delegate
                       runningMode:(int)runningMode
                             error:(NSError **)error {
@@ -84,6 +86,8 @@ MPCHandLandmarkerResult *BuildResult(const MpHandLandmarkerResult &result) {
   options.min_hand_detection_confidence = minHandDetectionConfidence;
   options.min_hand_presence_confidence = minHandPresenceConfidence;
   options.min_tracking_confidence = minTrackingConfidence;
+  options.roi_scale = roiScale;
+  options.tracking_grace_frames = (int)trackingGraceFrames;
   options.result_callback = nullptr;
 
   char *errorMsg = NULL;

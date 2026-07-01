@@ -35,4 +35,11 @@ message HandLandmarksDetectorGraphOptions {
   // Minimum confidence value ([0.0, 1.0]) for hand presence score to be
   // considered successfully detecting a hand in the image.
   optional float min_detection_confidence = 2 [default = 0.5];
+
+  // Scale factor applied to the hand bounding box (derived from the previous
+  // frame's landmarks) to produce the region of interest cropped for the next
+  // frame. Larger values expand the crop so a fast-moving hand is more likely
+  // to stay inside it; smaller values tighten it. Default 2.0 matches the
+  // historical hardcoded value.
+  optional float roi_scale = 3 [default = 2.0];
 }

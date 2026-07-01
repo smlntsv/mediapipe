@@ -142,11 +142,9 @@ void ConfigureTensorsToHandednessCalculator(
 }
 
 void ConfigureHandRectTransformationCalculator(
-    mediapipe::RectTransformationCalculatorOptions* options) {
-  // TODO: make rect transformation configurable, e.g. from
-  // Metadata or configuration options.
-  options->set_scale_x(2.0f);
-  options->set_scale_y(2.0f);
+    float roi_scale, mediapipe::RectTransformationCalculatorOptions* options) {
+  options->set_scale_x(roi_scale);
+  options->set_scale_y(roi_scale);
   options->set_shift_y(-0.1f);
   options->set_square_long(true);
 }
@@ -373,6 +371,7 @@ class SingleHandLandmarksDetectorGraph : public core::ModelTaskGraph {
     auto& hand_rect_transformation =
         graph.AddNode("RectTransformationCalculator");
     ConfigureHandRectTransformationCalculator(
+        subgraph_options.roi_scale(),
         &hand_rect_transformation
              .GetOptions<mediapipe::RectTransformationCalculatorOptions>());
     image_size >> hand_rect_transformation.In("IMAGE_SIZE");

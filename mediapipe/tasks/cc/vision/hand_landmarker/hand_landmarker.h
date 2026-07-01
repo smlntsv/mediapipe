@@ -67,6 +67,18 @@ struct HandLandmarkerOptions {
   // successful.
   float min_tracking_confidence = 0.5;
 
+  // Scale factor for the frame-to-frame region of interest derived from the
+  // previous frame's hand landmarks. Larger values expand the tracking crop so
+  // a fast-moving hand stays inside it between frames. Default 2.0.
+  float roi_scale = 2.0;
+
+  // In VIDEO/LIVE_STREAM mode: number of consecutive frames a vanished hand's
+  // ROI is kept in the tracking loop before its track is dropped. While held,
+  // the palm detector stays skipped and the landmark model keeps retrying the
+  // last-known region, so a momentarily-blurred hand is re-acquired quickly.
+  // 0 (default) drops a hand immediately (original behavior).
+  int tracking_grace_frames = 0;
+
   // The user-defined result callback for processing live stream data.
   // The result callback should only be specified when the running mode is set
   // to RunningMode::LIVE_STREAM.

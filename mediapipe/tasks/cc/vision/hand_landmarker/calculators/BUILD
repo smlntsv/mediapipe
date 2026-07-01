@@ -50,6 +50,49 @@ cc_library(
     alwayslink = 1,
 )
 
+mediapipe_proto_library(
+    name = "hand_rects_keep_alive_calculator_proto",
+    srcs = ["hand_rects_keep_alive_calculator.proto"],
+    deps = [
+        "//mediapipe/framework:calculator_options_proto",
+        "//mediapipe/framework:calculator_proto",
+    ],
+)
+
+cc_library(
+    name = "hand_rects_keep_alive_calculator",
+    srcs = ["hand_rects_keep_alive_calculator.cc"],
+    hdrs = ["hand_rects_keep_alive_calculator.h"],
+    deps = [
+        ":hand_rects_keep_alive_calculator_cc_proto",
+        "//mediapipe/framework/api3:calculator",
+        "//mediapipe/framework/api3:calculator_context",
+        "//mediapipe/framework/api3:contract",
+        "//mediapipe/framework/api3:node",
+        "//mediapipe/framework/formats:rect_cc_proto",
+        "//mediapipe/framework/port:status",
+        "//mediapipe/util:rectangle_util",
+        "@com_google_absl//absl/status",
+    ],
+    alwayslink = 1,
+)
+
+cc_test(
+    name = "hand_rects_keep_alive_calculator_test",
+    srcs = ["hand_rects_keep_alive_calculator_test.cc"],
+    deps = [
+        ":hand_rects_keep_alive_calculator",
+        ":hand_rects_keep_alive_calculator_cc_proto",
+        "//mediapipe/framework/api3:function_runner",
+        "//mediapipe/framework/api3:graph",
+        "//mediapipe/framework/api3:packet",
+        "//mediapipe/framework/api3:stream",
+        "//mediapipe/framework/formats:rect_cc_proto",
+        "//mediapipe/framework/port:gtest_main",
+        "//mediapipe/framework/port:status_matchers",
+    ],
+)
+
 cc_library(
     name = "hand_landmarks_deduplication_calculator",
     srcs = ["hand_landmarks_deduplication_calculator.cc"],
