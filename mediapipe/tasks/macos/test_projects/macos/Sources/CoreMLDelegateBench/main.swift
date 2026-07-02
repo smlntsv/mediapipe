@@ -37,6 +37,12 @@ let sharedDir = CommandLine.arguments.count > 1
     : FileManager.default.currentDirectoryPath + "/../shared"
 let modelsDir = sharedDir + "/models"
 
+// Sparse-invocation mode: MP_SPARSE_MS=600 admits one frame per 600 ms (both
+// in video time and in wall-clock time), mimicking an app that throttles
+// inference with a detection interval. This is the regime where accelerators
+// power-gate between runs, so every invocation is a cold start.
+let sparseMs = Int(ProcessInfo.processInfo.environment["MP_SPARSE_MS"] ?? "") ?? 0
+
 // MARK: - Helpers
 
 func stats(_ values: [Double]) -> String {
@@ -122,7 +128,13 @@ func runHand(delegate: MediaPipeDelegate) throws -> PassResult {
         runningMode: .video)
     let landmarker = try HandLandmarker(options: options)
     var result = PassResult()
+    var lastProcessedTs = Int.min
     try forEachFrame(sharedDir + "/two-hands-only.mov") { pb, ts in
+        if sparseMs > 0 {
+            if lastProcessedTs != Int.min, ts - lastProcessedTs < sparseMs { return }
+            lastProcessedTs = ts
+            Thread.sleep(forTimeInterval: Double(sparseMs) / 1000)
+        }
         let t0 = CFAbsoluteTimeGetCurrent()
         let res = try landmarker.detectForVideo(pixelBuffer: pb, timestampInMilliseconds: ts)
         result.ms.append((CFAbsoluteTimeGetCurrent() - t0) * 1000)
@@ -156,8 +168,9 @@ func runStill(_ makeDetect: () throws -> (CVPixelBuffer, Int) throws -> [[SIMD2<
     let detect = try makeDetect()
     var result = PassResult()
     for i in 0..<frames {
+        if sparseMs > 0 { Thread.sleep(forTimeInterval: Double(sparseMs) / 1000) }
         let t0 = CFAbsoluteTimeGetCurrent()
-        let landmarks = try detect(buffer, i * 33)
+        let landmarks = try detect(buffer, i * (sparseMs > 0 ? sparseMs : 33))
         result.ms.append((CFAbsoluteTimeGetCurrent() - t0) * 1000)
         result.frames.append(landmarks)
     }
@@ -200,7 +213,10 @@ func runFace(delegate: MediaPipeDelegate, image: CGImage, frames: Int) throws ->
 // MARK: - Main
 
 let delegates: [MediaPipeDelegate] = [.cpu, .gpu, .coreML]
-let stillFrames = 300
+let stillFrames = sparseMs > 0 ? 40 : 300
+if sparseMs > 0 {
+    print("*** SPARSE MODE: one inference per \(sparseMs) ms (cold-start regime) ***\n")
+}
 
 print("=== HAND (VIDEO, two-hands-only.mov, numHands=2) ===")
 var handResults: [MediaPipeDelegate: PassResult] = [:]
