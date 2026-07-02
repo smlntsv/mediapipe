@@ -143,6 +143,9 @@ class InferenceSubgraph : public Subgraph {
       case Acceleration::kTflite:
         *delegate.mutable_tflite() = acceleration.tflite();
         break;
+      case Acceleration::kCoreml:
+        *delegate.mutable_coreml() = acceleration.coreml();
+        break;
       case Acceleration::DELEGATE_NOT_SET:
         // Default inference calculator setting.
         break;

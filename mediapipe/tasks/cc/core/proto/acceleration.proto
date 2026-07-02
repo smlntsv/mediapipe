@@ -34,5 +34,8 @@ message Acceleration {
     mediapipe.InferenceCalculatorOptions.Delegate.Gpu gpu = 2;
     mediapipe.InferenceCalculatorOptions.Delegate.TfLite tflite = 4;
     mediapipe.InferenceCalculatorOptions.Delegate.Nnapi nnapi = 5;
+    // Apple only: Core ML inference (the only route to the Neural Engine).
+    // Requires pre-converted models; see Delegate.CoreMl.
+    mediapipe.InferenceCalculatorOptions.Delegate.CoreMl coreml = 6;
   }
 }

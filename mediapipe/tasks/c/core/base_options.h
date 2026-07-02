@@ -25,6 +25,11 @@ enum MpDelegate {
   MP_DELEGATE_CPU = 0,
   MP_DELEGATE_GPU = 1,
   MP_DELEGATE_EDGETPU_NNAPI = 2,
+  // Apple only: Core ML inference (the only route to the Apple Neural
+  // Engine). Requires pre-converted "<sha256>.mlmodelc" models in
+  // `coreml_model_cache_dir`; models without a converted counterpart fall
+  // back to TFLite CPU/XNNPACK.
+  MP_DELEGATE_COREML = 3,
 };
 
 // The environment that MediaPipe runs in.
@@ -59,6 +64,15 @@ struct MpBaseOptions {
 
   // The delegate to use for the MediaPipe graph.
   enum MpDelegate delegate;
+
+  // MP_DELEGATE_COREML only: directory containing "<sha256-of-tflite>.mlmodelc"
+  // compiled Core ML models. May be NULL, in which case every model falls back
+  // to TFLite CPU/XNNPACK (with a logged warning).
+  const char* coreml_model_cache_dir;
+
+  // MP_DELEGATE_COREML only, mirrors MLComputeUnits: 0 = all (default,
+  // enables the Neural Engine), 1 = CPU+ANE, 2 = CPU+GPU, 3 = CPU only.
+  int coreml_compute_units;
 
   // The environment on which the task is running.
   enum MpHostEnvironment host_environment;

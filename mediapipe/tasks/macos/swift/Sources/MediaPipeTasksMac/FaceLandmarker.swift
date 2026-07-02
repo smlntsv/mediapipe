@@ -32,6 +32,10 @@ public final class FaceLandmarkerOptions {
     public var outputFacialTransformationMatrixes: Bool
     /// Accelerator to run on. Default `.cpu`.
     public var delegate: MediaPipeDelegate
+    /// `.coreML` only: directory containing pre-converted
+    /// `<sha256-of-tflite>.mlmodelc` models. Defaults to the directory of
+    /// `modelPath` when nil.
+    public var coreMLModelCacheDirectory: String?
     /// Running mode. Default `.image`.
     public var runningMode: RunningMode
 
@@ -43,6 +47,7 @@ public final class FaceLandmarkerOptions {
                 outputFaceBlendshapes: Bool = false,
                 outputFacialTransformationMatrixes: Bool = false,
                 delegate: MediaPipeDelegate = .cpu,
+                coreMLModelCacheDirectory: String? = nil,
                 runningMode: RunningMode = .image) {
         self.modelPath = modelPath
         self.numFaces = numFaces
@@ -52,6 +57,7 @@ public final class FaceLandmarkerOptions {
         self.outputFaceBlendshapes = outputFaceBlendshapes
         self.outputFacialTransformationMatrixes = outputFacialTransformationMatrixes
         self.delegate = delegate
+        self.coreMLModelCacheDirectory = coreMLModelCacheDirectory
         self.runningMode = runningMode
     }
 }
@@ -101,6 +107,10 @@ public final class FaceLandmarker {
             outputFaceBlendshapes: options.outputFaceBlendshapes,
             outputFacialTransformationMatrixes: options.outputFacialTransformationMatrixes,
             delegate: options.delegate.cValue,
+            coreMLModelCacheDir: resolveCoreMLModelCacheDir(
+                delegate: options.delegate,
+                explicit: options.coreMLModelCacheDirectory,
+                modelPath: options.modelPath),
             runningMode: options.runningMode.cValue)
     }
 

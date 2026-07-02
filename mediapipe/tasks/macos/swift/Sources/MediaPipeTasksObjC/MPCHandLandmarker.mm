@@ -71,6 +71,7 @@ MPCHandLandmarkerResult *BuildResult(const MpHandLandmarkerResult &result) {
                          roiScale:(float)roiScale
              trackingGraceFrames:(NSInteger)trackingGraceFrames
                          delegate:(int)delegate
+             coreMLModelCacheDir:(nullable NSString *)coreMLModelCacheDir
                       runningMode:(int)runningMode
                             error:(NSError **)error {
   self = [super init];
@@ -81,6 +82,7 @@ MPCHandLandmarkerResult *BuildResult(const MpHandLandmarkerResult &result) {
   MpHandLandmarkerOptions options{};
   options.base_options.model_asset_path = modelPath.UTF8String;
   options.base_options.delegate = (MpDelegate)delegate;
+  options.base_options.coreml_model_cache_dir = coreMLModelCacheDir.UTF8String;
   options.running_mode = (MpRunningMode)runningMode;
   options.num_hands = (int)numHands;
   options.min_hand_detection_confidence = minHandDetectionConfidence;

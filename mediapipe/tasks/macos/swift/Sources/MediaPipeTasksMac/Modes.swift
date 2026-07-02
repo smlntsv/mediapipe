@@ -18,9 +18,22 @@ import Foundation
 public enum MediaPipeDelegate: String, Sendable, Codable {
     case cpu = "CPU"
     case gpu = "GPU"
+    /// Core ML inference — the only route to the Apple Neural Engine. Requires
+    /// pre-converted `<sha256-of-tflite>.mlmodelc` models (see
+    /// `mediapipe/tasks/macos/experiments/coreml_ane/convert_delegate.py`) in the
+    /// options' `coreMLModelCacheDirectory` (defaults to the `.task` file's
+    /// directory). Models without a converted counterpart transparently fall
+    /// back to TFLite CPU/XNNPACK with a logged warning.
+    case coreML = "COREML"
 
     /// The MediaPipe C `MpDelegate` integer value.
-    var cValue: Int32 { self == .cpu ? 0 : 1 }  // MP_DELEGATE_CPU / MP_DELEGATE_GPU
+    var cValue: Int32 {
+        switch self {
+        case .cpu: return 0     // MP_DELEGATE_CPU
+        case .gpu: return 1     // MP_DELEGATE_GPU
+        case .coreML: return 3  // MP_DELEGATE_COREML
+        }
+    }
 }
 
 /// The running mode a task is configured for.
@@ -49,6 +62,17 @@ func checkDelegate(_ delegate: MediaPipeDelegate) throws {
             + "built CPU-only (MEDIAPIPE_DISABLE_GPU=1). Use .cpu, or build and "
             + "ship a GPU-capable MediaPipeTasksC.xcframework.")
     }
+}
+
+/// Resolves the Core ML model-cache directory for a landmarker: the explicit
+/// option when set, otherwise the directory containing the `.task` model (the
+/// natural place to ship converted `<sha256>.mlmodelc` models alongside it).
+/// Returns nil unless the delegate is `.coreML`.
+func resolveCoreMLModelCacheDir(delegate: MediaPipeDelegate,
+                                explicit: String?,
+                                modelPath: String) -> String? {
+    guard delegate == .coreML else { return nil }
+    return explicit ?? (modelPath as NSString).deletingLastPathComponent
 }
 
 /// Throws `invalidRunningMode` if a detection method is called in the wrong mode.

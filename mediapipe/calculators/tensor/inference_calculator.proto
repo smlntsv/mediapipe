@@ -169,6 +169,32 @@ message InferenceCalculatorOptions {
       // "google-edgetpu". When not specified, it will be selected by NNAPI.
       optional string accelerator_name = 3;
     }
+    // Apple only. Runs inference through Core ML using a pre-converted model,
+    // enabling the Apple Neural Engine (which TFLite delegates cannot reach).
+    //
+    // The calculator looks up the converted model by content: it computes the
+    // SHA-256 of the TFLite flatbuffer it was going to run and loads
+    // "<hex-sha256>.mlmodelc" from `model_cache_dir`. Converted models must
+    // follow the I/O naming convention "input_<i>"/"output_<i>" where <i> is
+    // the TFLite model input/output index (see
+    // mediapipe/tasks/macos/experiments/coreml_ane/convert_delegate.py).
+    // If no converted model is found, inference falls back to TFLite
+    // CPU/XNNPACK so unconverted models keep working.
+    message CoreMl {
+      // Directory containing "<sha256>.mlmodelc" compiled Core ML models.
+      optional string model_cache_dir = 1;
+
+      // Mirrors MLComputeUnits. ALL lets Core ML place ops on the Neural
+      // Engine, which is the point of this delegate.
+      enum ComputeUnits {
+        ALL = 0;
+        CPU_AND_NEURAL_ENGINE = 1;
+        CPU_AND_GPU = 2;
+        CPU_ONLY = 3;
+      }
+      optional ComputeUnits compute_units = 2 [default = ALL];
+    }
+
     message Xnnpack {
       reserved 3;
       // Number of threads for XNNPACK delegate. (By default, calculator tries
@@ -196,6 +222,7 @@ message InferenceCalculatorOptions {
       Gpu gpu = 2;
       Nnapi nnapi = 3;
       Xnnpack xnnpack = 4;
+      CoreMl coreml = 5;
     }
   }
 

@@ -35,6 +35,8 @@ mediapipe::tasks::core::BaseOptions::Delegate CppConvertToDelegate(
       return mediapipe::tasks::core::BaseOptions::Delegate::GPU;
     case MP_DELEGATE_EDGETPU_NNAPI:
       return mediapipe::tasks::core::BaseOptions::Delegate::EDGETPU_NNAPI;
+    case MP_DELEGATE_COREML:
+      return mediapipe::tasks::core::BaseOptions::Delegate::COREML;
   }
 }
 
@@ -85,6 +87,14 @@ void CppConvertToBaseOptions(const MpBaseOptions& in,
   out->model_asset_path =
       in.model_asset_path ? std::string(in.model_asset_path) : "";
   out->delegate = CppConvertToDelegate(in.delegate);
+  if (in.delegate == MP_DELEGATE_COREML) {
+    mediapipe::tasks::core::BaseOptions::CoreMlOptions coreml_options;
+    if (in.coreml_model_cache_dir) {
+      coreml_options.model_cache_dir = in.coreml_model_cache_dir;
+    }
+    coreml_options.compute_units = in.coreml_compute_units;
+    out->delegate_options = coreml_options;
+  }
   out->host_environment = CppConvertToHostEnvironment(in.host_environment);
   out->host_system = CppConvertToHostSystem(in.host_system);
   out->host_version = in.host_version ? std::string(in.host_version) : "";

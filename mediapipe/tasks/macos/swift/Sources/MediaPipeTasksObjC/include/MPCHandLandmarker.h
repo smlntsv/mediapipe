@@ -34,6 +34,7 @@ NS_ASSUME_NONNULL_BEGIN
                                   roiScale:(float)roiScale
                       trackingGraceFrames:(NSInteger)trackingGraceFrames
                                   delegate:(int)delegate
+                      coreMLModelCacheDir:(nullable NSString *)coreMLModelCacheDir
                                runningMode:(int)runningMode
                                      error:(NSError **)error NS_DESIGNATED_INITIALIZER;
 

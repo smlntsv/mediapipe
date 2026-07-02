@@ -60,6 +60,7 @@ MPCPoseLandmarkerResult *BuildResult(const MpPoseLandmarkerResult &result) {
        minPosePresenceConfidence:(float)minPosePresenceConfidence
            minTrackingConfidence:(float)minTrackingConfidence
                          delegate:(int)delegate
+             coreMLModelCacheDir:(nullable NSString *)coreMLModelCacheDir
                       runningMode:(int)runningMode
                             error:(NSError **)error {
   self = [super init];
@@ -70,6 +71,7 @@ MPCPoseLandmarkerResult *BuildResult(const MpPoseLandmarkerResult &result) {
   MpPoseLandmarkerOptions options{};
   options.base_options.model_asset_path = modelPath.UTF8String;
   options.base_options.delegate = (MpDelegate)delegate;
+  options.base_options.coreml_model_cache_dir = coreMLModelCacheDir.UTF8String;
   options.running_mode = (MpRunningMode)runningMode;
   options.num_poses = (int)numPoses;
   options.min_pose_detection_confidence = minPoseDetectionConfidence;

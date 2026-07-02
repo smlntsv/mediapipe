@@ -54,6 +54,15 @@ class InferenceCalculatorSelectorImpl
             subgraph_node);
     std::vector<absl::string_view> impls;
 
+    // Core ML (Apple Neural Engine) is only ever used on explicit request;
+    // it needs pre-converted models, so it must never be a silent default.
+    // Cpu/Xnnpack are appended below as fallbacks for non-Apple builds.
+    const bool should_use_coreml =
+        options.has_delegate() && options.delegate().has_coreml();
+    if (should_use_coreml) {
+      impls.emplace_back("CoreMl");
+    }
+
 #if !MEDIAPIPE_FORCE_CPU_INFERENCE
 
     const bool should_use_gpu =

@@ -31,6 +31,7 @@ NS_ASSUME_NONNULL_BEGIN
                 minPosePresenceConfidence:(float)minPosePresenceConfidence
                     minTrackingConfidence:(float)minTrackingConfidence
                                   delegate:(int)delegate
+                      coreMLModelCacheDir:(nullable NSString *)coreMLModelCacheDir
                                runningMode:(int)runningMode
                                      error:(NSError **)error NS_DESIGNATED_INITIALIZER;
 

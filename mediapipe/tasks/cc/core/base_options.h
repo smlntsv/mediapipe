@@ -48,12 +48,30 @@ struct BaseOptions {
     GPU = 1,
     // Edge TPU acceleration using NNAPI delegate.
     EDGETPU_NNAPI = 2,
+    // Apple only: Core ML inference (the only route to the Apple Neural
+    // Engine). Requires pre-converted models; configure the lookup directory
+    // via CoreMlOptions. Models without a converted counterpart fall back to
+    // TFLite CPU/XNNPACK.
+    COREML = 3,
   };
 
   Delegate delegate = CPU;
 
   // Options for CPU.
   struct CpuOptions {};
+
+  // Options for Core ML (Apple only).
+  struct CoreMlOptions {
+    // Directory containing "<sha256-of-tflite>.mlmodelc" compiled Core ML
+    // models (see mediapipe/tasks/macos/experiments/coreml_ane/
+    // convert_delegate.py).
+    std::string model_cache_dir;
+
+    // Mirrors InferenceCalculatorOptions.Delegate.CoreMl.ComputeUnits /
+    // MLComputeUnits. 0 = ALL (default, enables the Neural Engine),
+    // 1 = CPU_AND_NEURAL_ENGINE, 2 = CPU_AND_GPU, 3 = CPU_ONLY.
+    int compute_units = 0;
+  };
 
   // Options for GPU.
   struct GpuOptions {
@@ -98,7 +116,8 @@ struct BaseOptions {
 
   // Options for the chosen delegate. If not set, the default delegate options
   // is used.
-  std::optional<std::variant<CpuOptions, GpuOptions>> delegate_options;
+  std::optional<std::variant<CpuOptions, GpuOptions, CoreMlOptions>>
+      delegate_options;
 
   // Disallows/disables default initialization of MediaPipe graph services. This
   // can be used to disable default OpenCL context creation so that the whole

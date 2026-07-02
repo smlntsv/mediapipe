@@ -82,6 +82,7 @@ MPCFaceLandmarkerResult *BuildResult(const MpFaceLandmarkerResult &result) {
              outputFaceBlendshapes:(BOOL)outputFaceBlendshapes
 outputFacialTransformationMatrixes:(BOOL)outputFacialTransformationMatrixes
                          delegate:(int)delegate
+             coreMLModelCacheDir:(nullable NSString *)coreMLModelCacheDir
                       runningMode:(int)runningMode
                             error:(NSError **)error {
   self = [super init];
@@ -92,6 +93,7 @@ outputFacialTransformationMatrixes:(BOOL)outputFacialTransformationMatrixes
   MpFaceLandmarkerOptions options{};
   options.base_options.model_asset_path = modelPath.UTF8String;
   options.base_options.delegate = (MpDelegate)delegate;
+  options.base_options.coreml_model_cache_dir = coreMLModelCacheDir.UTF8String;
   options.running_mode = (MpRunningMode)runningMode;
   options.num_faces = (int)numFaces;
   options.min_face_detection_confidence = minFaceDetectionConfidence;

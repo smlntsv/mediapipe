@@ -225,6 +225,10 @@ struct InferenceCalculatorCpu : public InferenceCalculator {
   static constexpr char kCalculatorName[] = "InferenceCalculatorCpu";
 };
 
+struct InferenceCalculatorCoreMl : public InferenceCalculator {
+  static constexpr char kCalculatorName[] = "InferenceCalculatorCoreMl";
+};
+
 struct InferenceCalculatorXnnpack : public InferenceCalculator {
   static constexpr char kCalculatorName[] = "InferenceCalculatorXnnpack";
 };

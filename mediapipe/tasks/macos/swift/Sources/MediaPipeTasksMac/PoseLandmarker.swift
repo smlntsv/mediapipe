@@ -28,6 +28,10 @@ public final class PoseLandmarkerOptions {
     public var minTrackingConfidence: Float
     /// Accelerator to run on. Default `.cpu`.
     public var delegate: MediaPipeDelegate
+    /// `.coreML` only: directory containing pre-converted
+    /// `<sha256-of-tflite>.mlmodelc` models. Defaults to the directory of
+    /// `modelPath` when nil.
+    public var coreMLModelCacheDirectory: String?
     /// Running mode. Default `.image`.
     public var runningMode: RunningMode
 
@@ -37,6 +41,7 @@ public final class PoseLandmarkerOptions {
                 minPosePresenceConfidence: Float = 0.5,
                 minTrackingConfidence: Float = 0.5,
                 delegate: MediaPipeDelegate = .cpu,
+                coreMLModelCacheDirectory: String? = nil,
                 runningMode: RunningMode = .image) {
         self.modelPath = modelPath
         self.numPoses = numPoses
@@ -44,6 +49,7 @@ public final class PoseLandmarkerOptions {
         self.minPosePresenceConfidence = minPosePresenceConfidence
         self.minTrackingConfidence = minTrackingConfidence
         self.delegate = delegate
+        self.coreMLModelCacheDirectory = coreMLModelCacheDirectory
         self.runningMode = runningMode
     }
 }
@@ -82,6 +88,10 @@ public final class PoseLandmarker {
             minPosePresenceConfidence: options.minPosePresenceConfidence,
             minTrackingConfidence: options.minTrackingConfidence,
             delegate: options.delegate.cValue,
+            coreMLModelCacheDir: resolveCoreMLModelCacheDir(
+                delegate: options.delegate,
+                explicit: options.coreMLModelCacheDirectory,
+                modelPath: options.modelPath),
             runningMode: options.runningMode.cValue)
     }
 

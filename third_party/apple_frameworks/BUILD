@@ -18,6 +18,11 @@ cc_library(
 )
 
 cc_library(
+    name = "CoreML",
+    linkopts = ["-framework CoreML"],
+)
+
+cc_library(
     name = "Accelerate",
     linkopts = ["-framework Accelerate"],
 )

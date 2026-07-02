@@ -33,6 +33,7 @@ NS_ASSUME_NONNULL_BEGIN
                       outputFaceBlendshapes:(BOOL)outputFaceBlendshapes
         outputFacialTransformationMatrixes:(BOOL)outputFacialTransformationMatrixes
                                   delegate:(int)delegate
+                      coreMLModelCacheDir:(nullable NSString *)coreMLModelCacheDir
                                runningMode:(int)runningMode
                                      error:(NSError **)error NS_DESIGNATED_INITIALIZER;
 

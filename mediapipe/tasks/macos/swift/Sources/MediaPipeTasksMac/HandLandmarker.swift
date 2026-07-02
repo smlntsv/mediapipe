@@ -59,6 +59,10 @@ public final class HandLandmarkerOptions {
     public var trackingGraceFrames: Int
     /// Accelerator to run on. Default `.cpu`.
     public var delegate: MediaPipeDelegate
+    /// `.coreML` only: directory containing pre-converted
+    /// `<sha256-of-tflite>.mlmodelc` models. Defaults to the directory of
+    /// `modelPath` when nil.
+    public var coreMLModelCacheDirectory: String?
     /// Running mode. Default `.image`.
     public var runningMode: RunningMode
 
@@ -70,6 +74,7 @@ public final class HandLandmarkerOptions {
                 roiScale: Float = 2.0,
                 trackingGraceFrames: Int = 0,
                 delegate: MediaPipeDelegate = .cpu,
+                coreMLModelCacheDirectory: String? = nil,
                 runningMode: RunningMode = .image) {
         self.modelPath = modelPath
         self.numHands = numHands
@@ -79,6 +84,7 @@ public final class HandLandmarkerOptions {
         self.roiScale = roiScale
         self.trackingGraceFrames = trackingGraceFrames
         self.delegate = delegate
+        self.coreMLModelCacheDirectory = coreMLModelCacheDirectory
         self.runningMode = runningMode
     }
 }
@@ -122,6 +128,10 @@ public final class HandLandmarker {
             roiScale: options.roiScale,
             trackingGraceFrames: options.trackingGraceFrames,
             delegate: options.delegate.cValue,
+            coreMLModelCacheDir: resolveCoreMLModelCacheDir(
+                delegate: options.delegate,
+                explicit: options.coreMLModelCacheDirectory,
+                modelPath: options.modelPath),
             runningMode: options.runningMode.cValue)
     }
 

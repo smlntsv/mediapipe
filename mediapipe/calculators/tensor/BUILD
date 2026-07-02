@@ -735,6 +735,39 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "inference_calculator_coreml",
+    srcs = ["inference_calculator_coreml.cc"],
+    copts = [
+        "-x objective-c++",
+        "-fobjc-arc",  # enable reference-counting
+    ],
+    tags = ["ios"],
+    deps = [
+        ":inference_calculator_interface",
+        ":inference_calculator_utils",
+        ":inference_interpreter_delegate_runner",
+        ":inference_io_mapper",
+        ":inference_runner",
+        ":tensor_span",
+        "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework/formats:tensor",
+        "//mediapipe/framework/port:ret_check",
+        "//mediapipe/framework/port:status",
+        "//third_party/apple_frameworks:CoreML",
+        "//third_party/apple_frameworks:Foundation",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@org_tensorflow//tensorflow/lite:framework_stable",
+        "@org_tensorflow//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "@org_tensorflow//tensorflow/lite/schema:schema_fbs",
+    ],
+    alwayslink = 1,
+)
+
 cc_library_with_tflite(
     name = "inference_runner",
     hdrs = ["inference_runner.h"],
@@ -980,6 +1013,12 @@ cc_library(
     ] + select({
         "//conditions:default": [":inference_calculator_gl_if_compute_shader_available"],
         ":platform_apple_with_gpu": [":inference_calculator_metal"],
+    }) + select({
+        # Core ML (Apple Neural Engine) inference is available on any Apple
+        # build, including CPU-only (MEDIAPIPE_DISABLE_GPU) artifacts — the
+        # ANE is not the GPU and needs no GPU service.
+        "//mediapipe:apple": [":inference_calculator_coreml"],
+        "//conditions:default": [],
     }),
     alwayslink = 1,
 )

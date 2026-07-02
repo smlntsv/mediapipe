@@ -54,6 +54,19 @@ proto::Acceleration ConvertDelegateOptionsToAccelerationProto(
   return acceleration_proto;
 }
 
+proto::Acceleration ConvertDelegateOptionsToAccelerationProto(
+    const BaseOptions::CoreMlOptions& options) {
+  proto::Acceleration acceleration_proto = proto::Acceleration();
+  auto* coreml = acceleration_proto.mutable_coreml();
+  if (!options.model_cache_dir.empty()) {
+    coreml->set_model_cache_dir(options.model_cache_dir);
+  }
+  coreml->set_compute_units(
+      static_cast<mediapipe::InferenceCalculatorOptions::Delegate::CoreMl::
+                      ComputeUnits>(options.compute_units));
+  return acceleration_proto;
+}
+
 template <typename T>
 void SetDelegateOptionsOrDie(const BaseOptions* base_options,
                              proto::BaseOptions& base_options_proto) {
@@ -115,6 +128,11 @@ proto::BaseOptions ConvertBaseOptionsToProto(BaseOptions* base_options) {
       base_options_proto.mutable_acceleration()
           ->mutable_nnapi()
           ->set_accelerator_name("google-edgetpu");
+      break;
+    case BaseOptions::Delegate::COREML:
+      base_options_proto.mutable_acceleration()->mutable_coreml();
+      SetDelegateOptionsOrDie<BaseOptions::CoreMlOptions>(base_options,
+                                                          base_options_proto);
       break;
   }
   return base_options_proto;
