@@ -1,0 +1,9 @@
+# Generated / local-only experiment artifacts. Sources (converters, benches,
+# the Swift pipeline prototype) are committed; everything derivable is not.
+venv/
+__pycache__/
+# Conversion outputs (onnx, mlpackage) — regenerate with convert*.py.
+out/
+out_palm/
+# tflite models extracted from hand_landmarker.task — see README.
+models/
