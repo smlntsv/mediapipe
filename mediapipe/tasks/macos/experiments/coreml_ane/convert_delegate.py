@@ -34,13 +34,20 @@ Known landmines handled here:
    production TFLite GPU path also runs fp16 (allow_precision_loss=true).
 
 Usage:
-    venv/bin/python convert_delegate.py OUT_DIR INPUT...
+    venv/bin/python convert_delegate.py [--drop-output LABEL:INDEX]... OUT_DIR INPUT...
     # INPUT: .tflite file or .task bundle
     # e.g.
     venv/bin/python convert_delegate.py coreml_models \\
         ../test_projects/shared/models/hand_landmarker.task \\
         ../test_projects/shared/models/pose_landmarker.task \\
         ../test_projects/shared/models/face_landmarker.task
+
+--drop-output LABEL:INDEX prunes tflite output INDEX from any model whose
+label contains LABEL, at the torch level — so Core ML dead-code-eliminates
+the branch computing it (compute savings on the ANE, not just copy savings).
+InferenceCalculatorCoreMl zero-fills pruned outputs at runtime. E.g. the pose
+segmentation mask (unused unless masks are requested):
+    --drop-output pose_landmarks_detector.tflite:2
 """
 
 import hashlib
@@ -206,10 +213,29 @@ def collect_tflites(inputs):
             yield from walk(os.path.basename(path), f.read())
 
 
-def convert_one(label, data, out_dir, work_dir):
+class _KeepOutputs(torch.nn.Module):
+    """Returns only the outputs at `keep` positions; tracing through this
+    lets coremltools dead-code-eliminate the branches computing the rest."""
+
+    def __init__(self, inner, keep):
+        super().__init__()
+        self.inner = inner
+        self.keep = keep
+
+    def forward(self, *args):
+        outs = self.inner(*args)
+        if not isinstance(outs, (list, tuple)):
+            outs = (outs,)
+        return tuple(outs[k] for k in self.keep)
+
+
+def convert_one(label, data, out_dir, work_dir, drops=()):
     digest = hashlib.sha256(data).hexdigest()
     final_path = os.path.join(out_dir, f"{digest}.mlmodelc")
     print(f"\n=== {label}  sha256={digest[:16]}… ===")
+    dropped = sorted({idx for substr, idx in drops if substr in label})
+    if dropped:
+        print(f"  dropping tflite output(s) {dropped} (zero-filled at runtime)")
     if os.path.exists(final_path):
         print("  already converted, skipping")
         return digest, "cached"
@@ -269,8 +295,15 @@ def convert_one(label, data, out_dir, work_dir):
     in_map = index_map(onnx_input_names, inputs, "input")
     out_map = index_map(onnx_output_names, outputs, "output")
 
-    # onnx -> torch -> traced
+    # onnx -> torch -> traced (optionally pruning dropped outputs so Core ML
+    # never computes them)
+    keep_positions = [pos for pos in range(len(out_map))
+                      if out_map[pos] not in dropped]
+    assert keep_positions, f"{label}: cannot drop every output"
+    kept_out_map = [out_map[pos] for pos in keep_positions]
     tmodel = onnx_to_torch(onnx_model).eval()
+    if dropped:
+        tmodel = _KeepOutputs(tmodel, keep_positions)
     example = tuple(torch.from_numpy(feed[i]) for i in in_map)
     with torch.no_grad():
         traced = torch.jit.trace(tmodel, example)
@@ -289,13 +322,14 @@ def convert_one(label, data, out_dir, work_dir):
         convert_to="mlprogram",
     )
 
-    # Rename outputs (spec order == traced output order == onnx graph order).
+    # Rename outputs (spec order == traced output order == onnx graph order,
+    # filtered through keep_positions when outputs were dropped).
     spec = mlm.get_spec()
-    assert len(spec.description.output) == len(out_map), (
+    assert len(spec.description.output) == len(kept_out_map), (
         f"{label}: Core ML output count {len(spec.description.output)} != "
-        f"tflite output count {len(out_map)}")
+        f"kept tflite output count {len(kept_out_map)}")
     for pos, out in enumerate(spec.description.output):
-        ct.utils.rename_feature(spec, out.name, f"output_{out_map[pos]}")
+        ct.utils.rename_feature(spec, out.name, f"output_{kept_out_map[pos]}")
     mlm = ct.models.MLModel(spec, weights_dir=mlm.weights_dir)
 
     package_path = os.path.join(work_dir, f"{digest}.mlpackage")
@@ -311,6 +345,8 @@ def convert_one(label, data, out_dir, work_dir):
     worst_rel = 0.0
     mask_notes = []
     for i, r in enumerate(ref):
+        if i in dropped:
+            continue
         got = np.asarray(pred[f"output_{i}"]).reshape(r.shape)
         abs_diff = float(np.abs(got - r).max())
         # Relative to the output's own magnitude; tiny outputs gate on 1.0.
@@ -355,22 +391,32 @@ def convert_one(label, data, out_dir, work_dir):
     shutil.move(os.path.join(compile_dir, compiled[0]), final_path)
     print(f"  wrote {final_path}")
     status = f"ok  worst rel diff={worst_rel:.4g}"
+    if dropped:
+        status += f"; dropped outputs {dropped}"
     if mask_notes:
         status += "; " + "; ".join(mask_notes)
     return digest, status
 
 
 def main():
-    if len(sys.argv) < 3:
+    args = sys.argv[1:]
+    drops = []
+    while "--drop-output" in args:
+        flag_at = args.index("--drop-output")
+        substr, _, idx = args[flag_at + 1].rpartition(":")
+        drops.append((substr, int(idx)))
+        del args[flag_at:flag_at + 2]
+    if len(args) < 2:
         print(__doc__)
         sys.exit(1)
-    out_dir = sys.argv[1]
+    out_dir = args[0]
     os.makedirs(out_dir, exist_ok=True)
     manifest = {}
     with tempfile.TemporaryDirectory() as work_dir:
-        for label, data in collect_tflites(sys.argv[2:]):
+        for label, data in collect_tflites(args[1:]):
             try:
-                digest, status = convert_one(label, data, out_dir, work_dir)
+                digest, status = convert_one(label, data, out_dir, work_dir,
+                                             drops=drops)
             except Exception as e:  # keep going; report at the end
                 digest = hashlib.sha256(data).hexdigest()
                 status = f"FAILED: {e}"

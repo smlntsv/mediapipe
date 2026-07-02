@@ -105,8 +105,12 @@ absl::Status NSErrorToStatus(NSError* error, absl::string_view context) {
 }
 
 // Copies an MLMultiArray into `dst` (float32, row-major) honoring the array's
-// strides. ANE-produced outputs are frequently padded/non-contiguous, so a
-// linear copy would silently read zeros/garbage.
+// strides. ANE-produced outputs are practically ALWAYS padded/non-contiguous
+// (even [1,63] comes back with stride 64), so a linear copy would silently
+// read zeros/garbage. Instead of a per-element index walk (measured 0.60 ms
+// on pose's 160k-element heatmap), the dense trailing span is copied per
+// iteration: memcpy for fp32, a vectorizable contiguous loop for fp16
+// (measured 0.095 ms on the same heatmap).
 absl::Status CopyMultiArrayToFloats(MLMultiArray* array, float* dst,
                                     int64_t expected_elements) {
   const int rank = static_cast<int>(array.shape.count);
@@ -120,48 +124,42 @@ absl::Status CopyMultiArrayToFloats(MLMultiArray* array, float* dst,
   RET_CHECK_EQ(n, expected_elements)
       << "Core ML output element count does not match the TFLite output shape.";
 
-  bool dense = true;
-  int64_t expect = 1;
-  for (int d = rank - 1; d >= 0; --d) {
-    if (strides[d] != expect) {
-      dense = false;
-      break;
-    }
-    expect *= shape[d];
-  }
-
   const MLMultiArrayDataType data_type = array.dataType;
   RET_CHECK(data_type == MLMultiArrayDataTypeFloat32 ||
             data_type == MLMultiArrayDataTypeFloat16)
       << "Unsupported Core ML output data type: " << data_type;
 
-  __block absl::Status copy_status = absl::OkStatus();
+  // The trailing dims whose strides match a dense layout form a contiguous
+  // span; a fully dense array is one span of n elements.
+  int outer_rank = rank;
+  int64_t span = 1;
+  while (outer_rank > 0 && strides[outer_rank - 1] == span) {
+    span *= shape[outer_rank - 1];
+    --outer_rank;
+  }
+  const int64_t outer_count = n / span;
+
   [array getBytesWithHandler:^(const void* bytes, NSInteger /*size*/) {
-    if (dense) {
-      if (data_type == MLMultiArrayDataTypeFloat32) {
-        std::memcpy(dst, bytes, n * sizeof(float));
-      } else {
-        const __fp16* src = static_cast<const __fp16*>(bytes);
-        for (int64_t i = 0; i < n; ++i) dst[i] = src[i];
-      }
-      return;
-    }
-    std::vector<int64_t> idx(rank, 0);
-    for (int64_t i = 0; i < n; ++i) {
+    std::vector<int64_t> idx(outer_rank, 0);
+    float* out = dst;
+    for (int64_t i = 0; i < outer_count; ++i) {
       int64_t offset = 0;
-      for (int d = 0; d < rank; ++d) offset += idx[d] * strides[d];
+      for (int d = 0; d < outer_rank; ++d) offset += idx[d] * strides[d];
       if (data_type == MLMultiArrayDataTypeFloat32) {
-        dst[i] = static_cast<const float*>(bytes)[offset];
+        std::memcpy(out, static_cast<const float*>(bytes) + offset,
+                    span * sizeof(float));
       } else {
-        dst[i] = static_cast<const __fp16*>(bytes)[offset];
+        const __fp16* src = static_cast<const __fp16*>(bytes) + offset;
+        for (int64_t k = 0; k < span; ++k) out[k] = src[k];
       }
-      for (int d = rank - 1; d >= 0; --d) {
+      out += span;
+      for (int d = outer_rank - 1; d >= 0; --d) {
         if (++idx[d] < shape[d]) break;
         idx[d] = 0;
       }
     }
   }];
-  return copy_status;
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -196,6 +194,9 @@ class InferenceCalculatorCoreMlImpl
   std::vector<int64_t> input_elements_;
   // TFLite output shapes; MediaPipe output tensors are created with these.
   std::vector<Tensor::Shape> output_shapes_;
+  // Whether the converted model provides output_<i>; pruned outputs
+  // (convert_delegate.py --drop-output) are zero-filled.
+  std::vector<bool> output_present_;
 
   // TFLite CPU/XNNPACK fallback when no converted model exists.
   std::unique_ptr<InferenceRunner> fallback_runner_;
@@ -338,6 +339,8 @@ absl::Status InferenceCalculatorCoreMlImpl::InitCoreMlModel(
   NSSet<NSString*>* output_features = [NSSet
       setWithArray:model_.modelDescription.outputDescriptionsByName.allKeys];
   output_shapes_.reserve(num_outputs);
+  output_present_.reserve(num_outputs);
+  int present_count = 0;
   for (int i = 0; i < num_outputs; ++i) {
     const tflite::Tensor& tensor =
         *subgraph.tensors()->Get(subgraph.outputs()->Get(i));
@@ -352,13 +355,29 @@ absl::Status InferenceCalculatorCoreMlImpl::InitCoreMlModel(
                                   "supported by InferenceCalculatorCoreMl.";
     }
     NSString* name = [NSString stringWithFormat:@"output_%d", i];
-    RET_CHECK([output_features containsObject:name]) << absl::StrCat(
-        "Converted Core ML model at ", compiled_model_path,
-        " does not expose the expected output feature '", name.UTF8String,
-        "'. Re-convert the model with convert_delegate.py.");
+    const bool present = [output_features containsObject:name];
+    if (present) {
+      ++present_count;
+    } else {
+      // The converter can prune outputs whose compute is not wanted (e.g.
+      // convert_delegate.py --drop-output on the pose segmentation mask).
+      // The tensor still has to exist for downstream stream wiring, so it is
+      // zero-filled each frame.
+      ABSL_LOG(WARNING) << absl::StrCat(
+          "InferenceCalculatorCoreMl: converted model at ",
+          compiled_model_path, " does not provide output feature '",
+          name.UTF8String,
+          "' (pruned at conversion). This output will be ZERO-FILLED; if it "
+          "is actually consumed, re-convert without --drop-output.");
+    }
     [output_names_ addObject:name];
+    output_present_.push_back(present);
     output_shapes_.emplace_back(Tensor::Shape{dims});
   }
+  RET_CHECK_GT(present_count, 0) << absl::StrCat(
+      "Converted Core ML model at ", compiled_model_path,
+      " exposes none of the expected output_<i> features. Re-convert the "
+      "model with convert_delegate.py.");
   return absl::OkStatus();
 }
 
@@ -433,14 +452,20 @@ absl::StatusOr<std::vector<Tensor>> InferenceCalculatorCoreMlImpl::Process(
   std::vector<Tensor> output_tensors;
   output_tensors.reserve(output_shapes_.size());
   for (size_t i = 0; i < output_shapes_.size(); ++i) {
+    output_tensors.emplace_back(Tensor::ElementType::kFloat32,
+                                output_shapes_[i]);
+    auto write_view = output_tensors.back().GetCpuWriteView();
+    if (!output_present_[i]) {
+      std::memset(write_view.buffer<float>(), 0,
+                  output_tensors.back().shape().num_elements() *
+                      sizeof(float));
+      continue;
+    }
     MLMultiArray* array =
         [outputs featureValueForName:output_names_[i]].multiArrayValue;
     RET_CHECK(array != nil) << absl::StrCat(
         "Core ML prediction is missing output feature '",
         output_names_[i].UTF8String, "'.");
-    output_tensors.emplace_back(Tensor::ElementType::kFloat32,
-                                output_shapes_[i]);
-    auto write_view = output_tensors.back().GetCpuWriteView();
     MP_RETURN_IF_ERROR(CopyMultiArrayToFloats(
         array, write_view.buffer<float>(),
         output_tensors.back().shape().num_elements()));

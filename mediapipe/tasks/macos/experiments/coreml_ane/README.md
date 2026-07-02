@@ -143,21 +143,29 @@ Then in Swift: `options.delegate = .coreML` (plus
 All three tasks through the REAL MediaPipe graphs, VIDEO mode. Hand runs the
 645-frame two-hands clip (numHands=2); pose/face run a repeated still (steady
 state = tracked path; "first" = detector frame). Agreement is mean px error vs
-the .cpu baseline.
+the .cpu baseline. Numbers below include the two post-integration fixes:
+row-wise strided output copy (6.3x on pose's 160k-element heatmap: 0.60 ->
+0.095 ms) and pruning the unused pose segmentation mask at conversion
+(--drop-output; the ANE never computes the mask decoder branch, the
+calculator zero-fills the tensor).
 
 | task | .cpu ms | .gpu (Metal) ms | .coreML ms (mean/p50/p90) | quality |
 |---|---|---|---|---|
-| hand | 24.13 | 7.15 / 6.51 / 9.44 | **4.21 / 3.91 / 5.82** | >=1 77.7% vs 77.8%; both 42.3% vs 42.9%; 0.70 px |
-| pose | 10.55 | 3.77 / 3.44 / 4.97 | **4.09 / 3.89 / 4.66** | detected 100%; 0.63 px; first frame 11.4 vs GPU 30.8 |
-| face (+blendshapes) | 6.91 | 4.57 / 4.09 / 5.43 | **4.63 / 3.71 / 6.59** | detected 100%; 0.02 px; first frame 7.5 vs GPU 19.8 |
+| hand | 23.18 | 7.19 / 6.79 / 10.85 | **4.39 / 4.37 / 5.30** | >=1 77.7% vs 77.8%; both 42.3% vs 42.9%; 0.70 px |
+| pose | 10.41 | 4.00 / 3.73 / 4.98 | **2.81 / 2.69 / 3.31** | detected 100%; 0.63 px; first frame 6.7 vs GPU 16.8 |
+| face (+blendshapes) | 7.22 | 4.47 / 4.06 / 5.83 | **3.80 / 3.76 / 3.98** | detected 100%; 0.02 px; first frame 5.9 vs GPU 19.7 |
 
-Verdict: hand is **1.7x faster than Metal** through the full graph (4.21 vs
-7.15 ms — within 12% of the hand-rolled Swift prototype's 3.77 ms while
-keeping exact MediaPipe semantics). Pose and face are at Metal parity on mean,
-better on p90/first-frame — while leaving the GPU completely free in all three
-cases. Landmark agreement vs CPU is sub-pixel everywhere. The XNNPACK fallback
-was verified by hiding the .mlmodelc dir: per-model warnings fire and every
-task keeps working at CPU speed with identical detection rates.
+Pre-fix .coreML for reference: hand 4.21, pose 4.09, face 4.63 ms — the fixes
+took pose from GPU-parity to a 1.4x win and face from parity to 1.2x.
+
+Verdict: **.coreML is the fastest delegate on all three tasks** — hand 1.6x,
+pose 1.4x, face 1.2x vs Metal on mean (face 1.5x on p90), first frame
+2.5-3.4x — while leaving the GPU completely free. Landmark agreement vs CPU
+is sub-pixel everywhere. Under system load the gap widens further (the ANE is
+uncontended while Metal fights WindowServer et al. — measured pose 3.9 vs GPU
+6.0-7.8 ms at load average 30+). The XNNPACK fallback was verified by hiding
+the .mlmodelc dir: per-model warnings fire and every task keeps working at
+CPU speed with identical detection rates.
 
 ## Interpretation
 - The benchmark measures the **landmark model alone** (one 224×224 crop). The
