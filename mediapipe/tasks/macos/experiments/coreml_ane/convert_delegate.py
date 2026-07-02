@@ -337,9 +337,13 @@ def convert_one(label, data, out_dir, work_dir, drops=()):
         shutil.rmtree(package_path)
     mlm.save(package_path)
 
-    # Validate the renamed fp16 package against the TFLite ground truth.
-    mlm = ct.models.MLModel(package_path,
-                            compute_units=ct.ComputeUnit.CPU_ONLY)
+    # Validate the renamed fp16 package against the TFLite ground truth on the
+    # compute units production uses (.ALL -> ANE). Core ML's CPU-fp16 path
+    # accumulates far less precisely than the ANE and overstates the error by
+    # up to 70x (pose_landmarker_full's world output: 0.27 on CPU_ONLY vs
+    # 0.0038 on ALL) — validating on CPU_ONLY rejects models that are fine on
+    # the device they will actually run on.
+    mlm = ct.models.MLModel(package_path, compute_units=ct.ComputeUnit.ALL)
     pred = mlm.predict({f"input_{i}": feed[i] for i in range(len(inputs))})
     diffs = {}
     worst_rel = 0.0
