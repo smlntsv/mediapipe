@@ -21,6 +21,15 @@
 typedef NS_ENUM(NSUInteger, MPPDelegate) {
   MPPDelegateCPU,
   MPPDelegateGPU,
+  /**
+   * Runs inference through Core ML (Apple Neural Engine when available).
+   * Requires models pre-converted with
+   * `mediapipe/tasks/macos/experiments/coreml_ane/convert_delegate.py`, looked
+   * up as `<sha256-of-tflite>.mlmodelc` in `coreMLModelCacheDirectory`. A
+   * model without a converted counterpart falls back to CPU/XNNPACK for that
+   * model only, so this delegate is always safe to request.
+   */
+  MPPDelegateCoreML,
 } NS_SWIFT_NAME(Delegate);
 
 NS_ASSUME_NONNULL_BEGIN
@@ -37,6 +46,14 @@ NS_SWIFT_NAME(BaseOptions)
 
 /** Overrides the default backend to use for the provided model. */
 @property(nonatomic) MPPDelegate delegate;
+
+/**
+ * MPPDelegateCoreML only: directory containing the converted
+ * `<sha256-of-tflite>.mlmodelc` models. When nil (the default), the directory
+ * of `modelAssetPath` is used — i.e. converted models placed next to the
+ * `.task` file are found automatically.
+ */
+@property(nonatomic, copy, nullable) NSString *coreMLModelCacheDirectory;
 
 @end
 

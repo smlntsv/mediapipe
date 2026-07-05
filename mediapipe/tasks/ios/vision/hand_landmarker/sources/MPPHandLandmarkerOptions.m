@@ -23,6 +23,8 @@
     _minHandDetectionConfidence = 0.5f;
     _minHandPresenceConfidence = 0.5f;
     _minTrackingConfidence = 0.5f;
+    _roiScale = 2.0f;
+    _trackingGraceFrames = 0;
   }
   return self;
 }
@@ -36,6 +38,8 @@
   handLandmarkerOptions.minHandDetectionConfidence = self.minHandDetectionConfidence;
   handLandmarkerOptions.minHandPresenceConfidence = self.minHandPresenceConfidence;
   handLandmarkerOptions.minTrackingConfidence = self.minTrackingConfidence;
+  handLandmarkerOptions.roiScale = self.roiScale;
+  handLandmarkerOptions.trackingGraceFrames = self.trackingGraceFrames;
 
   return handLandmarkerOptions;
 }

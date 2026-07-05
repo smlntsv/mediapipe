@@ -43,6 +43,7 @@ using HandLandmarksDetectorGraphOptionsProto =
               withUseStreamMode:self.runningMode != MPPRunningModeImage];
 
   handLandmarkerGraphOptionsProto->set_min_tracking_confidence(self.minTrackingConfidence);
+  handLandmarkerGraphOptionsProto->set_tracking_grace_frames((int)self.trackingGraceFrames);
 
   HandDetectorGraphOptionsProto *handDetectorGraphOptionsProto =
       handLandmarkerGraphOptionsProto->mutable_hand_detector_graph_options();
@@ -53,6 +54,7 @@ using HandLandmarksDetectorGraphOptionsProto =
       handLandmarkerGraphOptionsProto->mutable_hand_landmarks_detector_graph_options();
   handLandmarksDetectorGraphOptionsProto->set_min_detection_confidence(
       self.minHandPresenceConfidence);
+  handLandmarksDetectorGraphOptionsProto->set_roi_scale(self.roiScale);
 }
 
 @end

@@ -30,6 +30,7 @@
 
   baseOptions.modelAssetPath = self.modelAssetPath;
   baseOptions.delegate = self.delegate;
+  baseOptions.coreMLModelCacheDirectory = self.coreMLModelCacheDirectory;
 
   return baseOptions;
 }

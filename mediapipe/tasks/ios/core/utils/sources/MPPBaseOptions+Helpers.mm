@@ -39,6 +39,19 @@ using InferenceCalculatorOptionsProto = ::mediapipe::InferenceCalculatorOptions;
   if (self.delegate == MPPDelegateGPU) {
     baseOptionsProto->mutable_acceleration()->mutable_gpu()->MergeFrom(
         InferenceCalculatorOptionsProto::Delegate::Gpu());
+  } else if (self.delegate == MPPDelegateCoreML) {
+    auto *coreml = baseOptionsProto->mutable_acceleration()->mutable_coreml();
+    // Default the model cache dir to the model asset's directory so converted
+    // models shipped next to the .task file are found with no extra setup
+    // (mirrors the macOS wrapper's behavior).
+    NSString *cacheDir = self.coreMLModelCacheDirectory;
+    if (cacheDir.length == 0 && self.modelAssetPath.length > 0) {
+      cacheDir = [self.modelAssetPath stringByDeletingLastPathComponent];
+    }
+    if (cacheDir.length > 0) {
+      coreml->set_model_cache_dir(cacheDir.UTF8String);
+    }
+    // compute_units stays at its default (ALL): Core ML picks the ANE.
   }
 }
 

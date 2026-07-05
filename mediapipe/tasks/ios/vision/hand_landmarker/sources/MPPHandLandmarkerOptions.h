@@ -95,6 +95,25 @@ NS_SWIFT_NAME(HandLandmarkerOptions)
 /** The minimum confidence score for the hand tracking to be considered successful. */
 @property(nonatomic) float minTrackingConfidence;
 
+/**
+ * Scale factor for the frame-to-frame region of interest derived from the previous frame's hand
+ * landmarks. Larger values (e.g. 2.5–3.0) expand the tracking crop so a fast-moving hand stays
+ * inside it between frames, at the cost of a looser crop. Defaults to 2.0 (MediaPipe's historical
+ * value).
+ */
+@property(nonatomic) float roiScale;
+
+/**
+ * `.video` / `.liveStream` modes only ("frames without a hand" grace): number of consecutive
+ * frames a vanished hand's region of interest is kept in the tracking loop before its track is
+ * dropped. While held, the palm detector stays skipped and the landmark model keeps retrying the
+ * last-known region, so a hand lost to momentary motion blur is re-acquired quickly and cheaply —
+ * without lowering `minHandPresenceConfidence`. Keep small (2–3 frames, ~70–100 ms at 30 fps): a
+ * truly departed hand occupies a tracking slot for this many frames before the detector resumes
+ * looking for new hands. Defaults to 0 (drop immediately, MediaPipe's original behavior).
+ */
+@property(nonatomic) NSInteger trackingGraceFrames;
+
 @end
 
 NS_ASSUME_NONNULL_END
