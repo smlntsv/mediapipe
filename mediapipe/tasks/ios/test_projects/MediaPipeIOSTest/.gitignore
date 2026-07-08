@@ -1,0 +1,7 @@
+# Xcode user state.
+xcuserdata/
+*.xcuserstate
+DerivedData/
+
+# Resolved Swift Package state (the local package is referenced by relative path).
+*.xcworkspace/xcshareddata/swiftpm/
