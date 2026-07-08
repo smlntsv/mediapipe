@@ -15,6 +15,12 @@ and `coreMLModelCacheDirectory` flow through the shared C API.
 
 ## Building
 
+0. Fetch the models on a fresh checkout: `./download_models.sh` (a thin wrapper
+   around the shared downloader). It pulls the three `.task` files and the
+   converted Core ML `<sha>.mlmodelc` models into the shared test-models dir
+   the build phase reads from. Core ML download is best-effort — override
+   `COREML_MODELS_URL` / `COREML_MODELS_SHA256` for your own converted set; a
+   miss just means the Core ML delegate falls back to GPU/CPU.
 1. Build the universal xcframework into the package's `Artifacts/` dir. On an
    Apple-Silicon Mac, from the repo root, build the iOS device + simulator
    dylibs and assemble the xcframework alongside the existing macOS slice
