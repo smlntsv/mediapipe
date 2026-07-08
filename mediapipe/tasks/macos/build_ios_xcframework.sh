@@ -136,5 +136,21 @@ xcodebuild -create-xcframework "${CREATE_ARGS[@]}" -output "${WORK_DIR}/out.xcfr
 rm -rf "${XCFRAMEWORK}"
 mv "${WORK_DIR}/out.xcframework" "${XCFRAMEWORK}"
 
+# Package a distributable zip for the SwiftPM release with Info-ZIP `zip`, NOT
+# `ditto`. `ditto -c -k` serializes every entry's extended attributes as an
+# AppleDouble `._name` sidecar (and __MACOSX/ dirs with --sequesterRsrc) — most
+# problematically `com.apple.provenance`, a machine-local xattr macOS stamps on
+# written files that `xattr -cr` cannot strip (it is protected/re-applied). That
+# noise has no business in a distributed artifact. `zip` never writes
+# AppleDouble at all: -X drops extra file attributes, -y stores symlinks as
+# symlinks (the macOS slice is a versioned framework bundle with 4 symlinks).
+# Prints the SwiftPM checksum to drop into Package.swift + checksums.txt.
+echo "==> Packaging ${FRAMEWORK_NAME}.xcframework.zip (clean, no AppleDouble)..."
+ZIP="${ARTIFACTS_DIR}/${FRAMEWORK_NAME}.xcframework.zip"
+xattr -cr "${XCFRAMEWORK}" 2>/dev/null || true
+rm -f "${ZIP}"
+( cd "${ARTIFACTS_DIR}" && zip -r -X -y -q "${FRAMEWORK_NAME}.xcframework.zip" "${FRAMEWORK_NAME}.xcframework" )
+echo "    swiftpm-checksum: $(swift package compute-checksum "${ZIP}")"
+
 echo "==> Done. Slices:"
 plutil -p "${XCFRAMEWORK}/Info.plist" | grep -iE "LibraryIdentifier|SupportedPlatform" || true
