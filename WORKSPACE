@@ -592,6 +592,13 @@ http_archive(
 http_archive(
     name = "ios_opencv_source",
     build_file = "@//third_party:opencv_ios_source.BUILD",
+    patch_args = [
+        "-p1",
+    ],
+    patches = [
+        # try_compile fix for the source build on modern Xcode; see the diff header.
+        "@//third_party:opencv_ios_source_try_compile_static.diff",
+    ],
     sha256 = "a61e7a4618d353140c857f25843f39b2abe5f451b018aab1604ef0bc34cd23d5",
     type = "zip",
     url = "https://github.com/opencv/opencv/archive/refs/tags/4.5.3.zip",

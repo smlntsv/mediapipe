@@ -1,0 +1,89 @@
+Backported fixes that let the OpenCV 4.5.3 iOS source build
+(--define OPENCV=source) work with modern Xcode (26):
+
+1. iOS toolchain: try_compile() builds STATIC_LIBRARY targets instead of
+   executables (with the Xcode generator, try_compile executables are
+   emitted as .app bundles that never materialize, so every configure
+   probe fails with "Cannot copy output executable"), and the
+   CheckTypeSize results are preseeded with their LP64 values because the
+   Xcode generator cannot extract them from try_compile outputs (they
+   come back empty, e.g. "#define SIZEOF_SIZE_T " in libjpeg-turbo's
+   jconfigint.h, which then fails to preprocess).
+
+2. Bundled zlib (1.2.11): drop `defined(TARGET_OS_MAC)` from the fdopen
+   workaround block. TARGET_OS_MAC is defined on ALL Apple platforms once
+   TargetConditionals.h is in the include chain, so zutil.h #defines
+   `fdopen(fd,mode) NULL` and the iOS 26 SDK's _stdio.h fdopen prototype
+   then fails to parse ("expected ')'"). Fixed the same way in upstream
+   zlib 1.2.12.
+
+3. Bundled libpng (1.6.37): same TARGET_OS_MAC problem in pngpriv.h — it
+   selects `#include <fp.h>` (a classic-Mac header that no longer exists)
+   whenever TARGET_OS_MAC is defined. Drop it so <math.h> is used.
+
+diff --git a/opencv-4.5.3/3rdparty/libpng/pngpriv.h b/opencv-4.5.3/3rdparty/libpng/pngpriv.h
+index 583c26f..58ae954 100644
+--- a/opencv-4.5.3/3rdparty/libpng/pngpriv.h
++++ b/opencv-4.5.3/3rdparty/libpng/pngpriv.h
+@@ -518,7 +518,7 @@
+ #  include <float.h>
+ 
+ #  if (defined(__MWERKS__) && defined(macintosh)) || defined(applec) || \
+-    defined(THINK_C) || defined(__SC__) || defined(TARGET_OS_MAC)
++    defined(THINK_C) || defined(__SC__)
+    /* We need to check that <math.h> hasn't already been included earlier
+     * as it seems it doesn't agree with <fp.h>, yet we should really use
+     * <fp.h> if possible.
+diff --git a/opencv-4.5.3/3rdparty/zlib/zutil.h b/opencv-4.5.3/3rdparty/zlib/zutil.h
+index 4774fc3..2e81c97 100644
+--- a/opencv-4.5.3/3rdparty/zlib/zutil.h
++++ b/opencv-4.5.3/3rdparty/zlib/zutil.h
+@@ -130,7 +130,7 @@ extern z_const char * const z_errmsg[10]; /* indexed by 2-zlib_error */
+ #  endif
+ #endif
+ 
+-#if defined(MACOS) || defined(TARGET_OS_MAC)
++#if defined(MACOS)
+ #  define OS_CODE  7
+ #  ifndef Z_SOLO
+ #    if defined(__MWERKS__) && __dest_os != __be_os && __dest_os != __win32_os
+diff --git a/opencv-4.5.3/platforms/ios/cmake/Toolchains/common-ios-toolchain.cmake b/opencv-4.5.3/platforms/ios/cmake/Toolchains/common-ios-toolchain.cmake
+index a5ec05a..1827b3e 100644
+--- a/opencv-4.5.3/platforms/ios/cmake/Toolchains/common-ios-toolchain.cmake
++++ b/opencv-4.5.3/platforms/ios/cmake/Toolchains/common-ios-toolchain.cmake
+@@ -163,6 +163,35 @@ set(CMAKE_CXX_COMPILER_ABI ELF)
+ set(CMAKE_CXX_COMPILER_WORKS TRUE)
+ set(CMAKE_C_COMPILER_WORKS TRUE)
+ 
++# try_compile() executables are .app bundles under the Xcode generator and
++# never materialize on modern Xcode; compile probes as static libs instead.
++set(CMAKE_TRY_COMPILE_TARGET_TYPE "STATIC_LIBRARY")
++
++# The Xcode generator also cannot extract CheckTypeSize results from its
++# try_compile outputs, which leaves SIZEOF_* empty in generated 3rdparty
++# config headers (libjpeg-turbo's jconfigint.h then fails to preprocess).
++# Every iOS target (arm64 and x86_64) is LP64, so preseed the exact set of
++# type sizes the bundled 3rdparty builds probe for.
++foreach(entry
++    "SIZEOF_SIGNED_SHORT=2" "SIZEOF_UNSIGNED_SHORT=2"
++    "SIZEOF_SIGNED_INT=4" "SIZEOF_UNSIGNED_INT=4"
++    "SIZEOF_SIGNED_LONG=8" "SIZEOF_UNSIGNED_LONG=8"
++    "SIZEOF_SIGNED_LONG_LONG=8" "SIZEOF_UNSIGNED_LONG_LONG=8"
++    "SIZEOF_UNSIGNED_CHAR_P=8" "SIZEOF_SIZE_T=8" "SIZEOF_PTRDIFF_T=8")
++  string(REPLACE "=" ";" _parts "${entry}")
++  list(GET _parts 0 _var)
++  list(GET _parts 1 _size)
++  set(${_var} ${_size} CACHE INTERNAL "preseeded for iOS cross-build")
++  set(HAVE_${_var} TRUE CACHE INTERNAL "preseeded for iOS cross-build")
++  set(${_var}_CODE "#define ${_var} ${_size}" CACHE INTERNAL "preseeded")
++endforeach()
++# Types the bundled builds probe for that do NOT exist on iOS.
++foreach(_var OFF64_T int8 int16 int32)
++  set(${_var} "" CACHE INTERNAL "preseeded: not available on iOS")
++  set(HAVE_${_var} "" CACHE INTERNAL "preseeded: not available on iOS")
++  set(${_var}_CODE "/* #undef ${_var} */" CACHE INTERNAL "preseeded")
++endforeach()
++
+ if(NOT CMAKE_FIND_ROOT_PATH_MODE_LIBRARY)
+   set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+ endif()

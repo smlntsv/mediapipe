@@ -12,10 +12,21 @@ import Foundation
 
 let swiftRoot = "mediapipe/tasks/macos/swift"
 
-// Set MP_LOCAL_XCFRAMEWORK=1 to link the locally-built artifact under
-// Artifacts/ (produced by build_macos_xcframework.sh) instead of the released
-// binary. Used to test changes baked into the compiled MediaPipe graph.
+// Link the locally-built artifact under Artifacts/ (produced by the build
+// scripts) instead of the released binary when EITHER MP_LOCAL_XCFRAMEWORK is
+// set OR the artifact simply exists on disk. The on-disk check is what makes
+// the local universal xcframework work when the package is consumed as a
+// LOCAL package from Xcode (e.g. the iOS test app): Xcode evaluates the
+// manifest in a sandbox that does not inherit shell/scheme environment
+// variables, so the env-var gate alone never fires there. Consumers that pull
+// the package by revision from GitHub have no Artifacts/ dir and fall through
+// to the released binary, so their behavior is unchanged.
+let localXCFrameworkPath = URL(fileURLWithPath: #filePath)
+    .deletingLastPathComponent()
+    .appendingPathComponent("\(swiftRoot)/Artifacts/MediaPipeTasksC.xcframework")
+    .path
 let useLocalXCFramework = ProcessInfo.processInfo.environment["MP_LOCAL_XCFRAMEWORK"] != nil
+    || FileManager.default.fileExists(atPath: localXCFrameworkPath)
 
 let cMediaPipeTasksC: Target = useLocalXCFramework
     ? .binaryTarget(
@@ -28,8 +39,15 @@ let cMediaPipeTasksC: Target = useLocalXCFramework
 
 let package = Package(
     name: "MediaPipeTasksMac",
+    // The package name and module stay "…Mac" for source compatibility with
+    // existing consumers, but the library is multiplatform: the binary target
+    // is a universal MediaPipeTasksC.xcframework carrying macOS, iOS-device and
+    // iOS-simulator slices, and the ObjC++ bridge + Swift API are platform
+    // neutral (Foundation + CoreGraphics/CoreVideo + the C API — no AppKit).
+    // iOS 17 / macOS 14 is the Core ML (ANE) floor for the converted models.
     platforms: [
-        .macOS(.v13)
+        .macOS(.v13),
+        .iOS(.v17),
     ],
     products: [
         .library(name: "MediaPipeTasksMac", targets: ["MediaPipeTasksMac"]),
