@@ -15,7 +15,7 @@
 import CoreGraphics
 import Foundation
 import ImageIO
-import MediaPipeTasksMac
+import MediaPipeTasks
 
 // A minimal CLI demonstrating MediaPipe Vision Tasks on macOS. It accepts any
 // subset of model flags so each landmarker can be tested independently:

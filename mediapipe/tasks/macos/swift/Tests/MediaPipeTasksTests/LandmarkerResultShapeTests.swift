@@ -17,7 +17,7 @@ import CoreVideo
 import ImageIO
 import XCTest
 
-@testable import MediaPipeTasksMac
+@testable import MediaPipeTasks
 
 // These tests run a real model on a real image and assert MediaPipe's result
 // shapes and landmark counts. Because the `.task` models and test images are

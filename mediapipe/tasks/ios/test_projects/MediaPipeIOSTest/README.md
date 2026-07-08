@@ -1,13 +1,13 @@
 # MediaPipeIOSTest
 
-Test bench for the fork's **iOS** support in the `MediaPipeTasksMac` Swift
+Test bench for the fork's **iOS** support in the `MediaPipeTasks` Swift
 package: live camera with hand / face / pose landmark overlays, a
 CPU / GPU / Core ML (ANE) delegate switch, and per-task inference-time
 sparklines.
 
 It consumes the package **exactly the way an iOS app would** — as a local
 Swift Package dependency (`packageReferences` → the repo root's
-`Package.swift`, product `MediaPipeTasksMac`). The package is multiplatform:
+`Package.swift`, product `MediaPipeTasks`). The package is multiplatform:
 its binary target is a universal `MediaPipeTasksC.xcframework` with macOS,
 iOS-device and iOS-simulator slices, and the Swift API is platform-neutral
 (`CVPixelBuffer` in, normalized landmarks out). The fork's `.coreML` delegate

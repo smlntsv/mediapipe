@@ -18,7 +18,7 @@ import Darwin
 import ImageIO
 import XCTest
 
-@testable import MediaPipeTasksMac
+@testable import MediaPipeTasks
 
 /// Non-camera stress tests that run `detectForVideo(pixelBuffer:)` many times on
 /// the same buffer and assert that resident memory (phys_footprint) stays

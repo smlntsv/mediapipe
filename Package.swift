@@ -1,5 +1,6 @@
 // swift-tools-version:5.9
-// Native macOS Swift Package for MediaPipe Vision Tasks (Hand/Pose/Face landmarkers).
+// Multiplatform (macOS + iOS) Swift Package for MediaPipe Vision Tasks
+// (Hand/Pose/Face landmarkers), incl. the Core ML / ANE delegate.
 //
 // NOTE: This package depends on a locally-built binary artifact:
 //   mediapipe/tasks/macos/swift/Artifacts/MediaPipeTasksC.xcframework
@@ -38,19 +39,21 @@ let cMediaPipeTasksC: Target = useLocalXCFramework
         checksum: "fc9b4a15184dc3e9005f96d5963d3958db371435d15c1b9f0ce3c566c1531a22")
 
 let package = Package(
-    name: "MediaPipeTasksMac",
-    // The package name and module stay "…Mac" for source compatibility with
-    // existing consumers, but the library is multiplatform: the binary target
-    // is a universal MediaPipeTasksC.xcframework carrying macOS, iOS-device and
-    // iOS-simulator slices, and the ObjC++ bridge + Swift API are platform
-    // neutral (Foundation + CoreGraphics/CoreVideo + the C API — no AppKit).
-    // iOS 17 / macOS 14 is the Core ML (ANE) floor for the converted models.
+    // Renamed from "MediaPipeTasksMac" once the package became multiplatform:
+    // the binary target is a universal MediaPipeTasksC.xcframework carrying
+    // macOS, iOS-device and iOS-simulator slices, and the ObjC++ bridge + Swift
+    // API are platform neutral (Foundation + CoreGraphics/CoreVideo + the C API
+    // — no AppKit). iOS 17 / macOS 14 is the Core ML (ANE) floor for the
+    // converted models. Consumers on the old name keep working by staying
+    // pinned to a pre-rename revision; to update, change `import
+    // MediaPipeTasksMac` → `import MediaPipeTasks` and the SPM product name.
+    name: "MediaPipeTasks",
     platforms: [
         .macOS(.v13),
         .iOS(.v17),
     ],
     products: [
-        .library(name: "MediaPipeTasksMac", targets: ["MediaPipeTasksMac"]),
+        .library(name: "MediaPipeTasks", targets: ["MediaPipeTasks"]),
         .executable(name: "mediapipe-macos-sample", targets: ["MediaPipeMacSample"]),
     ],
     targets: [
@@ -74,15 +77,15 @@ let package = Package(
 
         // Public Swift API.
         .target(
-            name: "MediaPipeTasksMac",
+            name: "MediaPipeTasks",
             dependencies: ["MediaPipeTasksObjC"],
-            path: "\(swiftRoot)/Sources/MediaPipeTasksMac"
+            path: "\(swiftRoot)/Sources/MediaPipeTasks"
         ),
 
         // Minimal CLI sample.
         .executableTarget(
             name: "MediaPipeMacSample",
-            dependencies: ["MediaPipeTasksMac"],
+            dependencies: ["MediaPipeTasks"],
             path: "\(swiftRoot)/Sources/Sample"
         ),
 
@@ -90,9 +93,9 @@ let package = Package(
         // relevant model/image paths are provided via environment variables
         // (see the test file); otherwise each case is skipped.
         .testTarget(
-            name: "MediaPipeTasksMacTests",
-            dependencies: ["MediaPipeTasksMac"],
-            path: "\(swiftRoot)/Tests/MediaPipeTasksMacTests"
+            name: "MediaPipeTasksTests",
+            dependencies: ["MediaPipeTasks"],
+            path: "\(swiftRoot)/Tests/MediaPipeTasksTests"
         ),
     ],
     cxxLanguageStandard: .cxx20

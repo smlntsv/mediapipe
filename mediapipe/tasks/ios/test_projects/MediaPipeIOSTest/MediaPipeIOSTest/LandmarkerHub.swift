@@ -11,7 +11,7 @@
 import Combine
 import CoreVideo
 import Foundation
-import MediaPipeTasksMac
+import MediaPipeTasks
 import QuartzCore
 
 enum LandmarkTaskKind: String, CaseIterable, Identifiable, Sendable {

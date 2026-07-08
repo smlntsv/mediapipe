@@ -17,7 +17,7 @@ import CoreVideo
 import Foundation
 import MediaPipeTasksObjC
 
-/// Errors raised by the Swift layer of MediaPipeTasksMac. Errors originating in
+/// Errors raised by the Swift layer of MediaPipeTasks. Errors originating in
 /// the native MediaPipe runtime surface as `NSError` from throwing calls.
 public enum MediaPipeError: Error, Equatable {
     case invalidImage(String)

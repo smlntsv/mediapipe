@@ -16,7 +16,7 @@ import CoreGraphics
 import ImageIO
 import XCTest
 
-@testable import MediaPipeTasksMac
+@testable import MediaPipeTasks
 
 // Verifies that `ImageProcessingOptions.rotationDegrees` is actually plumbed
 // through to the native pipeline.

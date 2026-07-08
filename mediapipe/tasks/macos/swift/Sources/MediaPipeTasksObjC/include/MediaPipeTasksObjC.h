@@ -13,8 +13,8 @@
 // limitations under the License.
 
 // Umbrella header for the MediaPipeTasksObjC bridge module. This is an internal
-// implementation detail of the MediaPipeTasksMac Swift package; consumers should
-// import `MediaPipeTasksMac`, not this module.
+// implementation detail of the MediaPipeTasks Swift package; consumers should
+// import `MediaPipeTasks`, not this module.
 
 #import "MPCCategory.h"
 #import "MPCClassifications.h"

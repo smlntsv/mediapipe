@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		AA200000000000000000D003 /* MediaPipeTasksMac in Frameworks */ = {isa = PBXBuildFile; productRef = AA200000000000000000D002 /* MediaPipeTasksMac */; };
+		AA200000000000000000D003 /* MediaPipeTasks in Frameworks */ = {isa = PBXBuildFile; productRef = AA200000000000000000D002 /* MediaPipeTasks */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -56,7 +56,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AA200000000000000000D003 /* MediaPipeTasksMac in Frameworks */,
+				AA200000000000000000D003 /* MediaPipeTasks in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -118,7 +118,7 @@
 			);
 			name = MediaPipeIOSTest;
 			packageProductDependencies = (
-				AA200000000000000000D002 /* MediaPipeTasksMac */,
+				AA200000000000000000D002 /* MediaPipeTasks */,
 			);
 			productName = MediaPipeIOSTest;
 			productReference = 3244F9E22FFAC012005DCA3F /* MediaPipeIOSTest.app */;
@@ -622,9 +622,9 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		AA200000000000000000D002 /* MediaPipeTasksMac */ = {
+		AA200000000000000000D002 /* MediaPipeTasks */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = MediaPipeTasksMac;
+			productName = MediaPipeTasks;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

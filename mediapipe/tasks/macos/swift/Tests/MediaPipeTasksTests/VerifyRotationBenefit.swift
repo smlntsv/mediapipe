@@ -3,7 +3,7 @@ import CoreGraphics
 import ImageIO
 import XCTest
 
-@testable import MediaPipeTasksMac
+@testable import MediaPipeTasks
 
 // Measurement harness (not a pass/fail unit test): quantifies what the rotation
 // fix buys on a *rotated* feed, by comparing detection rate with rotationDegrees
