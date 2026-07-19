@@ -35,8 +35,8 @@ let cMediaPipeTasksC: Target = useLocalXCFramework
         path: "\(swiftRoot)/Artifacts/MediaPipeTasksC.xcframework")
     : .binaryTarget(
         name: "CMediaPipeTasksC",
-        url: "https://github.com/smlntsv/mediapipe/releases/download/v0.10.35-apple.1/MediaPipeTasksC.xcframework.zip",
-        checksum: "a382b3aa7bcfeea20a470330215bff50461d4808cbfa6b7c36a920d30a00bfc1")
+        url: "https://github.com/smlntsv/mediapipe/releases/download/v0.10.35-apple.2/MediaPipeTasksC.xcframework.zip",
+        checksum: "6da27f4108ba5c876ea32e5cb4e32306fb09b7613973152461931c14666132a9")
 
 let package = Package(
     // Renamed from "MediaPipeTasksMac" once the package became multiplatform:
