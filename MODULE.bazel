@@ -30,6 +30,19 @@ single_version_override(
     patches = ["//mediapipe/tasks/macos/patches:apple_support_lc_uuid.patch"],
 )
 
+# apple_support 2.x dropped the legacy --cpu-based Apple crosstool selection, so
+# macOS builds rely on toolchain resolution. rules_cc's auto-configured
+# local_config_cc registers a darwin_arm64 cc toolchain that cannot compile
+# Objective-C ("Compiling objc_library targets requires the Apple CC
+# toolchain") and, being resolved before apple_support's, shadows it for macOS
+# target platforms (iOS is unaffected — local_config_cc has no iOS toolchain).
+# Registering the Apple CC toolchains from the root module gives them top
+# priority.
+apple_cc_configure = use_extension("@build_bazel_apple_support//crosstool:setup.bzl", "apple_cc_configure_extension")
+use_repo(apple_cc_configure, "local_config_apple_cc_toolchains")
+
+register_toolchains("@local_config_apple_cc_toolchains//:all")
+
 bazel_dep(name = "rules_kotlin", version = "1.9.6")
 bazel_dep(name = "rules_shell", version = "0.4.1")
 bazel_dep(name = "rules_pkg", version = "1.0.1")
