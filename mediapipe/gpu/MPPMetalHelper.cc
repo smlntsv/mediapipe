@@ -61,8 +61,15 @@ class MetalHelperLegacySupport {
 
 - (instancetype)initWithCalculatorContext:(mediapipe::CalculatorContext*)cc {
   if (!cc) return nil;
-  return [self
-      initWithGpuResources:&cc->Service(mediapipe::kGpuService).GetObject()];
+  // The GPU service may have been requested as optional (see
+  // updateContract:requestGpuAsOptional:) and its default creation may have
+  // failed — e.g. no usable GL context during a display reconfiguration.
+  // GetObject() on an unavailable service is a fatal ABSL_CHECK that aborts
+  // the whole process; return nil instead so callers' RET_CHECKs turn this
+  // into a recoverable calculator error.
+  auto service = cc->Service(mediapipe::kGpuService);
+  if (!service.IsAvailable()) return nil;
+  return [self initWithGpuResources:&service.GetObject()];
 }
 
 + (absl::Status)updateContract:(mediapipe::CalculatorContract*)cc

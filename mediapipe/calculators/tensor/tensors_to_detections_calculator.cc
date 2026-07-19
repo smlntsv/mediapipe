@@ -44,6 +44,7 @@
 #include "mediapipe/framework/formats/tensor_mtl_buffer_view.h"
 #import "mediapipe/gpu/MPPMetalHelper.h"
 #include "mediapipe/gpu/MPPMetalUtil.h"
+#include "mediapipe/gpu/gpu_service.h"
 #endif  // MEDIAPIPE_METAL_ENABLED
 
 namespace {
@@ -284,8 +285,15 @@ absl::Status TensorsToDetectionsCalculator::Open(CalculatorContext* cc) {
   if (CanUseGpu()) {
 #ifndef MEDIAPIPE_DISABLE_GL_COMPUTE
 #elif MEDIAPIPE_METAL_ENABLED
-    gpu_helper_ = [[MPPMetalHelper alloc] initWithCalculatorContext:cc];
-    RET_CHECK(gpu_helper_);
+    // The GPU service is requested as optional (see UpdateContract). When its
+    // default creation failed (e.g. no usable GL context during a display
+    // reconfiguration), skip the Metal helper and stay on the CPU
+    // post-processing path; constructing it anyway used to hit the fatal
+    // service check and abort the process.
+    if (cc->Service(kGpuService).IsAvailable()) {
+      gpu_helper_ = [[MPPMetalHelper alloc] initWithCalculatorContext:cc];
+      RET_CHECK(gpu_helper_);
+    }
 #endif  // !defined(MEDIAPIPE_DISABLE_GL_COMPUTE)
   }
 
@@ -592,6 +600,11 @@ absl::Status TensorsToDetectionsCalculator::ProcessGPU(
                                          detection_classes.data(),
                                          output_detections));
 #elif MEDIAPIPE_METAL_ENABLED
+  // GPU-resident input tensors with no Metal helper means the optional GPU
+  // service was unavailable at Open; fail recoverably instead of silently
+  // messaging nil.
+  RET_CHECK(gpu_helper_)
+      << "GPU processing requested but the GPU service is unavailable.";
   if (!anchors_init_) {
     if (input_tensors.size() == kNumInputTensorsWithAnchors) {
       RET_CHECK_EQ(input_tensors.size(), kNumInputTensorsWithAnchors);
