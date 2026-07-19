@@ -22,20 +22,13 @@ single_version_override(
 # apple_support is patched so its exec tools (wrapped_clang/libtool) emit an
 # LC_UUID. Xcode 26's linker can omit it, and macOS 26's dyld then refuses to
 # load the tool ("missing LC_UUID load command"), breaking every compile action.
-bazel_dep(name = "apple_support", version = "1.23.1", repo_name = "build_bazel_apple_support")
+# (apple_support itself is declared below, alongside the other Apple rules.)
 single_version_override(
     module_name = "apple_support",
-    version = "1.23.1",
+    version = "2.6.1",
     patch_strip = 1,
     patches = ["//mediapipe/tasks/macos/patches:apple_support_lc_uuid.patch"],
 )
-
-# rules_apple from bzlmod shadows the WORKSPACE http_archive (2.1.0), whose
-# xcframework transitions reference command-line options removed in Bazel 7
-# ("transition inputs [//command_line_option:apple_compiler] do not correspond
-# to valid settings"). 3.16.0 is what bzlmod already resolves transitively; the
-# iOS task-framework builds (mediapipe/tasks/ios:*_framework) need it.
-bazel_dep(name = "rules_apple", version = "3.16.0", repo_name = "build_bazel_rules_apple")
 
 bazel_dep(name = "rules_kotlin", version = "1.9.6")
 bazel_dep(name = "rules_shell", version = "0.4.1")
