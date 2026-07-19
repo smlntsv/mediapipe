@@ -361,13 +361,13 @@ setuptools.setup(
     description=(
         'MediaPipe is the simplest way for researchers and developers to build'
         ' world-class ML solutions and applications for mobile, edge, cloud and'
-        ' the web. See the privacy notice at'
-        ' https://developers.google.com/edge/mediapipe/solutions/tasks#mediapipe_tasks_privacy_notice.'
+        ' the web. See the privacy notice at https://goo.gle/mediapipe-privacy.'
     ),
     author='The MediaPipe Authors',
     author_email='mediapipe@google.com',
     long_description=_get_long_description(),
     long_description_content_type='text/markdown',
+    license_files=['LICENSE', 'NOTICE'],
     packages=setuptools.find_packages(
         include=[
             'mediapipe',
