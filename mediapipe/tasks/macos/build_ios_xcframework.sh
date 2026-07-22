@@ -161,6 +161,29 @@ mv "${WORK_DIR}/out.xcframework" "${XCFRAMEWORK}"
 # AppleDouble at all: -X drops extra file attributes, -y stores symlinks as
 # symlinks (the macOS slice is a versioned framework bundle with 4 symlinks).
 # Prints the SwiftPM checksum to drop into Package.swift + checksums.txt.
+# Portability gate: the zip below IS the release asset, so every slice must be
+# loadable on a clean machine — no /opt/local, /opt/homebrew or /usr/local
+# dylib references (iOS slices are static-linked; the macOS slice is the one
+# that can regress when built without MP_BUNDLE_DEPS=1, which is what shipped
+# broken in v1.0.0-apple.1 and dyld-crashed ScreenBar build 27 fleet-wide).
+echo "==> Auditing slice portability before packaging..."
+while IFS= read -r slice_bin; do
+  bad="$(otool -L "${slice_bin}" | tail -n +2 | sed 's/^[[:space:]]*//' | awk '{print $1}' \
+    | grep -vE '^/System/|^/usr/lib/|^@rpath|^@loader_path|^@executable_path' || true)"
+  if [[ -n "${bad}" ]]; then
+    if [[ "${MP_ALLOW_NONPORTABLE:-0}" == "1" ]]; then
+      echo "warning: NON-PORTABLE slice ${slice_bin} (MP_ALLOW_NONPORTABLE=1); do NOT release this zip:" >&2
+      echo "${bad}" | sed 's/^/    /' >&2
+    else
+      echo "error: non-portable dylib references in ${slice_bin}:" >&2
+      echo "${bad}" | sed 's/^/    /' >&2
+      echo "       Rebuild the macOS slice with MP_BUNDLE_DEPS=1 (see PACKAGING.md)," >&2
+      echo "       or set MP_ALLOW_NONPORTABLE=1 for a local-only artifact." >&2
+      exit 1
+    fi
+  fi
+done < <(find "${XCFRAMEWORK}" -type f -name "${FRAMEWORK_NAME}" -not -path "*/Libraries/*")
+
 echo "==> Packaging ${FRAMEWORK_NAME}.xcframework.zip (clean, no AppleDouble)..."
 ZIP="${ARTIFACTS_DIR}/${FRAMEWORK_NAME}.xcframework.zip"
 xattr -cr "${XCFRAMEWORK}" 2>/dev/null || true

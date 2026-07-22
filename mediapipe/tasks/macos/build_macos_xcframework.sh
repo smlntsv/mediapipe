@@ -344,6 +344,29 @@ echo "--- Mach-O platform of the packaged slice ---"
 SLICE_BIN="$(find "${OUT_XCFRAMEWORK}" -name "${FRAMEWORK_NAME}" -type f | head -1)"
 otool -l "${SLICE_BIN}" | grep -A3 LC_BUILD_VERSION | head -8 || true
 
+# --- 7. Portability gate (ALWAYS runs, not only under MP_BUNDLE_DEPS) --------
+# A slice that references /opt/local, /opt/homebrew or /usr/local dylibs only
+# loads on machines with that package manager installed. v1.0.0-apple.1 shipped
+# such a slice (built without MP_BUNDLE_DEPS=1) and crashed every fleet Mac at
+# dyld time before main() — so a non-portable artifact is now a hard error
+# unless explicitly allowed for local development on this machine.
+NONPORTABLE_DEPS="$(otool -L "${SLICE_BIN}" | tail -n +2 | sed 's/^[[:space:]]*//' | awk '{print $1}' \
+  | grep -vE '^/System/|^/usr/lib/|^@rpath|^@loader_path|^@executable_path' || true)"
+if [[ -n "${NONPORTABLE_DEPS}" ]]; then
+  if [[ "${MP_ALLOW_NONPORTABLE:-0}" == "1" ]]; then
+    echo "warning: artifact is NOT portable (MP_ALLOW_NONPORTABLE=1); local use only:" >&2
+    echo "${NONPORTABLE_DEPS}" | sed 's/^/    /' >&2
+  else
+    echo "error: the packaged framework references non-portable dylibs:" >&2
+    echo "${NONPORTABLE_DEPS}" | sed 's/^/    /' >&2
+    echo "       These paths exist only on this build machine; the framework would" >&2
+    echo "       crash at dyld time everywhere else (this is what broke ScreenBar" >&2
+    echo "       build 27). Rebuild with MP_BUNDLE_DEPS=1 for any distributable" >&2
+    echo "       artifact, or set MP_ALLOW_NONPORTABLE=1 for a local-only build." >&2
+    exit 1
+  fi
+fi
+
 echo ""
 echo "==> Done: ${OUT_XCFRAMEWORK}"
 echo "    You can now run: swift build   (and: swift run mediapipe-macos-sample ...)"
