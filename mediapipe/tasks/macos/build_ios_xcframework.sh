@@ -37,7 +37,23 @@ set -euo pipefail
 FRAMEWORK_NAME="MediaPipeTasksC"
 BAZEL="${BAZEL:-$(command -v bazel)}"
 IOS_MIN_VERSION="${IOS_MIN_VERSION:-17.0}"
-BUILD_VERSION="${MPP_BUILD_VERSION:-0.0.1-dev}"
+# CFBundleShortVersionString/CFBundleVersion must be 1-3 period-separated
+# non-negative integers, or App Store Connect rejects the app embedding this
+# framework (ITMS-90060/90058). v0.10.35-apple.1/.2 shipped with the old
+# "0.0.1-dev" fallback and hit exactly that. Validate anything provided (the
+# git tag, e.g. "0.10.35-apple.2", is NOT valid — pass plain "0.10.35"), and
+# stamp unset dev builds with a valid placeholder.
+BUILD_VERSION="${MPP_BUILD_VERSION:-}"
+if [[ -z "${BUILD_VERSION}" ]]; then
+  BUILD_VERSION="0.0.1"
+  echo "warning: MPP_BUILD_VERSION is unset; stamping dev version ${BUILD_VERSION}." >&2
+  echo "         Release builds must set MPP_BUILD_VERSION (plain integers, e.g. 0.10.35)." >&2
+elif [[ ! "${BUILD_VERSION}" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+  echo "error: MPP_BUILD_VERSION='${BUILD_VERSION}' is not a valid CFBundle version:" >&2
+  echo "       Apple requires 1-3 period-separated non-negative integers (e.g. 0.10.35)." >&2
+  echo "       Do not pass the git tag; the -apple.N suffix lives only in the tag/release name." >&2
+  exit 1
+fi
 
 MPP_ROOT_DIR="$(git rev-parse --show-toplevel)"
 ARTIFACTS_DIR="${MPP_ROOT_DIR}/mediapipe/tasks/macos/swift/Artifacts"
