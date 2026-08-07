@@ -329,19 +329,66 @@ if [[ "${MP_BUNDLE_DEPS:-0}" == "1" ]]; then
 fi
 
 # --- 5. Create the xcframework ----------------------------------------------
+# Companion dSYM: embedded via -debug-symbols it lands in <slice>/dSYMs/
+# inside the xcframework; Xcode auto-copies it into consumer archives,
+# satisfying App Store Connect's "Upload Symbols Failed ... expected UUIDs"
+# check. The EMBEDDED dSYM is kept Tier A (symbol-table only, a few MB) so the
+# SPM-downloaded zip stays small. The Bazel-linked macOS dylib additionally
+# carries a debug map (N_OSO) into bazel-out's cached .o files, so dsymutil
+# can link a FULL file/line DWARF dSYM (~370MB) — that one is packaged as a
+# separate optional release asset (${FRAMEWORK_NAME}.macos-arm64.dSYM.zip) for
+# offline crash symbolication (atos/symbolicate against fleet crash reports),
+# NOT embedded.
+echo "==> Generating ${FRAMEWORK_NAME}.framework.dSYM..."
+DSYM_FULL="${WORK_DIR}/full/${FRAMEWORK_NAME}.framework.dSYM"
+mkdir -p "${WORK_DIR}/full"
+dsymutil "${VERSION_DIR}/${FRAMEWORK_NAME}" -o "${DSYM_FULL}" 2> >(grep -v "no debug symbols" >&2 || true)
+
+DSYM_OUT="${DSYM_FULL}"
+# Real DWARF (from the N_OSO debug map into bazel-out's .o files) shows a
+# DW_TAG_compile_unit immediately; a symbol-table-only dSYM has an empty
+# .debug_info. NOTE: must not be written as `dwarfdump | head | grep -q` —
+# under `set -o pipefail` head's early exit SIGPIPEs dwarfdump and the
+# pipeline reports failure even when grep matched.
+DEBUG_INFO_HEAD="$(dwarfdump --debug-info "${DSYM_FULL}" 2>/dev/null | head -12 || true)"
+if grep -q 'DW_TAG' <<< "${DEBUG_INFO_HEAD}"; then
+  echo "==> Full DWARF present; packaging optional symbolication asset..."
+  rm -f "${ARTIFACTS_DIR}/${FRAMEWORK_NAME}.macos-arm64.dSYM.zip"
+  ( cd "${WORK_DIR}/full" \
+    && zip -r -X -q "${ARTIFACTS_DIR}/${FRAMEWORK_NAME}.macos-arm64.dSYM.zip" "${FRAMEWORK_NAME}.framework.dSYM" )
+  echo "    $(du -sh "${ARTIFACTS_DIR}/${FRAMEWORK_NAME}.macos-arm64.dSYM.zip" | awk '{print $1}') ${FRAMEWORK_NAME}.macos-arm64.dSYM.zip"
+  # Tier-A embedded dSYM: strip the debug map + stabs from a throwaway copy of
+  # the binary (strip does not touch LC_UUID), so dsymutil falls back to the
+  # symbol table — same UUID, a few MB instead of hundreds.
+  echo "==> Generating Tier-A (symbol-table) dSYM for embedding..."
+  mkdir -p "${WORK_DIR}/tiera"
+  cp "${VERSION_DIR}/${FRAMEWORK_NAME}" "${WORK_DIR}/tiera/${FRAMEWORK_NAME}"
+  strip -S "${WORK_DIR}/tiera/${FRAMEWORK_NAME}" 2>/dev/null || strip -S "${WORK_DIR}/tiera/${FRAMEWORK_NAME}"
+  DSYM_OUT="${WORK_DIR}/${FRAMEWORK_NAME}.framework.dSYM"
+  dsymutil "${WORK_DIR}/tiera/${FRAMEWORK_NAME}" -o "${DSYM_OUT}" 2> >(grep -v "no debug symbols" >&2 || true)
+fi
+
+BIN_UUIDS="$(dwarfdump --uuid "${VERSION_DIR}/${FRAMEWORK_NAME}" | awk '{print $2}' | sort)"
+DSYM_UUIDS="$(dwarfdump --uuid "${DSYM_OUT}" | awk '{print $2}' | sort)"
+if [[ "${BIN_UUIDS}" != "${DSYM_UUIDS}" ]]; then
+  echo "error: dSYM UUIDs (${DSYM_UUIDS}) do not match binary UUIDs (${BIN_UUIDS})" >&2
+  exit 1
+fi
+
 echo "==> Creating ${FRAMEWORK_NAME}.xcframework..."
 OUT_XCFRAMEWORK="${ARTIFACTS_DIR}/${FRAMEWORK_NAME}.xcframework"
 mkdir -p "${ARTIFACTS_DIR}"
 rm -rf "${OUT_XCFRAMEWORK}"
 xcodebuild -create-xcframework \
   -framework "${FW}" \
+  -debug-symbols "${DSYM_OUT}" \
   -output "${OUT_XCFRAMEWORK}"
 
 # --- 6. Verify the xcframework ----------------------------------------------
 echo "==> Verifying xcframework..."
 plutil -p "${OUT_XCFRAMEWORK}/Info.plist"
 echo "--- Mach-O platform of the packaged slice ---"
-SLICE_BIN="$(find "${OUT_XCFRAMEWORK}" -name "${FRAMEWORK_NAME}" -type f | head -1)"
+SLICE_BIN="$(find "${OUT_XCFRAMEWORK}" -name "${FRAMEWORK_NAME}" -type f -not -path "*/dSYMs/*" | head -1)"
 otool -l "${SLICE_BIN}" | grep -A3 LC_BUILD_VERSION | head -8 || true
 
 # --- 7. Portability gate (ALWAYS runs, not only under MP_BUNDLE_DEPS) --------

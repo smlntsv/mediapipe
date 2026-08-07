@@ -130,11 +130,38 @@ EOF
 build_slice ios_arm64     iPhoneOS        "${WORK_DIR}/device/${FRAMEWORK_NAME}.framework"
 build_slice ios_sim_arm64 iPhoneSimulator "${WORK_DIR}/sim/${FRAMEWORK_NAME}.framework"
 
+# Companion dSYMs (Tier A): a UUID-matched dSYM per slice, embedded via
+# -debug-symbols so it rides in <slice>/dSYMs/ inside the xcframework. Xcode
+# auto-copies them into consumer archives; App Store Connect's "Upload Symbols
+# Failed ... expected UUIDs" check then passes (StaxelLauncher hit exactly
+# that on v1.0.0-apple.2, which shipped without dSYMs). The -c opt binaries
+# carry no DWARF, so these are symbol-table-only dSYMs (function-level
+# symbolication; file/line would need a -g build).
+make_dsym() {
+  local fw_bin="$1" out_dsym="$2"
+  dsymutil "${fw_bin}" -o "${out_dsym}" 2> >(grep -v "no debug symbols" >&2 || true)
+  local bin_uuids dsym_uuids
+  bin_uuids="$(dwarfdump --uuid "${fw_bin}" | awk '{print $2}' | sort)"
+  dsym_uuids="$(dwarfdump --uuid "${out_dsym}" | awk '{print $2}' | sort)"
+  if [[ "${bin_uuids}" != "${dsym_uuids}" ]]; then
+    echo "error: dSYM UUIDs (${dsym_uuids}) do not match ${fw_bin} (${bin_uuids})" >&2
+    exit 1
+  fi
+}
+
+echo "==> Generating UUID-matched dSYMs for the iOS slices..."
+make_dsym "${WORK_DIR}/device/${FRAMEWORK_NAME}.framework/${FRAMEWORK_NAME}" \
+          "${WORK_DIR}/device/${FRAMEWORK_NAME}.framework.dSYM"
+make_dsym "${WORK_DIR}/sim/${FRAMEWORK_NAME}.framework/${FRAMEWORK_NAME}" \
+          "${WORK_DIR}/sim/${FRAMEWORK_NAME}.framework.dSYM"
+
 # Assemble the universal xcframework. Reuse the existing macOS slice unless
 # MP_IOS_ONLY=1.
 CREATE_ARGS=(
   -framework "${WORK_DIR}/device/${FRAMEWORK_NAME}.framework"
+  -debug-symbols "${WORK_DIR}/device/${FRAMEWORK_NAME}.framework.dSYM"
   -framework "${WORK_DIR}/sim/${FRAMEWORK_NAME}.framework"
+  -debug-symbols "${WORK_DIR}/sim/${FRAMEWORK_NAME}.framework.dSYM"
 )
 if [[ "${MP_IOS_ONLY:-0}" != "1" ]]; then
   MACOS_FW="${XCFRAMEWORK}/macos-arm64/${FRAMEWORK_NAME}.framework"
@@ -143,7 +170,28 @@ if [[ "${MP_IOS_ONLY:-0}" != "1" ]]; then
     echo "       Run build_macos_xcframework.sh first, or set MP_IOS_ONLY=1." >&2
     exit 1
   fi
-  CREATE_ARGS+=(-framework "${MACOS_FW}")
+  # Reuse the macOS slice's embedded dSYM when build_macos_xcframework.sh
+  # produced one (it does since the Tier-A change); otherwise generate it here
+  # from the slice binary — the UUID is fixed at link time, so a late dsymutil
+  # still matches. Stage it in WORK_DIR: -create-xcframework reads inputs
+  # before the old xcframework is deleted below, but keeping inputs out of the
+  # output's parent is cleaner.
+  MACOS_DSYM="${WORK_DIR}/macos/${FRAMEWORK_NAME}.framework.dSYM"
+  mkdir -p "${WORK_DIR}/macos"
+  if [[ -d "${XCFRAMEWORK}/macos-arm64/dSYMs/${FRAMEWORK_NAME}.framework.dSYM" ]]; then
+    cp -R "${XCFRAMEWORK}/macos-arm64/dSYMs/${FRAMEWORK_NAME}.framework.dSYM" "${MACOS_DSYM}"
+    bin_uuids="$(dwarfdump --uuid "${MACOS_FW}/Versions/A/${FRAMEWORK_NAME}" | awk '{print $2}' | sort)"
+    dsym_uuids="$(dwarfdump --uuid "${MACOS_DSYM}" | awk '{print $2}' | sort)"
+    if [[ "${bin_uuids}" != "${dsym_uuids}" ]]; then
+      echo "    embedded macOS dSYM is stale (UUID mismatch); regenerating..."
+      rm -rf "${MACOS_DSYM}"
+      make_dsym "${MACOS_FW}/Versions/A/${FRAMEWORK_NAME}" "${MACOS_DSYM}"
+    fi
+  else
+    echo "    no embedded macOS dSYM found; generating..."
+    make_dsym "${MACOS_FW}/Versions/A/${FRAMEWORK_NAME}" "${MACOS_DSYM}"
+  fi
+  CREATE_ARGS+=(-framework "${MACOS_FW}" -debug-symbols "${MACOS_DSYM}")
 fi
 
 echo "==> Creating universal ${FRAMEWORK_NAME}.xcframework..."
@@ -182,7 +230,7 @@ while IFS= read -r slice_bin; do
       exit 1
     fi
   fi
-done < <(find "${XCFRAMEWORK}" -type f -name "${FRAMEWORK_NAME}" -not -path "*/Libraries/*")
+done < <(find "${XCFRAMEWORK}" -type f -name "${FRAMEWORK_NAME}" -not -path "*/Libraries/*" -not -path "*/dSYMs/*")
 
 echo "==> Packaging ${FRAMEWORK_NAME}.xcframework.zip (clean, no AppleDouble)..."
 ZIP="${ARTIFACTS_DIR}/${FRAMEWORK_NAME}.xcframework.zip"
