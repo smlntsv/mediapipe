@@ -1,0 +1,7 @@
+test	delegate	exit	result
+image	cpu	0	PASS
+image	gpu	3	UNSUPPORTED(init failed)
+image	coreml	0	PASS
+video	cpu	0	PASS
+video	gpu	3	UNSUPPORTED(init failed)
+video	coreml	0	PASS

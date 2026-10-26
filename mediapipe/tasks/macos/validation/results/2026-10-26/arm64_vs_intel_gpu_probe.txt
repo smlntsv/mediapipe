@@ -1,0 +1,20 @@
+baseline : native-arm64 | MacBookPro18,1 | Apple M1 Pro | macOS 26.3.1 | GPU Apple M1 Pro
+candidate: native-x86_64 | MacBookPro16,1 | Intel(R) Core(TM) i9-9880H CPU @ 2.30GHz | macOS 26.7.1 | GPU AMD Radeon Pro 5500M
+
+## image_coreml.json: not in candidate (skipped)
+
+## image_cpu.json: not in candidate (skipped)
+
+## image_gpu.json
+  FAIL status baseline=ok candidate=implausible
+  => FAIL
+
+## video_coreml.json: not in candidate (skipped)
+
+## video_cpu.json: not in candidate (skipped)
+
+## video_gpu.json
+  FAIL status baseline=ok candidate=implausible
+  => FAIL
+
+OVERALL: FAIL (2 report pair(s))

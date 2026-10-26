@@ -1,0 +1,161 @@
+{
+  "command" : "image",
+  "delegate" : "gpu",
+  "environment" : {
+    "cpu_brand" : "Intel(R) Core(TM) i9-9880H CPU @ 2.30GHz",
+    "cpu_count" : 16,
+    "cpu_features" : "FPU VME DE PSE TSC MSR PAE MCE CX8 APIC SEP MTRR PGE MCA CMOV PAT PSE36 CLFSH DS ACPI MMX FXSR SSE SSE2 SS HTT TM PBE SSE3 PCLMULQDQ DTES64 MON DSCPL VMX SMX EST TM2 SSSE3 FMA CX16 TPR PDCM SSE4.1 SSE4.2 x2APIC MOVBE POPCNT AES PCID XSAVE OSXSAVE SEGLIM64 TSCTMR AVX1.0 RDRAND F16C",
+    "cpu_leaf7_features" : "RDWRFSGS TSC_THREAD_OFFSET SGX BMI1 AVX2 SMEP BMI2 ERMS INVPCID FPU_CSDS MPX RDSEED ADX SMAP CLFSOPT IPT SGXLC MDCLEAR IBRS STIBP L1DF ACAPMSR SSBD",
+    "execution" : "native-x86_64",
+    "hostname_hash" : "8be5e3ade8c4",
+    "hw_model" : "MacBookPro16,1",
+    "memory_gb" : 16,
+    "metal_default_device" : "AMD Radeon Pro 5500M",
+    "metal_devices" : [
+      {
+        "family_apple7" : false,
+        "family_mac2" : true,
+        "headless" : false,
+        "low_power" : true,
+        "name" : "Intel(R) UHD Graphics 630",
+        "recommended_max_working_set_mb" : 1536,
+        "removable" : false,
+        "unified_memory" : true
+      },
+      {
+        "family_apple7" : false,
+        "family_mac2" : true,
+        "headless" : false,
+        "low_power" : false,
+        "name" : "AMD Radeon Pro 5500M",
+        "recommended_max_working_set_mb" : 4080,
+        "removable" : false,
+        "unified_memory" : false
+      }
+    ],
+    "os_build" : "25G241",
+    "os_version" : "26.7.1",
+    "process_arch" : "x86_64",
+    "rosetta_translated" : false
+  },
+  "images" : [
+    {
+      "first_inference_ms" : 21.034642040729523,
+      "hands" : [
+
+      ],
+      "height" : 512,
+      "image" : "test_image.jpg",
+      "latency_ms" : {
+        "max" : 12.82278299331665,
+        "mean" : 11.426217752695084,
+        "min" : 9.7618499994277954,
+        "n" : 20,
+        "p50" : 11.598361015319824,
+        "p90" : 12.103128015995026,
+        "p99" : 12.82278299331665
+      },
+      "plausibility" : {
+        "failures" : [
+          "expected >= 1 hand(s), got 0"
+        ],
+        "pass" : false
+      },
+      "repeat_hand_count_stable" : true,
+      "repeat_max_delta" : 0,
+      "sha256" : "ca9709479ca7d8ab68b4fe22703747d2ca9c01fd5c75848e11faeaeae7074afb",
+      "width" : 384
+    },
+    {
+      "first_inference_ms" : 51.010062992572784,
+      "hands" : [
+
+      ],
+      "height" : 720,
+      "image" : "two-hands-only_12000ms.png",
+      "latency_ms" : {
+        "max" : 17.58766096830368,
+        "mean" : 15.486906042695045,
+        "min" : 14.147745966911316,
+        "n" : 20,
+        "p50" : 15.401455998420715,
+        "p90" : 17.022143006324768,
+        "p99" : 17.58766096830368
+      },
+      "plausibility" : {
+        "failures" : [
+          "expected >= 1 hand(s), got 0"
+        ],
+        "pass" : false
+      },
+      "repeat_hand_count_stable" : true,
+      "repeat_max_delta" : 0,
+      "sha256" : "e74be9b6ecdb50e7009698ea8d61da4b402545c3633e4d1520de69ee1ae9ca9c",
+      "width" : 1280
+    },
+    {
+      "first_inference_ms" : 47.423606991767883,
+      "hands" : [
+
+      ],
+      "height" : 720,
+      "image" : "two-hands-only_1500ms.png",
+      "latency_ms" : {
+        "max" : 17.562206983566284,
+        "mean" : 16.817084547877311,
+        "min" : 15.917216002941132,
+        "n" : 20,
+        "p50" : 16.820824980735779,
+        "p90" : 17.445364952087402,
+        "p99" : 17.562206983566284
+      },
+      "plausibility" : {
+        "failures" : [
+          "expected >= 1 hand(s), got 0"
+        ],
+        "pass" : false
+      },
+      "repeat_hand_count_stable" : true,
+      "repeat_max_delta" : 0,
+      "sha256" : "57bc4a1e19d59a0cde9aa57fbecd8a80a7025dce37d7f386f9baab926e932862",
+      "width" : 1280
+    },
+    {
+      "first_inference_ms" : 47.145415961742401,
+      "hands" : [
+
+      ],
+      "height" : 720,
+      "image" : "two-hands-only_8000ms.png",
+      "latency_ms" : {
+        "max" : 17.686555981636047,
+        "mean" : 16.754104849696159,
+        "min" : 15.816550016403198,
+        "n" : 20,
+        "p50" : 16.88978499174118,
+        "p90" : 17.541647970676422,
+        "p99" : 17.686555981636047
+      },
+      "plausibility" : {
+        "failures" : [
+          "expected >= 1 hand(s), got 0"
+        ],
+        "pass" : false
+      },
+      "repeat_hand_count_stable" : true,
+      "repeat_max_delta" : 0,
+      "sha256" : "ad79399ef1bd777104f6e0d2f473393f590b00551015695ef48f687e8d37298d",
+      "width" : 1280
+    }
+  ],
+  "init_ms" : 176.49120503664017,
+  "model" : {
+    "path" : "hand_landmarker.task",
+    "sha256" : "fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1"
+  },
+  "num_hands" : 2,
+  "schema" : 1,
+  "started_at" : "2026-10-26T09:40:18Z",
+  "status" : "implausible",
+  "tool" : "mp-arch-validate"
+}

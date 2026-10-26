@@ -12,6 +12,12 @@
   is just **3 dylibs / 4.7 MB** (`libopencv_core`, `libopencv_imgproc`, `libz`)
   and contains **no GPL/LGPL** code — no ffmpeg/x264/x265/libvpx. The bundled
   xcframework is **~29 MB** total.
+- **Intel / universal:** `MP_MACOS_ARCHS="arm64 x86_64"` builds a universal
+  `macos-arm64_x86_64` slice. The x86_64 OpenCV/zlib come from
+  `build_macos_deps.sh`, not MacPorts. Bundling, portability and dSYM gates
+  run per architecture and again after the `lipo` merge, and
+  `audit_xcframework.sh` checks every Mach-O of every slice. See
+  [ARCHITECTURES.md](ARCHITECTURES.md).
 
 ## The dependency (why it isn't portable by default)
 

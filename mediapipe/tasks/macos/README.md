@@ -5,6 +5,12 @@ Tasks — **HandLandmarker**, **PoseLandmarker**, **FaceLandmarker** — on
 Apple-silicon Macs (`My Mac`, `macos-arm64`). It is **not** for iOS, the iOS
 Simulator, or Mac Catalyst.
 
+> **Intel Macs:** the macOS slice can also be built for x86_64, or as a
+> universal `macos-arm64_x86_64` slice. CPU and Core ML are validated natively
+> on an Intel Mac. The Metal GPU delegate is not supported on Intel/AMD GPUs
+> and throws `unsupportedDelegate`. See [ARCHITECTURES.md](ARCHITECTURES.md)
+> and [validation/VALIDATION_REPORT.md](validation/VALIDATION_REPORT.md).
+
 It wraps MediaPipe's existing **C Tasks API** (`mediapipe/tasks/c/...`) through a
 thin Objective-C++ bridge, so it builds on the macOS-capable C/C++ layer rather
 than the iOS Objective-C framework pipeline.

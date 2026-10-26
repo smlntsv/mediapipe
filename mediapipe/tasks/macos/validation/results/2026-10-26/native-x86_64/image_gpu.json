@@ -1,0 +1,51 @@
+{
+  "command" : "image",
+  "delegate" : "gpu",
+  "environment" : {
+    "cpu_brand" : "Intel(R) Core(TM) i9-9880H CPU @ 2.30GHz",
+    "cpu_count" : 16,
+    "cpu_features" : "FPU VME DE PSE TSC MSR PAE MCE CX8 APIC SEP MTRR PGE MCA CMOV PAT PSE36 CLFSH DS ACPI MMX FXSR SSE SSE2 SS HTT TM PBE SSE3 PCLMULQDQ DTES64 MON DSCPL VMX SMX EST TM2 SSSE3 FMA CX16 TPR PDCM SSE4.1 SSE4.2 x2APIC MOVBE POPCNT AES PCID XSAVE OSXSAVE SEGLIM64 TSCTMR AVX1.0 RDRAND F16C",
+    "cpu_leaf7_features" : "RDWRFSGS TSC_THREAD_OFFSET SGX BMI1 AVX2 SMEP BMI2 ERMS INVPCID FPU_CSDS MPX RDSEED ADX SMAP CLFSOPT IPT SGXLC MDCLEAR IBRS STIBP L1DF ACAPMSR SSBD",
+    "execution" : "native-x86_64",
+    "hostname_hash" : "8be5e3ade8c4",
+    "hw_model" : "MacBookPro16,1",
+    "memory_gb" : 16,
+    "metal_default_device" : "AMD Radeon Pro 5500M",
+    "metal_devices" : [
+      {
+        "family_apple7" : false,
+        "family_mac2" : true,
+        "headless" : false,
+        "low_power" : true,
+        "name" : "Intel(R) UHD Graphics 630",
+        "recommended_max_working_set_mb" : 1536,
+        "removable" : false,
+        "unified_memory" : true
+      },
+      {
+        "family_apple7" : false,
+        "family_mac2" : true,
+        "headless" : false,
+        "low_power" : false,
+        "name" : "AMD Radeon Pro 5500M",
+        "recommended_max_working_set_mb" : 4080,
+        "removable" : false,
+        "unified_memory" : false
+      }
+    ],
+    "os_build" : "25G241",
+    "os_version" : "26.7.1",
+    "process_arch" : "x86_64",
+    "rosetta_translated" : false
+  },
+  "error" : "unsupportedDelegate(\"The GPU delegate is not supported on this Intel Mac\\'s GPU (AMD Radeon Pro 5500M): MediaPipe\\'s Metal path is validated on Apple GPUs only and returns no detections on Intel\/AMD GPUs. Use .cpu (or .coreML, which runs on Intel Macs without the Neural Engine).\")",
+  "model" : {
+    "path" : "hand_landmarker.task",
+    "sha256" : "fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1"
+  },
+  "num_hands" : 2,
+  "schema" : 1,
+  "started_at" : "2026-10-26T09:37:34Z",
+  "status" : "init_failed",
+  "tool" : "mp-arch-validate"
+}
