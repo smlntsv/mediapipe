@@ -166,7 +166,9 @@ class SubRectExtractorMetal {
                         OutputFormat output_format)
       : device_(device),
         pipeline_state_(pipeline_state),
-        output_format_(output_format) {
+        output_format_(output_format),
+        renders_to_buffer_textures_(
+            [device supportsFamily:MTLGPUFamilyApple1]) {
     positions_buffer_ =
         [device_ newBufferWithBytes:kBasicSquareVertices
                              length:sizeof(kBasicSquareVertices)
@@ -184,13 +186,59 @@ class SubRectExtractorMetal {
                        const tflite::gpu::HW& destination_size,
                        id<MTLCommandBuffer> command_buffer,
                        id<MTLBuffer> destination) {
-    auto output_texture = MTLTextureWithBuffer(destination_size, destination);
-    return InternalExecute(input_texture, sub_rect, flip_horizontally, alpha,
-                           beta, destination_size, command_buffer,
-                           output_texture);
+    if (renders_to_buffer_textures_) {
+      auto output_texture = MTLTextureWithBuffer(destination_size, destination);
+      return InternalExecute(input_texture, sub_rect, flip_horizontally, alpha,
+                             beta, destination_size, command_buffer,
+                             output_texture);
+    }
+    // Non-Apple GPUs (Intel/AMD GPUs in Intel Macs) do not support rendering
+    // into a linear texture that aliases an MTLBuffer: the Metal validation
+    // layer rejects MTLTextureUsageRenderTarget on such textures there, so the
+    // result is driver-dependent. Render into a regular texture and blit it
+    // into the buffer instead (same values, same bytes per row).
+    id<MTLTexture> output_texture = RenderTargetTexture(destination_size);
+    MP_RETURN_IF_ERROR(InternalExecute(input_texture, sub_rect,
+                                       flip_horizontally, alpha, beta,
+                                       destination_size, command_buffer,
+                                       output_texture));
+    const NSUInteger bytes_per_row =
+        GetBytesPerRaw(output_format_, destination_size);
+    id<MTLBlitCommandEncoder> blit_encoder =
+        [command_buffer blitCommandEncoder];
+    [blit_encoder copyFromTexture:output_texture
+                      sourceSlice:0
+                      sourceLevel:0
+                     sourceOrigin:MTLOriginMake(0, 0, 0)
+                       sourceSize:MTLSizeMake(destination_size.w,
+                                              destination_size.h, 1)
+                         toBuffer:destination
+                destinationOffset:0
+           destinationBytesPerRow:bytes_per_row
+         destinationBytesPerImage:bytes_per_row * destination_size.h];
+    [blit_encoder endEncoding];
+    return absl::OkStatus();
   }
 
  private:
+  // Private render target for the non-Apple-GPU path, reused while the output
+  // size stays the same. Reuse across frames is safe: textures are
+  // hazard-tracked and the command buffers share one queue.
+  id<MTLTexture> RenderTargetTexture(const tflite::gpu::HW& size) {
+    if (render_target_ == nil || render_target_.width != size.w ||
+        render_target_.height != size.h) {
+      MTLTextureDescriptor* texture_desc = [MTLTextureDescriptor
+          texture2DDescriptorWithPixelFormat:GetPixelFormat(output_format_)
+                                       width:size.w
+                                      height:size.h
+                                   mipmapped:NO];
+      texture_desc.usage = MTLTextureUsageRenderTarget;
+      texture_desc.storageMode = MTLStorageModePrivate;
+      render_target_ = [device_ newTextureWithDescriptor:texture_desc];
+    }
+    return render_target_;
+  }
+
   id<MTLTexture> MTLTextureWithBuffer(const tflite::gpu::HW& size,
                                       id<MTLBuffer> buffer) {
     MTLTextureDescriptor* texture_desc = [MTLTextureDescriptor
@@ -338,6 +386,9 @@ class SubRectExtractorMetal {
   id<MTLDevice> device_;
   id<MTLRenderPipelineState> pipeline_state_;
   OutputFormat output_format_;
+  // Apple GPUs render into the buffer-backed texture directly.
+  bool renders_to_buffer_textures_;
+  id<MTLTexture> render_target_ = nil;
 };
 
 class ImageToTensorMetalConverter : public ImageToTensorConverter {

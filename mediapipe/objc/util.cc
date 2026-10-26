@@ -365,8 +365,11 @@ absl::StatusOr<CFHolder<CVPixelBufferRef>> CreateCVPixelBufferForImageFrame(
         MP_ASSIGN_OR_RETURN(pixel_buffer,
                             CreateCVPixelBufferWithoutPool(
                                 frame.Width(), frame.Height(), pixel_format));
-        status = CVPixelBufferLockBaseAddress(*pixel_buffer,
-                                              kCVPixelBufferLock_ReadOnly);
+        // Lock read-write: the CPU writes the pixels below. With a read-only
+        // lock, Intel/AMD GPUs on Intel Macs never see the CPU writes to the
+        // IOSurface and sample an all-zero image (Apple GPUs happen to see
+        // them).
+        status = CVPixelBufferLockBaseAddress(*pixel_buffer, 0);
         RET_CHECK(status == kCVReturnSuccess)
             << "CVPixelBufferLockBaseAddress failed: " << status;
         v_dest = vImageForCVPixelBuffer(*pixel_buffer);
@@ -400,8 +403,7 @@ absl::StatusOr<CFHolder<CVPixelBufferRef>> CreateCVPixelBufferForImageFrame(
   }
 
   if (*pixel_buffer) {
-    status = CVPixelBufferUnlockBaseAddress(*pixel_buffer,
-                                            kCVPixelBufferLock_ReadOnly);
+    status = CVPixelBufferUnlockBaseAddress(*pixel_buffer, 0);
     RET_CHECK(status == kCVReturnSuccess)
         << "CVPixelBufferUnlockBaseAddress failed: " << status;
   } else {
@@ -482,8 +484,9 @@ absl::StatusOr<CFHolder<CVPixelBufferRef>> CreateCVPixelBufferCopyingImageFrame(
   MP_ASSIGN_OR_RETURN(pixel_buffer, CreateCVPixelBufferWithoutPool(
                                         image_frame.Width(),
                                         image_frame.Height(), pixel_format));
-  cv_err =
-      CVPixelBufferLockBaseAddress(*pixel_buffer, kCVPixelBufferLock_ReadOnly);
+  // Lock read-write: the CPU writes the pixels (see
+  // CreateCVPixelBufferForImageFrame).
+  cv_err = CVPixelBufferLockBaseAddress(*pixel_buffer, 0);
   RET_CHECK(cv_err == kCVReturnSuccess)
       << "CVPixelBufferLockBaseAddress failed: " << cv_err;
 
@@ -491,8 +494,7 @@ absl::StatusOr<CFHolder<CVPixelBufferRef>> CreateCVPixelBufferCopyingImageFrame(
   vImage_Buffer v_dest = vImageForCVPixelBuffer(*pixel_buffer);
   auto status = copy_fun(v_image, v_dest);
 
-  cv_err = CVPixelBufferUnlockBaseAddress(*pixel_buffer,
-                                          kCVPixelBufferLock_ReadOnly);
+  cv_err = CVPixelBufferUnlockBaseAddress(*pixel_buffer, 0);
   RET_CHECK(cv_err == kCVReturnSuccess)
       << "CVPixelBufferUnlockBaseAddress failed: " << cv_err;
 
