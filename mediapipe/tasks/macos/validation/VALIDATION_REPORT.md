@@ -13,8 +13,12 @@ empty Intel GPU results is in MediaPipe's CPU→GPU image upload (see
 [GPU (Metal) on Intel](#gpu-metal-on-intel-investigation)). With the fix, the
 Intel GPU matrix passes against native arm64. arm64 results stay
 bit-identical to the pre-fix build, and the Swift Intel-GPU guard is removed.
-The new local artifact's swiftpm-checksum is
-`1934fad6576b153b693f19004c922beffcdec5b9ca5d4e7daa218a37253b38e0`.
+The tested artifact (swiftpm-checksum `1934fad6…`) was rebuilt from the
+committed sources for release as **`v1.0.0-apple.4`**, with swiftpm-checksum
+`e4f002fca09c84f5189e48138dccec7ef3e6c73c19b4a1e5ab8beb4415b6596d`. All
+Mach-O binaries are byte-identical to the tested build: macOS UUIDs
+`F4D74DD5…` (arm64) and `A845EA69…` (x86_64). Only the xcframework
+`Info.plist` entry order and temporary paths inside the dSYM differ.
 Results are in
 [`results/2026-10-26/intel-gpu-fix/`](results/2026-10-26/intel-gpu-fix/).
 Rows below without a fix note are from the pre-fix build. That build's
