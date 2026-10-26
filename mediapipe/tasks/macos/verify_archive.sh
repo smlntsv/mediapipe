@@ -57,17 +57,39 @@ if [[ -z "${BIN}" ]]; then
   echo "FAIL: no embedded ${FRAMEWORK_NAME}.framework binary found in ${ARCHIVE}/Products" >&2
   exit 1
 fi
-echo "embedded binary: ${BIN#"${ARCHIVE}"/}"
+echo "embedded binary: ${BIN#"${ARCHIVE}"/} ($(lipo -archs "${BIN}"))"
 
 # --- 1. Portability ----------------------------------------------------------
-NONPORTABLE="$(otool -L "${BIN}" | tail -n +2 | sed 's/^[[:space:]]*//' | awk '{print $1}' \
-  | grep -vE '^/System/|^/usr/lib/|^@rpath|^@loader_path|^@executable_path' || true)"
+# Every Mach-O shipped in the framework (the binary AND the bundled OpenCV/zlib
+# dylibs under Libraries/), for EVERY architecture: a universal macOS slice is
+# fat, and `otool -L` on a fat file prints one "(architecture x)" section per
+# arch, so each arch is inspected separately. Bundled dylibs must also carry
+# every architecture the framework binary has, or that arch dyld-fails.
+BIN_ARCHS="$(lipo -archs "${BIN}" | tr ' ' '\n' | sort | xargs)"
+MACHOS=("${BIN}")
+if [[ -d "$(dirname "${BIN}")/Libraries" ]]; then
+  while IFS= read -r f; do MACHOS+=("${f}"); done \
+    < <(find "$(dirname "${BIN}")/Libraries" -type f -name '*.dylib' | sort)
+fi
+NONPORTABLE=""
+for f in "${MACHOS[@]}"; do
+  f_archs="$(lipo -archs "${f}" | tr ' ' '\n' | sort | xargs)"
+  if [[ "${f_archs}" != "${BIN_ARCHS}" ]]; then
+    echo "FAIL: $(basename "${f}") has architectures '${f_archs}', framework binary has '${BIN_ARCHS}'" >&2
+    FAIL=1
+  fi
+  for a in ${f_archs}; do
+    bad="$(otool -arch "${a}" -L "${f}" | tail -n +2 | awk '{print $1}' \
+      | grep -vE '^/System/|^/usr/lib/|^@rpath|^@loader_path|^@executable_path' || true)"
+    [[ -z "${bad}" ]] || NONPORTABLE+="$(basename "${f}") [${a}]: $(echo ${bad})"$'\n'
+  done
+done
 if [[ -n "${NONPORTABLE}" ]]; then
   echo "FAIL: non-portable dylib references (crashes at dyld time off the build machine):" >&2
-  echo "${NONPORTABLE}" | sed 's/^/    /' >&2
+  echo -n "${NONPORTABLE}" | sed 's/^/    /' >&2
   FAIL=1
 else
-  echo "PASS: portability — no /opt/local, /opt/homebrew or /usr/local references"
+  echo "PASS: portability — ${#MACHOS[@]} Mach-O file(s), archs ${BIN_ARCHS}: no /opt/local, /opt/homebrew or /usr/local references"
 fi
 
 # --- 2. dSYM presence + UUID match ------------------------------------------
