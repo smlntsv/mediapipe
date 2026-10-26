@@ -13,6 +13,9 @@
 // limitations under the License.
 
 import Foundation
+#if arch(x86_64) && os(macOS)
+import Metal
+#endif
 
 /// The accelerator a task runs on.
 public enum MediaPipeDelegate: String, Sendable, Codable {
@@ -54,7 +57,8 @@ public enum RunningMode: String, Sendable, Codable {
 /// `MP_ENABLE_GPU=1 build_macos_xcframework.sh`).
 let mediaPipeGPUArtifactAvailable = true
 
-/// Throws `unsupportedDelegate` if `.gpu` is requested against a CPU-only build.
+/// Throws `unsupportedDelegate` if `.gpu` is requested against a CPU-only build,
+/// or (Intel Macs only) on a GPU the Metal path has not been validated on.
 func checkDelegate(_ delegate: MediaPipeDelegate) throws {
     if delegate == .gpu && !mediaPipeGPUArtifactAvailable {
         throw MediaPipeError.unsupportedDelegate(
@@ -62,7 +66,40 @@ func checkDelegate(_ delegate: MediaPipeDelegate) throws {
             + "built CPU-only (MEDIAPIPE_DISABLE_GPU=1). Use .cpu, or build and "
             + "ship a GPU-capable MediaPipeTasksC.xcframework.")
     }
+    #if arch(x86_64) && os(macOS)
+    if delegate == .gpu {
+        try checkIntelMacGPU()
+    }
+    #endif
 }
+
+#if arch(x86_64) && os(macOS)
+/// The MediaPipe Metal pipeline (CVPixelBuffer→Metal image conversion + the
+/// TFLite Metal delegate) is validated on Apple GPUs only. On a real Intel Mac
+/// (MacBookPro16,1: AMD Radeon Pro 5500M, the system default Metal device) it
+/// runs without any error yet returns NO detections, so an Intel/AMD GPU is
+/// rejected up front instead of silently producing empty results. Apple GPUs
+/// (an x86_64 process under Rosetta) are unaffected and keep working.
+/// Setting MEDIAPIPE_ALLOW_UNVALIDATED_GPU=1 skips this check (for validating
+/// new hardware/driver combinations, see validation/README.md).
+///
+/// arm64 builds compile this out entirely (Apple-silicon Macs always have an
+/// Apple GPU), so Apple-silicon behavior is unchanged.
+private func checkIntelMacGPU() throws {
+    if ProcessInfo.processInfo.environment["MEDIAPIPE_ALLOW_UNVALIDATED_GPU"] == "1" { return }
+    guard let device = MTLCreateSystemDefaultDevice() else {
+        throw MediaPipeError.unsupportedDelegate(
+            "The GPU delegate needs a Metal device, and none is available. Use .cpu.")
+    }
+    if !device.supportsFamily(.apple1) {
+        throw MediaPipeError.unsupportedDelegate(
+            "The GPU delegate is not supported on this Intel Mac's GPU "
+            + "(\(device.name)): MediaPipe's Metal path is validated on Apple GPUs "
+            + "only and returns no detections on Intel/AMD GPUs. Use .cpu (or "
+            + ".coreML, which runs on Intel Macs without the Neural Engine).")
+    }
+}
+#endif
 
 /// Resolves the Core ML model-cache directory for a landmarker: the explicit
 /// option when set, otherwise the directory containing the `.task` model (the
