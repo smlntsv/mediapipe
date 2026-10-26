@@ -33,18 +33,25 @@ they do not count.
 |---|---|---|---|
 | Apple silicon (arm64) | ✅ | ✅ | ✅ (ANE) |
 | x86_64 under Rosetta (Apple GPU) | ✅ | ✅ | ✅ |
-| Intel Mac, Intel/AMD GPU | ✅ | ❌ throws `MediaPipeError.unsupportedDelegate` | ✅ (CPU/GPU, no ANE) |
+| Intel Mac, Intel/AMD GPU | ✅ | ✅ (validated on AMD Radeon Pro 5500M) | ✅ (CPU/GPU, no ANE) |
 
-On a real Intel Mac (MacBookPro16,1, AMD Radeon Pro 5500M as the default
-Metal device), MediaPipe's Metal path runs without errors but returns **no
-detections**. To avoid silently empty results, the Swift wrapper rejects
-`.gpu` when the default Metal device is not an Apple GPU. The check lives in
-`checkDelegate` in `Modes.swift`, is compiled only into x86_64 (`#if
-arch(x86_64)`), and leaves arm64 untouched. Consumers that fall back on
-`unsupportedDelegate`, such as a `[gpu, cpu]` auto chain, land on CPU. To
-re-measure new hardware or drivers, set `MEDIAPIPE_ALLOW_UNVALIDATED_GPU=1`
-(the validation runner's `--allow-unvalidated-gpu`). Details and the open
-root-cause candidates are in the validation report.
+Metal on Intel/AMD GPUs needed two fixes in shared MediaPipe code. Both
+leave the Apple-GPU result unchanged:
+
+- `mediapipe/objc/util.cc`, CPU→GPU image upload: the pixels were written
+  into the IOSurface-backed `CVPixelBuffer` under a
+  `kCVPixelBufferLock_ReadOnly` lock. Apple GPUs see those writes anyway.
+  Intel and AMD GPUs never do and sample an all-zero image, so every model
+  ran on black input and returned **no detections, without any error**. The
+  buffer is now locked read-write. This was the root cause.
+- `mediapipe/calculators/tensor/image_to_tensor_converter_metal.cc`: on
+  non-Apple GPUs the image→tensor crop renders into a private texture and
+  blits it into the tensor buffer. Rendering directly into a texture that
+  aliases the buffer is rejected by the Metal validation layer there. Apple
+  GPUs keep the direct path.
+
+The x86_64-only Swift guard that used to reject `.gpu` on non-Apple GPUs has
+been removed. Details are in the validation report.
 
 Why the x86_64 OpenCV is source-built: on an Apple-silicon build machine,
 MacPorts `opencv3`/`zlib` are arm64-only, so the x86_64 link fails with

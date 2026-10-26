@@ -22,10 +22,6 @@
 #   ./run_validation.sh --quick         # short video pass (smoke test)
 #   ./run_validation.sh --delegates "cpu gpu"   # default: cpu gpu [coreml if bundled]
 #   ./run_validation.sh --loops 10      # sustained video loops (default 5)
-#   ./run_validation.sh --allow-unvalidated-gpu --delegates gpu
-#                                       # bypass the Swift wrapper's Intel-GPU guard
-#                                       # (MEDIAPIPE_ALLOW_UNVALIDATED_GPU=1) to
-#                                       # re-measure Metal on Intel/AMD GPUs
 #
 # Writes results/<execution>/ (execution = native-arm64 | native-x86_64 |
 # rosetta-x86_64): env.json, image_<delegate>.json, video_<delegate>.json,
@@ -55,7 +51,6 @@ while (( $# )); do
     --loops) LOOPS="$2"; shift ;;
     --delegates) DELEGATES="$2"; shift ;;
     --out) OUT_ROOT="$2"; shift ;;
-    --allow-unvalidated-gpu) export MEDIAPIPE_ALLOW_UNVALIDATED_GPU=1 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
   shift
@@ -84,9 +79,6 @@ OUT="${OUT_ROOT}/${EXECUTION:-unknown}"
 rm -rf "${OUT}"
 mkdir -p "${OUT}/logs" "${OUT}/crash"
 echo "${ENV_JSON}" > "${OUT}/env.json"
-if [[ "${MEDIAPIPE_ALLOW_UNVALIDATED_GPU:-0}" == 1 ]]; then
-  echo "note: MEDIAPIPE_ALLOW_UNVALIDATED_GPU=1 (Intel-GPU guard bypassed)" | tee "${OUT}/UNVALIDATED_GPU_ALLOWED"
-fi
 printf 'test\tdelegate\texit\tresult\n' > "${OUT}/summary.tsv"
 
 echo "== MediaPipe validation: ${EXECUTION} on $(sysctl -n hw.model) ($(sw_vers -productVersion)), host uname ${HOST_ARCH}"

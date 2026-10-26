@@ -1,0 +1,43 @@
+# 2026-10-26T11:13:27Z  universal binaries built from the .mm files in this directory
+
+## iosurface_lock_repro — Apple M1 Pro (macOS 26.3.1)
+Apple M1 Pro (apple1=1, unified=1)
+  lock=ReadOnly  frame 0: GPU sees 196608/196608 expected pixels, px0 BGRA=(10,128,200,255) want (10,128,200,255)
+  lock=0 (rw)    frame 0: GPU sees 196608/196608 expected pixels, px0 BGRA=(10,128,200,255) want (10,128,200,255)
+  lock=ReadOnly  frame 1: GPU sees 196608/196608 expected pixels, px0 BGRA=(50,128,200,255) want (50,128,200,255)
+  lock=0 (rw)    frame 1: GPU sees 196608/196608 expected pixels, px0 BGRA=(50,128,200,255) want (50,128,200,255)
+exit 0
+
+## iosurface_lock_repro — intel-mac (MacBookPro16,1, macOS 26.7.1)
+Intel(R) UHD Graphics 630 (apple1=0, unified=1)
+  lock=ReadOnly  frame 0: GPU sees      0/196608 expected pixels, px0 BGRA=(0,0,0,0) want (10,128,200,255)
+  lock=0 (rw)    frame 0: GPU sees 196608/196608 expected pixels, px0 BGRA=(10,128,200,255) want (10,128,200,255)
+  lock=ReadOnly  frame 1: GPU sees      0/196608 expected pixels, px0 BGRA=(0,0,0,0) want (50,128,200,255)
+  lock=0 (rw)    frame 1: GPU sees 196608/196608 expected pixels, px0 BGRA=(50,128,200,255) want (50,128,200,255)
+AMD Radeon Pro 5500M (apple1=0, unified=0)
+  lock=ReadOnly  frame 0: GPU sees      0/196608 expected pixels, px0 BGRA=(0,0,0,0) want (10,128,200,255)
+  lock=0 (rw)    frame 0: GPU sees 196608/196608 expected pixels, px0 BGRA=(10,128,200,255) want (10,128,200,255)
+  lock=ReadOnly  frame 1: GPU sees      0/196608 expected pixels, px0 BGRA=(0,0,0,0) want (50,128,200,255)
+  lock=0 (rw)    frame 1: GPU sees 196608/196608 expected pixels, px0 BGRA=(50,128,200,255) want (50,128,200,255)
+exit 2
+
+## linear_rt_repro — Apple M1 Pro (macOS 26.3.1)
+Apple M1 Pro (apple1=1, unified=1, lowPower=0)
+  buffer-aliased texture     192x192: 36864/36864 pixels correct, px0=(0.25,0.5,0.75,0) status=4
+  private texture + blit     192x192: 36864/36864 pixels correct, px0=(0.25,0.5,0.75,0) status=4
+  buffer-aliased texture     224x224: 50176/50176 pixels correct, px0=(0.25,0.5,0.75,0) status=4
+  private texture + blit     224x224: 50176/50176 pixels correct, px0=(0.25,0.5,0.75,0) status=4
+exit 0
+
+## linear_rt_repro — intel-mac (MacBookPro16,1, macOS 26.7.1)
+Intel(R) UHD Graphics 630 (apple1=0, unified=1, lowPower=1)
+  buffer-aliased texture     192x192: 36864/36864 pixels correct, px0=(0.25,0.5,0.75,0) status=4
+  private texture + blit     192x192: 36864/36864 pixels correct, px0=(0.25,0.5,0.75,0) status=4
+  buffer-aliased texture     224x224: 50176/50176 pixels correct, px0=(0.25,0.5,0.75,0) status=4
+  private texture + blit     224x224: 50176/50176 pixels correct, px0=(0.25,0.5,0.75,0) status=4
+AMD Radeon Pro 5500M (apple1=0, unified=0, lowPower=0)
+  buffer-aliased texture     192x192: 36864/36864 pixels correct, px0=(0.25,0.5,0.75,0) status=4
+  private texture + blit     192x192: 36864/36864 pixels correct, px0=(0.25,0.5,0.75,0) status=4
+  buffer-aliased texture     224x224: 50176/50176 pixels correct, px0=(0.25,0.5,0.75,0) status=4
+  private texture + blit     224x224: 50176/50176 pixels correct, px0=(0.25,0.5,0.75,0) status=4
+exit 0

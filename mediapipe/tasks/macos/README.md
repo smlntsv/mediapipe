@@ -7,8 +7,8 @@ Simulator, or Mac Catalyst.
 
 > **Intel Macs:** the macOS slice can also be built for x86_64, or as a
 > universal `macos-arm64_x86_64` slice. CPU and Core ML are validated natively
-> on an Intel Mac. The Metal GPU delegate is not supported on Intel/AMD GPUs
-> and throws `unsupportedDelegate`. See [ARCHITECTURES.md](ARCHITECTURES.md)
+> on an Intel Mac, and so is the Metal GPU delegate on its AMD GPU. See
+> [ARCHITECTURES.md](ARCHITECTURES.md)
 > and [validation/VALIDATION_REPORT.md](validation/VALIDATION_REPORT.md).
 
 It wraps MediaPipe's existing **C Tasks API** (`mediapipe/tasks/c/...`) through a

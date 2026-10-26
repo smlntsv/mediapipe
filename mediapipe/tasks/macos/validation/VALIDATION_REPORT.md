@@ -8,18 +8,32 @@ into the binary is identical to `6cecfe31b`, the revision StaxelPointer pins
 `95f727c247c10d569002633f26289ff7ef6916756e85ec8506a7ffa49c962c7f`.
 Nothing was published or pushed, and no downstream app was changed.
 
+**Update (same day): Metal on Intel/AMD GPUs fixed.** The root cause of the
+empty Intel GPU results is in MediaPipe's CPU→GPU image upload (see
+[GPU (Metal) on Intel](#gpu-metal-on-intel-investigation)). With the fix, the
+Intel GPU matrix passes against native arm64. arm64 results stay
+bit-identical to the pre-fix build, and the Swift Intel-GPU guard is removed.
+The new local artifact's swiftpm-checksum is
+`1934fad6576b153b693f19004c922beffcdec5b9ca5d4e7daa218a37253b38e0`.
+Results are in
+[`results/2026-10-26/intel-gpu-fix/`](results/2026-10-26/intel-gpu-fix/).
+Rows below without a fix note are from the pre-fix build. That build's
+arm64 results are identical to the fixed build, and the fix does not touch
+the CPU or Core ML paths. The fix changes two compiled source files, so
+"identical to `6cecfe31b`" above describes only the pre-fix build.
+
 ## Verdict
 
 | | CPU (XNNPACK) | GPU (Metal) | Core ML |
 |---|---|---|---|
 | **Native arm64**, M1 Pro, macOS 26.3.1 | ✅ validated: bit-identical to `v1.0.0-apple.3` | ✅ validated: bit-identical to `apple.3` | ✅ validated: bit-identical to `apple.3` |
 | **Rosetta x86_64**, same M1 Pro (not Intel validation) | ✅ smoke-tested, within tolerance | ✅ smoke-tested (Apple GPU) | ✅ smoke-tested |
-| **Native x86_64**, real Intel Mac: MacBookPro16,1, i9-9880H, AMD Radeon Pro 5500M + Intel UHD 630, macOS 26.7.1 | ✅ **validated natively** | ❌ **unsupported**: Metal runs but returns no detections. Now rejected with `MediaPipeError.unsupportedDelegate` | ✅ **validated natively** (no Neural Engine on Intel) |
+| **Native x86_64**, real Intel Mac: MacBookPro16,1, i9-9880H, AMD Radeon Pro 5500M + Intel UHD 630, macOS 26.7.1 | ✅ **validated natively** | ✅ **validated natively** on the AMD Radeon Pro 5500M, after the upload fix below | ✅ **validated natively** (no Neural Engine on Intel) |
 
 Not covered:
 
 - **Intel Macs on macOS 13–15.** The only Intel host runs macOS 26.7.1. The x86_64 slice is built for `minos 13.0` throughout, but has not been *run* on an older OS.
-- **The integrated Intel UHD 630 for Metal.** It would require changing the Mac's graphics-switching system setting.
+- **MediaPipe on the integrated Intel UHD 630.** Selecting it would require changing the Mac's graphics-switching system setting. The standalone repros (see GPU below) do run on it and show the same root cause and the same fix.
 - **Pose and Face on Intel.** They share the same runtime, and the Swift suite covers them under Rosetta, but the Intel matrix ran Hand only.
 
 ## What was run
@@ -28,8 +42,8 @@ Not covered:
 |---|---|---|---|
 | Build: each arch independently, then lipo-merge, audit and dSYM UUIDs | ✅ | (same artifact) | (same artifact) |
 | Existing Swift suite (`swift test`; 29 tests: hand/pose/face, CPU+GPU, IMAGE+VIDEO, memory stress) | ✅ 23 passed, 6 env-gated skips, 0 failures. Same set as against `apple.3` | ✅ 23 passed, 6 skips, 0 failures (`arch -x86_64 xctest`; includes the 7 GPU tests on the Apple GPU) | — (no Xcode on the Intel host) |
-| `mp-arch-validate` matrix: 4 fixed stills × 23 runs, plus 5 × 645-frame sustained VIDEO, × cpu/gpu/coreml | ✅ all PASS, 0 crashes | ✅ all PASS, 0 crashes | ✅ cpu + coreml PASS, gpu UNSUPPORTED, 0 crashes |
-| 20-loop soak (12,900 frames) | gpu (new and `apple.3`), cpu | — | cpu, coreml (+ 60-loop cpu soak, below) |
+| `mp-arch-validate` matrix: 4 fixed stills × 23 runs, plus 5 × 645-frame sustained VIDEO, × cpu/gpu/coreml | ✅ all PASS, 0 crashes | ✅ all PASS, 0 crashes | ✅ all PASS (gpu after the fix), 0 crashes |
+| 20-loop soak (12,900 frames) | gpu (new and `apple.3`), cpu | — | cpu, coreml, gpu after the fix (+ 60-loop cpu soak, below) |
 
 Inputs were identical everywhere, with SHA-256 recorded in every report:
 `hand_landmarker.task`, `test_image.jpg`, and three lossless PNG stills
@@ -49,7 +63,7 @@ p90 per-frame max |dxy| ≤ 0.02.
 | `apple.3` arm64 vs new arm64 | cpu / gpu / coreml | **0.00000** (all 12 still×delegate pairs) | identical | identical every loop | **100%** | **0.0000** |
 | native arm64 vs **native Intel** | cpu | 0.00004 | identical (max score delta 0.0006) | 77.8% / 77.7% | 99.2% | 0.0068 |
 | native arm64 vs **native Intel** | coreml | 0.00252 | identical (≤ 0.0078) | 77.7% / 77.5% | 98.8% | 0.0066 |
-| native arm64 vs **native Intel** | gpu | — UNSUPPORTED (see GPU below) | | | | |
+| native arm64 vs **native Intel** (after the fix) | gpu | 0.00550 | identical (≤ 0.0068) | 77.8% / 77.8% | 99.7% | 0.0074 |
 | native arm64 vs Rosetta | cpu | 0.00018 | identical | 77.8% / 77.8% | 99.7% | 0.0038 |
 | native arm64 vs Rosetta | gpu | 0.00069 | identical | 77.8% / 77.8% | 99.8% | 0.0038 |
 | native arm64 vs Rosetta | coreml | 0.00239 | identical (≤ 0.0225) | 77.7% / 77.7% | 99.4% | 0.0038 |
@@ -77,7 +91,7 @@ loop 0.
 | Rosetta x86_64 | coreml | 9.6 / 8.5 / 14.1 / 21.6 | 104.2 fps | 52.7 ms | 222 → 229 MB (234)† |
 | **native Intel** (i9-9880H) | cpu | 23.7 / 22.9 / 28.1 / 37.5 | 42.3 fps | 23.7 ms | 61 → 61 MB (64) |
 | **native Intel** | coreml | 14.1 / 14.3 / 16.6 / 22.0 | 70.4 fps | 325.6 ms (Core ML model load) | 108 → 109 MB (112) |
-| **native Intel** | gpu | UNSUPPORTED | | | |
+| **native Intel** (after the fix) | gpu | 21.1 / 20.6 / 26.2 / 32.8 | 47.4 fps | 27.5 ms | 522 → 492 MB (522) |
 
 Soak runs (20 loops = 12,900 frames, unless noted):
 
@@ -88,6 +102,7 @@ Soak runs (20 loops = 12,900 frames, unless noted):
 | native arm64 cpu | 24.24 | 104 → 106 MB (110) | +0.16 |
 | native Intel cpu | 23.79 | 59 → 75 MB (77) | +0.72 |
 | native Intel coreml | 14.10 | 107 → 109 MB (112) | +0.14 |
+| native Intel gpu (after the fix) | 21.36 (p99 33.5) | 508 → 531 MB (532), mean 402 / 403 / 403 MB by thirds | +0.19 |
 | native Intel cpu, 60 loops (38,700 frames) | 23.29 (p99 36.9) | 59 → 78 MB (80) | +0.42 overall; about +0.16 in the middle third |
 
 Intel CPU memory shape over 38,700 frames, by thirds:
@@ -123,41 +138,106 @@ collects DiagnosticReports, and every `crash/` directory is empty.
 
 ## GPU (Metal) on Intel: investigation
 
-- **What happens:** with `.gpu` on the Intel host, MediaPipe selects the
-  system default Metal device, the discrete **AMD Radeon Pro 5500M**
-  (`hasUnifiedMemory = false`, GPU family `mac2`, not `apple*`). OpenGL
-  (`ATI-7.1.8`) also lands on the AMD GPU. The TFLite Metal delegate
-  initializes ("Created TensorFlow Lite delegate for Metal") and each frame
-  takes about 15 ms. **Every result is empty:** 0 hands on all four stills and
-  on all 1,290 probe video frames. There is no error and no crash. This is a
-  silent wrong result, which is the worst failure mode for consumers.
-- **Not an x86_64 build problem:** the identical x86_64 machine code runs the
-  Metal path correctly on the Apple GPU under Rosetta (within 0.0007 of
-  native arm64, and all GPU tests in the Swift suite pass).
-- **Root cause: not isolated in this increment.** Candidates, in order of
-  suspicion:
-  1. Shared-storage `MTLBuffer` tensors (`tensor.cc`,
-     `newBufferWithBytesNoCopy … StorageModeShared`), or
-     CVPixelBuffer/IOSurface-backed textures, on a discrete
-     non-unified-memory GPU.
-  2. TFLite Metal kernels on AMD.
-  3. Half-precision conversion in `image_to_tensor_converter_metal`.
+**Symptom (before the fix).** With `.gpu` on the Intel host, MediaPipe uses
+the system default Metal device, the discrete **AMD Radeon Pro 5500M**
+(`hasUnifiedMemory = false`, family `mac2`). OpenGL (`ATI-7.1.8`) also lands
+on the AMD GPU. The TFLite Metal delegate initializes and each frame takes
+about 15 ms, but **every result is empty**: 0 hands on all four stills and on
+all 1,290 probe video frames, with no error and no crash. The same x86_64 code
+works on the Apple GPU under Rosetta, so this was not an x86_64 build issue.
 
-  The `MEDIAPIPE_ALLOW_UNVALIDATED_GPU=1` probe reproduces the failure on
-  demand; see the next-steps section below.
-- **Untested:** the integrated Intel UHD 630 (unified memory). Selecting it
-  needs the system's automatic graphics switching turned off, a system
-  setting that was deliberately not changed.
-- **Mitigation shipped in this change:** the Swift wrapper's `checkDelegate`
-  now rejects `.gpu` with `MediaPipeError.unsupportedDelegate` in **x86_64
-  builds only**, when the default Metal device is not an Apple GPU
-  (`!supportsFamily(.apple1)`). The message reads: *"The GPU delegate is not
-  supported on this Intel Mac's GPU (AMD Radeon Pro 5500M) … Use .cpu (or
-  .coreML …)"*. Consumers whose delegate selection already falls back on
-  `unsupportedDelegate` (an auto chain of `[gpu, cpu]`) therefore land on CPU
-  automatically instead of silently detecting nothing. Under Rosetta (Apple
-  GPU) `.gpu` stays enabled. In arm64 builds the check is compiled out
-  (`#if arch(x86_64)`).
+**Root cause: the CPU→GPU image upload writes under a read-only lock.**
+On the GPU path, `ImageCloneCalculator` moves the input `ImageFrame` to the GPU
+through `GpuBufferStorageCvPixelBuffer`'s converter, which calls
+`CreateCVPixelBufferForImageFrame` (`mediapipe/objc/util.cc`). For SRGBA input
+it creates an IOSurface-backed `CVPixelBuffer`, then locks it with
+`kCVPixelBufferLock_ReadOnly` and **writes** the R/B-swapped pixels into it
+with the CPU. It also unlocks with `kCVPixelBufferLock_ReadOnly`. The read-only
+flag tells IOSurface that the CPU did not modify the surface.
+
+- Apple GPUs see the written pixels anyway.
+- Intel and AMD GPUs never do. `CVMetalTextureCache` vends a texture whose
+  contents are all zero, so the palm detector ran on a black image, found
+  nothing, and the graph returned empty results without any error.
+
+`CreateCVPixelBufferCopyingImageFrame` in the same file had the same pattern.
+
+**Evidence.** Standalone repros, sources and output are in
+[`results/2026-10-26/intel-gpu-fix/repro/`](results/2026-10-26/intel-gpu-fix/repro/).
+They run on every Metal device of the machine, which also covers the
+integrated GPU that MediaPipe cannot select without changing system settings.
+
+| Repro | Apple M1 Pro | Intel UHD 630 (unified memory) | AMD Radeon Pro 5500M (discrete) |
+|---|---|---|---|
+| `iosurface_lock_repro`: CPU writes under a **read-only** lock, GPU reads via `CVMetalTextureCache` | 196,608 / 196,608 px correct | **0 / 196,608** (all zero) | **0 / 196,608** (all zero) |
+| same, lock flags `0` (read-write) | 196,608 / 196,608 | 196,608 / 196,608 | 196,608 / 196,608 |
+| `linear_rt_repro`: render into a texture aliasing an `MTLBuffer` (the image→tensor pattern) | correct | correct | correct |
+
+The failure is therefore not specific to discrete memory or to AMD: it
+affects both Intel-Mac GPUs. A build with only the image→tensor change below
+still returned 0 hands. Adding the lock fix restored detections.
+
+The earlier suspects were ruled out:
+
+- Shared-storage `MTLBuffer` tensors work: the whole pipeline passes after the
+  fix with them unchanged.
+- TFLite Metal kernels on AMD work: results match arm64 within tolerance.
+- The half-precision path is not involved: the converter uses `kF32C4`.
+
+**Fix (two changes in shared MediaPipe code):**
+
+1. `mediapipe/objc/util.cc`: lock and unlock the new pixel buffer read-write
+   (flags `0`) in `CreateCVPixelBufferForImageFrame` and
+   `CreateCVPixelBufferCopyingImageFrame`. This is the root-cause fix. It is
+   unconditional, because the read-only flag was wrong on every GPU and only
+   happened to work on Apple GPUs.
+2. `mediapipe/calculators/tensor/image_to_tensor_converter_metal.cc`:
+   defensive, not the root cause. With `MTL_DEBUG_LAYER=1` on the AMD GPU, the
+   first assertion is "linear textures cannot be created with usage
+   MTLTextureUsageRenderTarget": the image→tensor crop renders into a texture
+   aliasing the tensor's `MTLBuffer`. It works today (see the repro), but it is
+   outside the API contract on non-Apple GPUs. On GPUs without
+   `MTLGPUFamilyApple1`, the converter now renders into a private texture and
+   blits it into the buffer (same values, same bytes per row). Apple GPUs keep
+   the original direct path. With both changes, a GPU run on the AMD GPU
+   under `MTL_DEBUG_LAYER=1` completes with no assertion and correct results.
+
+**Results after the fix:**
+
+- **Intel, AMD 5500M:** the full matrix passes `compare_reports.py` against
+  native arm64, with no `--allow-unsupported`. Image max |dxy| is 0.0055 on
+  the worst still, 0.0004–0.0027 on the others. Video hand-rate is 77.8% /
+  77.8% in every loop, with 99.7% frame agreement and p90 |dxy| 0.0074.
+- **Intel performance:** about 21 ms/frame (47 fps). That is only slightly
+  faster than XNNPACK on this i9 (23.7 ms) and slower than Core ML (14.1 ms).
+  The CPU→IOSurface upload and the PCIe round trips dominate. For Intel
+  consumers, `.coreML` remains the fastest delegate.
+- **Intel memory:** the 20-loop soak (12,900 frames) is flat: 508 → 531 MB
+  (peak 532), slope +0.19 MB/1k frames, and the mean footprint is
+  402 / 403 / 403 MB across thirds.
+- **arm64:** `compare_reports.py` of the pre-fix and fixed arm64 builds shows
+  **0.00000** on every still and every landmark, and identical video for
+  cpu/gpu/coreml (100% agreement, p90 0.0000). The arm64 GPU footprint
+  differs between runs because of machine state. Back to back, old and new
+  peak at 1537/1541 MB and 1543/1540 MB. The Swift suite on arm64 passes
+  with 0 failures, including the hand/pose GPU parity, smoke and
+  memory-stress tests. Face tests were skipped because the repo has no face
+  test image.
+- **Rosetta:** passes against native arm64 (gpu image max |dxy| 0.0007).
+
+**Guard removed.** The x86_64-only `checkIntelMacGPU` in `Modes.swift`
+rejected `.gpu` on non-Apple GPUs. It is deleted, along with
+`MEDIAPIPE_ALLOW_UNVALIDATED_GPU` and the runner's
+`--allow-unvalidated-gpu`. `Modes.swift` is back to its pre-guard content.
+The guard existed only because of the empty results, and the root cause
+applies to all Intel-Mac GPUs, as does the fix. The guard ships in the same
+Swift package as the binary it protected, so no released consumer depends
+on it.
+
+**Still not run:** MediaPipe on the integrated UHD 630 as its Metal device
+(only the repros cover it), other Intel-Mac GPUs (Iris, Radeon 5xx/Vega), and
+Intel Macs on macOS 13–15.
+
 - **Core ML on Intel** works. It runs on CPU/GPU, since there is no ANE. It
   logs `MPSGraph doesn't support padded tensors on Intel macs` (Core ML then
   takes another path; results are within 0.0025 of arm64). It is about 1.7×
@@ -169,7 +249,7 @@ collects DiagnosticReports, and every `crash/` directory is empty.
 - **Swift API / ObjC++ bridge / C API:** no architecture-conditional code
   (grepped for `arm64`, `x86`, `__aarch64__`, `__x86_64__`, `arch(`,
   `TARGET_CPU`). Struct layouts are the same LP64 on both architectures. The
-  only new conditional is the Intel GPU guard above.
+  Intel GPU guard that briefly added one was removed with the Metal fix.
 - **Native runtime:** the full `//mediapipe/tasks/c:mediapipe_macos` target
   compiles for `darwin_x86_64` without source changes. XNNPACK selects x86
   kernels at runtime (cpuinfo). The i9-9880H reports AVX2/FMA and no AVX-512;
@@ -250,8 +330,14 @@ published):**
 4. **Stricter gates:** the iOS packaging and `verify_archive.sh` now also
    audit `Libraries/*.dylib`. A release that previously slipped through with a
    non-portable bundled lib would now fail, which is intended.
-5. **Intel GPU guard:** compiled only into x86_64, so ARM is unaffected. Intel
-   consumers selecting `.gpu` get an error instead of empty results.
+5. **Metal fix for Intel GPUs:** two shared source files change
+   (`mediapipe/objc/util.cc`, `image_to_tensor_converter_metal.cc`), so the
+   arm64 binary is no longer built from sources identical to `6cecfe31b`.
+   Its results are still bit-identical: 0.00000 on cpu/gpu/coreml against
+   the pre-fix build. Apple GPUs keep the direct image→tensor path. The only
+   change they run is the read-write lock during the CPU→GPU upload. The
+   short-lived x86_64 guard is gone, so Intel consumers selecting `.gpu` now
+   get Metal.
 
 **Recommended follow-up (not done here, because it changes ARM bits):** the
 arm64 bundled MacPorts libs have `minos 26.0` while the package claims macOS
@@ -264,8 +350,9 @@ needs its own validation pass: rerun this matrix, then compare against
 
 ## Remaining blockers before calling Intel "released"
 
-1. **GPU on Intel/AMD:** root-cause the empty results, or keep the guard.
-   Test the integrated GPU on a machine where it is the default device.
+1. **GPU on other Intel-Mac GPUs:** fixed and validated on the AMD 5500M.
+   MediaPipe has not run on an integrated Intel GPU as its Metal device (the
+   repros cover the UHD 630) or on other AMD generations.
 2. **macOS 13–15 on Intel:** run the bundle on an Intel Mac with an older
    macOS. This is the realistic Intel fleet, since few Intel Macs run macOS
    26.
