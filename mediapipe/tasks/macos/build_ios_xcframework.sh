@@ -164,12 +164,20 @@ CREATE_ARGS=(
   -debug-symbols "${WORK_DIR}/sim/${FRAMEWORK_NAME}.framework.dSYM"
 )
 if [[ "${MP_IOS_ONLY:-0}" != "1" ]]; then
-  MACOS_FW="${XCFRAMEWORK}/macos-arm64/${FRAMEWORK_NAME}.framework"
-  if [[ ! -d "${MACOS_FW}" ]]; then
-    echo "error: macOS slice not found at ${MACOS_FW}." >&2
+  # The macOS slice identifier depends on MP_MACOS_ARCHS at macOS-build time:
+  # macos-arm64 (default), macos-x86_64, or macos-arm64_x86_64 (universal).
+  MACOS_SLICES=()
+  for d in "${XCFRAMEWORK}"/macos-*; do
+    [[ -d "${d}/${FRAMEWORK_NAME}.framework" ]] && MACOS_SLICES+=("${d}")
+  done
+  if (( ${#MACOS_SLICES[@]} != 1 )); then
+    echo "error: expected exactly one macOS slice in ${XCFRAMEWORK}, found ${#MACOS_SLICES[@]}." >&2
     echo "       Run build_macos_xcframework.sh first, or set MP_IOS_ONLY=1." >&2
     exit 1
   fi
+  MACOS_SLICE_DIR="${MACOS_SLICES[0]}"
+  echo "    reusing macOS slice $(basename "${MACOS_SLICE_DIR}")"
+  MACOS_FW="${MACOS_SLICE_DIR}/${FRAMEWORK_NAME}.framework"
   # Reuse the macOS slice's embedded dSYM when build_macos_xcframework.sh
   # produced one (it does since the Tier-A change); otherwise generate it here
   # from the slice binary — the UUID is fixed at link time, so a late dsymutil
@@ -178,8 +186,8 @@ if [[ "${MP_IOS_ONLY:-0}" != "1" ]]; then
   # output's parent is cleaner.
   MACOS_DSYM="${WORK_DIR}/macos/${FRAMEWORK_NAME}.framework.dSYM"
   mkdir -p "${WORK_DIR}/macos"
-  if [[ -d "${XCFRAMEWORK}/macos-arm64/dSYMs/${FRAMEWORK_NAME}.framework.dSYM" ]]; then
-    cp -R "${XCFRAMEWORK}/macos-arm64/dSYMs/${FRAMEWORK_NAME}.framework.dSYM" "${MACOS_DSYM}"
+  if [[ -d "${MACOS_SLICE_DIR}/dSYMs/${FRAMEWORK_NAME}.framework.dSYM" ]]; then
+    cp -R "${MACOS_SLICE_DIR}/dSYMs/${FRAMEWORK_NAME}.framework.dSYM" "${MACOS_DSYM}"
     bin_uuids="$(dwarfdump --uuid "${MACOS_FW}/Versions/A/${FRAMEWORK_NAME}" | awk '{print $2}' | sort)"
     dsym_uuids="$(dwarfdump --uuid "${MACOS_DSYM}" | awk '{print $2}' | sort)"
     if [[ "${bin_uuids}" != "${dsym_uuids}" ]]; then
@@ -214,23 +222,12 @@ mv "${WORK_DIR}/out.xcframework" "${XCFRAMEWORK}"
 # dylib references (iOS slices are static-linked; the macOS slice is the one
 # that can regress when built without MP_BUNDLE_DEPS=1, which is what shipped
 # broken in v1.0.0-apple.1 and dyld-crashed ScreenBar build 27 fleet-wide).
-echo "==> Auditing slice portability before packaging..."
-while IFS= read -r slice_bin; do
-  bad="$(otool -L "${slice_bin}" | tail -n +2 | sed 's/^[[:space:]]*//' | awk '{print $1}' \
-    | grep -vE '^/System/|^/usr/lib/|^@rpath|^@loader_path|^@executable_path' || true)"
-  if [[ -n "${bad}" ]]; then
-    if [[ "${MP_ALLOW_NONPORTABLE:-0}" == "1" ]]; then
-      echo "warning: NON-PORTABLE slice ${slice_bin} (MP_ALLOW_NONPORTABLE=1); do NOT release this zip:" >&2
-      echo "${bad}" | sed 's/^/    /' >&2
-    else
-      echo "error: non-portable dylib references in ${slice_bin}:" >&2
-      echo "${bad}" | sed 's/^/    /' >&2
-      echo "       Rebuild the macOS slice with MP_BUNDLE_DEPS=1 (see PACKAGING.md)," >&2
-      echo "       or set MP_ALLOW_NONPORTABLE=1 for a local-only artifact." >&2
-      exit 1
-    fi
-  fi
-done < <(find "${XCFRAMEWORK}" -type f -name "${FRAMEWORK_NAME}" -not -path "*/Libraries/*" -not -path "*/dSYMs/*")
+# audit_xcframework.sh checks every Mach-O (framework binaries AND bundled
+# Libraries/*.dylib) for every architecture of every slice — the universal
+# macOS slice is a fat binary whose per-arch `otool -L` output the old inline
+# thin-binary parse would misread.
+echo "==> Auditing every slice before packaging..."
+"${MPP_ROOT_DIR}/mediapipe/tasks/macos/audit_xcframework.sh" "${XCFRAMEWORK}"
 
 echo "==> Packaging ${FRAMEWORK_NAME}.xcframework.zip (clean, no AppleDouble)..."
 ZIP="${ARTIFACTS_DIR}/${FRAMEWORK_NAME}.xcframework.zip"
