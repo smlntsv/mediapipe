@@ -24,7 +24,11 @@ APP_NAME="ParitySmokeTest"
 MACOS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SHARED_DIR="$(cd "${MACOS_DIR}/../shared" && pwd)"
 REPO_ROOT="$(git -C "${MACOS_DIR}" rev-parse --show-toplevel)"
-FRAMEWORK_SRC="${REPO_ROOT}/mediapipe/tasks/macos/swift/Artifacts/MediaPipeTasksC.xcframework/macos-arm64/MediaPipeTasksC.framework"
+# The macOS slice is macos-arm64, macos-x86_64 or macos-arm64_x86_64 depending
+# on MP_MACOS_ARCHS at build time.
+XCFRAMEWORK="${REPO_ROOT}/mediapipe/tasks/macos/swift/Artifacts/MediaPipeTasksC.xcframework"
+MACOS_SLICE="$(cd "${XCFRAMEWORK}" 2>/dev/null && ls -d macos-* 2>/dev/null | head -n 1)"
+FRAMEWORK_SRC="${XCFRAMEWORK}/${MACOS_SLICE:-macos-arm64}/MediaPipeTasksC.framework"
 
 if [[ ! -d "${FRAMEWORK_SRC}" ]]; then
   echo "error: ${FRAMEWORK_SRC} not found. Build it first with" >&2
