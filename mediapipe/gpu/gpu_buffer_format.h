@@ -40,11 +40,19 @@
 // CVPixelBuffer-only on macOS. Those entry points are not exercised by the
 // macOS GPU graphs today and were already unsupported there; converting them is
 // intentionally left out of scope rather than overlooked.
+//
+// Fork addition: a build may predefine the macro. The MediaPipeTasks macOS
+// build sets it to 1 (build_macos_xcframework.sh): its graphs run on Metal,
+// never sample the rectangle textures through GL, and feed RGBA frames, while
+// the GlTextureBuffer pool makes every input frame take two CPU uploads (GL and
+// Metal), nearly doubling Hand Landmarker GPU latency on Apple silicon.
+#ifndef MEDIAPIPE_GPU_BUFFER_POOL_USE_CV_PIXEL_BUFFER
 #if !TARGET_OS_OSX
 #define MEDIAPIPE_GPU_BUFFER_POOL_USE_CV_PIXEL_BUFFER 1
 #else
 #define MEDIAPIPE_GPU_BUFFER_POOL_USE_CV_PIXEL_BUFFER 0
 #endif
+#endif  // MEDIAPIPE_GPU_BUFFER_POOL_USE_CV_PIXEL_BUFFER
 
 #else
 #define MEDIAPIPE_GPU_BUFFER_POOL_USE_CV_PIXEL_BUFFER 0

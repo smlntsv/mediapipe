@@ -243,11 +243,14 @@ build_arch() {
   [[ -z "${deps_prefix}" ]] || deps_label="source-built OpenCV 3 (${deps_prefix})"
 
   # By default this builds a GPU-capable (Metal) artifact that supports BOTH the
-  # .cpu and .gpu delegates. The GPU build drops MEDIAPIPE_DISABLE_GPU and force-
-  # defines MEDIAPIPE_GPU_BUFFER_USE_CV_PIXEL_BUFFER (upstream gates it to
-  # !TARGET_OS_OSX, but the CVPixelBuffer-backed Metal path is needed on macOS).
-  # The macro MUST be defined for every C++/ObjC TU (it changes MPPMetalHelper's
-  # interface), hence both --copt and --objccopt.
+  # .cpu and .gpu delegates. The GPU build drops MEDIAPIPE_DISABLE_GPU and
+  # defines MEDIAPIPE_GPU_BUFFER_POOL_USE_CV_PIXEL_BUFFER=1 so the GPU buffer
+  # pool vends CVPixelBuffer-backed buffers on macOS too (upstream defaults it
+  # to 0 there, which costs two CPU texture uploads per frame; see
+  # mediapipe/gpu/gpu_buffer_format.h). MEDIAPIPE_GPU_BUFFER_USE_CV_PIXEL_BUFFER
+  # is defined there for macOS as well, so it is still passed only to keep the
+  # flags explicit. Both MUST be the same in every C++/ObjC TU (they change
+  # class interfaces), hence --copt and --objccopt.
   #
   # Set MP_ENABLE_GPU=0 to build a smaller CPU-only artifact instead (then set
   # `mediaPipeGPUArtifactAvailable = false` in Modes.swift).
@@ -256,6 +259,8 @@ build_arch() {
     "${BAZEL}" build "${bazel_args[@]}" \
       --copt=-DMEDIAPIPE_GPU_BUFFER_USE_CV_PIXEL_BUFFER=1 \
       --objccopt=-DMEDIAPIPE_GPU_BUFFER_USE_CV_PIXEL_BUFFER=1 \
+      --copt=-DMEDIAPIPE_GPU_BUFFER_POOL_USE_CV_PIXEL_BUFFER=1 \
+      --objccopt=-DMEDIAPIPE_GPU_BUFFER_POOL_USE_CV_PIXEL_BUFFER=1 \
       "${BAZEL_TARGET}"
   else
     echo "==> Building ${BAZEL_TARGET} for macOS ${arch} (CPU, ${deps_label})..."
