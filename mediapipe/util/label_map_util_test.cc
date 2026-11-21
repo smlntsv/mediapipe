@@ -3,9 +3,9 @@
 #include <string>
 #include <vector>
 
-#include "absl/status/status.h"
-#include "absl/strings/str_join.h"
-#include "absl/strings/string_view.h"
+#include "absl/status/status.h"        // from @com_google_absl
+#include "absl/strings/str_join.h"     // from @com_google_absl
+#include "absl/strings/string_view.h"  // from @com_google_absl
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
 #include "mediapipe/framework/port/status_matchers.h"
@@ -86,13 +86,13 @@ TEST(BuildLabelMapFromFiles, HandlesInvalidArguments) {
   EXPECT_THAT(BuildLabelMapFromFiles(
                   absl::StrJoin({"label1"}, "\n"),
                   absl::StrJoin({"display_name1", "display_name2"}, "\n")),
-              mediapipe::StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
   EXPECT_THAT(BuildLabelMapFromFiles(absl::StrJoin({"label1", "label2"}, "\n"),
                                      absl::StrJoin({"display_name1"}, "\n")),
-              mediapipe::StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
   EXPECT_THAT(BuildLabelMapFromFiles(absl::StrJoin({}, "\n"),
                                      absl::StrJoin({"display_name1"}, "\n")),
-              mediapipe::StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

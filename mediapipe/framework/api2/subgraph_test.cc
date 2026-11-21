@@ -1,3 +1,4 @@
+#include "absl/status/status.h"  // from @com_google_absl
 #include "mediapipe/framework/api2/builder.h"
 #include "mediapipe/framework/api2/node.h"
 #include "mediapipe/framework/api2/packet.h"
@@ -17,7 +18,7 @@ namespace test {
 class FooBarImpl1 : public SubgraphImpl<FooBar1, FooBarImpl1> {
  public:
   absl::StatusOr<CalculatorGraphConfig> GetConfig(
-      const SubgraphOptions& /*options*/) {
+      const SubgraphOptions& /*options*/) override {
     builder::Graph graph;
     auto& foo = graph.AddNode("Foo");
     auto& bar = graph.AddNode("Bar");
@@ -31,7 +32,7 @@ class FooBarImpl1 : public SubgraphImpl<FooBar1, FooBarImpl1> {
 class FooBarImpl2 : public SubgraphImpl<FooBar2, FooBarImpl2> {
  public:
   absl::StatusOr<CalculatorGraphConfig> GetConfig(
-      const SubgraphOptions& /*options*/) {
+      const SubgraphOptions& /*options*/) override {
     builder::Graph graph;
     auto& foo = graph.AddNode<Foo>();
     auto& bar = graph.AddNode<Bar>();

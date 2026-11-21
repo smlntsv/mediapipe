@@ -116,6 +116,10 @@ export class AudioClassifier extends AudioTaskRunner<AudioClassifierResult[]> {
     this.options.setBaseOptions(new BaseOptionsProto());
   }
 
+  protected override getTaskName(): string {
+    return 'AudioClassifier';
+  }
+
   protected override get baseOptions(): BaseOptionsProto {
     return this.options.getBaseOptions()!;
   }
@@ -141,7 +145,12 @@ export class AudioClassifier extends AudioTaskRunner<AudioClassifierResult[]> {
         this.options.getClassifierOptions(),
       ),
     );
-    return this.applyOptions(options);
+    return this.applyOptions(
+      options,
+      /* loadTfliteModel= */ true,
+      /* isLiteRtLmModel= */ false,
+      /* useLitert= */ true,
+    );
   }
 
   // TODO: Add a classifyStream() that takes a timestamp

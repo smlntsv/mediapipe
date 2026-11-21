@@ -2,11 +2,12 @@
 #include <string>
 #include <utility>
 
-#include "absl/log/absl_check.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
+#include "absl/log/absl_check.h"        // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
+#include "absl/strings/str_cat.h"       // from @com_google_absl
+#include "absl/strings/string_view.h"   // from @com_google_absl
 #include "mediapipe/calculators/core/constant_side_packet_calculator.pb.h"
 #include "mediapipe/framework/api2/builder.h"
 #include "mediapipe/framework/api2/node.h"
@@ -16,7 +17,6 @@
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/framework/port/status_matchers.h"
 #include "mediapipe/framework/resources.h"
 #include "mediapipe/framework/resources_service.h"
@@ -46,7 +46,7 @@ class TestResourcesCalculator : public Node {
   MEDIAPIPE_NODE_CONTRACT(kSideOut, kOut);
 
   absl::Status Open(CalculatorContext* cc) override {
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<Resource> resource,
         cc->GetResources().Get(
             cc->Options<mediapipe::ResourcePathOptions>().path()));
@@ -55,7 +55,7 @@ class TestResourcesCalculator : public Node {
   }
 
   absl::Status Process(CalculatorContext* cc) override {
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<Resource> resource,
         cc->GetResources().Get(
             cc->Options<mediapipe::ResourcePathOptions>().path()));
@@ -69,7 +69,7 @@ class TestResourcesSubgraph : public Subgraph {
  public:
   absl::StatusOr<CalculatorGraphConfig> GetConfig(
       SubgraphContext* sc) override {
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<Resource> resource,
         sc->GetResources().Get(
             sc->Options<mediapipe::ResourcePathOptions>().path()));
@@ -117,19 +117,19 @@ CalculatorGraphConfig BuildGraphProducingResourceContentsPackets(
 absl::StatusOr<ResourceContentsPackets>
 RunGraphAndCollectResourceContentsPackets(CalculatorGraph& calculator_graph) {
   Packet calculator_out;
-  MP_RETURN_IF_ERROR(calculator_graph.ObserveOutputStream(
+  ABSL_RETURN_IF_ERROR(calculator_graph.ObserveOutputStream(
       "calculator_out", [&calculator_out](const Packet& packet) {
         ABSL_CHECK(calculator_out.IsEmpty());
         calculator_out = packet;
         return absl::OkStatus();
       }));
-  MP_RETURN_IF_ERROR(calculator_graph.StartRun({}));
-  MP_RETURN_IF_ERROR(calculator_graph.WaitUntilDone());
+  ABSL_RETURN_IF_ERROR(calculator_graph.StartRun({}));
+  ABSL_RETURN_IF_ERROR(calculator_graph.WaitUntilDone());
 
-  MP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       Packet subgraph_side_out,
       calculator_graph.GetOutputSidePacket("subgraph_side_out"));
-  MP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       Packet calculator_side_out,
       calculator_graph.GetOutputSidePacket("calculator_side_out"));
   return ResourceContentsPackets{
@@ -208,8 +208,8 @@ class CustomizedDefaultResources : public Resources {
   absl::StatusOr<std::unique_ptr<Resource>> Get(
       absl::string_view resource_id,
       const Resources::Options& options) const final {
-    MP_ASSIGN_OR_RETURN(std::unique_ptr<Resource> output,
-                        default_resources_->Get(resource_id, options));
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<Resource> output,
+                          default_resources_->Get(resource_id, options));
     std::string contents = std::move(*output).ReleaseOrCopyAsString();
     contents.insert(0, "Customized: ");
     return MakeStringResource(std::move(contents));

@@ -3,9 +3,9 @@
 #include <memory>
 #include <string>
 
-#include "absl/flags/declare.h"
-#include "absl/flags/flag.h"
-#include "absl/strings/str_cat.h"
+#include "absl/flags/declare.h"    // from @com_google_absl
+#include "absl/flags/flag.h"       // from @com_google_absl
+#include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "mediapipe/framework/api2/packet.h"
 #include "mediapipe/framework/calculator.pb.h"
 #include "mediapipe/framework/calculator_context.h"
@@ -16,7 +16,7 @@
 #include "mediapipe/framework/port/status_matchers.h"
 #include "mediapipe/framework/resources.h"
 #include "mediapipe/framework/tool/tag_map_helper.h"
-#include "tensorflow/lite/test_util.h"
+#include "tflite/test_util.h"  // from @litert
 
 ABSL_DECLARE_FLAG(std::string, resource_root_dir);
 

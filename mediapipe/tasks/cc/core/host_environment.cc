@@ -14,8 +14,8 @@
 
 #include "mediapipe/tasks/cc/core/host_environment.h"
 
-#include "absl/log/absl_log.h"
-#include "absl/log/log.h"
+#include "absl/log/absl_log.h"  // from @com_google_absl
+#include "absl/log/log.h"       // from @com_google_absl
 
 namespace mediapipe {
 namespace tasks {
@@ -33,6 +33,10 @@ HostEnvironment ToHostEnvironment(int host_environment) {
       return HostEnvironment::HOST_ENVIRONMENT_PYTHON;
     case 4:
       return HostEnvironment::HOST_ENVIRONMENT_WEB;
+    case 5:
+      return HostEnvironment::HOST_ENVIRONMENT_FLUTTER;
+    case 6:
+      return HostEnvironment::HOST_ENVIRONMENT_FLUTTER_WEB;
     default:
       ABSL_LOG(DFATAL) << "Unknown HostEnvironment int value: "
                        << host_environment;

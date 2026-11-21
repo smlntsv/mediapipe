@@ -13,18 +13,16 @@
 // limitations under the License.
 
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
-#include "absl/strings/str_format.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
+#include "absl/strings/str_format.h"    // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/landmark.pb.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
-#include "mediapipe/framework/port/status_macros.h"
-#include "mediapipe/framework/port/statusor.h"
 #include "mediapipe/tasks/cc/common.h"
 #include "mediapipe/tasks/cc/core/external_file_handler.h"
 #include "mediapipe/tasks/cc/core/proto/external_file.pb.h"
@@ -34,7 +32,6 @@
 #include "mediapipe/tasks/cc/vision/face_geometry/proto/environment.pb.h"
 #include "mediapipe/tasks/cc/vision/face_geometry/proto/face_geometry.pb.h"
 #include "mediapipe/tasks/cc/vision/face_geometry/proto/geometry_pipeline_metadata.pb.h"
-#include "mediapipe/util/resource_util.h"
 
 namespace mediapipe::tasks::vision::face_geometry {
 namespace {
@@ -126,7 +123,7 @@ class GeometryPipelineCalculator : public CalculatorBase {
  public:
   static absl::Status GetContract(CalculatorContract* cc) {
     cc->InputSidePackets().Tag(kEnvironmentTag).Set<Environment>();
-    MP_RETURN_IF_ERROR(SanityCheck(cc));
+    ABSL_RETURN_IF_ERROR(SanityCheck(cc));
     cc->Inputs().Tag(kImageSizeTag).Set<std::pair<int, int>>();
     if (cc->Inputs().HasTag(kMultiFaceLandmarksTag)) {
       cc->Inputs()
@@ -148,23 +145,23 @@ class GeometryPipelineCalculator : public CalculatorBase {
 
     const auto& options = cc->Options<FaceGeometryPipelineCalculatorOptions>();
 
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         GeometryPipelineMetadata metadata,
         ReadMetadataFromFile(options.metadata_file()),
         _ << "Failed to read the geometry pipeline metadata from file!");
 
-    MP_RETURN_IF_ERROR(ValidateGeometryPipelineMetadata(metadata))
+    ABSL_RETURN_IF_ERROR(ValidateGeometryPipelineMetadata(metadata))
         << "Invalid geometry pipeline metadata!";
 
     const Environment& environment =
         cc->InputSidePackets().Tag(kEnvironmentTag).Get<Environment>();
 
-    MP_RETURN_IF_ERROR(ValidateEnvironment(environment))
+    ABSL_RETURN_IF_ERROR(ValidateEnvironment(environment))
         << "Invalid environment!";
 
-    MP_ASSIGN_OR_RETURN(geometry_pipeline_,
-                        CreateGeometryPipeline(environment, metadata),
-                        _ << "Failed to create a geometry pipeline!");
+    ABSL_ASSIGN_OR_RETURN(geometry_pipeline_,
+                          CreateGeometryPipeline(environment, metadata),
+                          _ << "Failed to create a geometry pipeline!");
     return absl::OkStatus();
   }
 
@@ -192,7 +189,7 @@ class GeometryPipelineCalculator : public CalculatorBase {
 
       auto multi_face_geometry = std::make_unique<std::vector<FaceGeometry>>();
 
-      MP_ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           *multi_face_geometry,
           geometry_pipeline_->EstimateFaceGeometry(
               multi_face_landmarks,  //
@@ -215,7 +212,7 @@ class GeometryPipelineCalculator : public CalculatorBase {
               .Tag(kFaceLandmarksTag)
               .Get<mediapipe::NormalizedLandmarkList>();
 
-      MP_ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           std::vector<FaceGeometry> multi_face_geometry,
           geometry_pipeline_->EstimateFaceGeometry(
               {face_landmarks},  //
@@ -239,7 +236,7 @@ class GeometryPipelineCalculator : public CalculatorBase {
  private:
   static absl::StatusOr<GeometryPipelineMetadata> ReadMetadataFromFile(
       const core::proto::ExternalFile& metadata_file) {
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         const auto file_handler,
         core::ExternalFileHandler::CreateFromExternalFile(&metadata_file));
 

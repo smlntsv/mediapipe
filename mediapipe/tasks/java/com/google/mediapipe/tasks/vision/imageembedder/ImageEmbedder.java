@@ -19,35 +19,26 @@ import android.os.ParcelFileDescriptor;
 import androidx.annotation.Nullable;
 import com.google.auto.value.AutoValue;
 import com.google.mediapipe.proto.CalculatorOptionsProto.CalculatorOptions;
-import com.google.mediapipe.framework.AndroidPacketGetter;
 import com.google.mediapipe.framework.MediaPipeException;
-import com.google.mediapipe.framework.Packet;
-import com.google.mediapipe.framework.PacketGetter;
 import com.google.mediapipe.framework.ProtoUtil;
-import com.google.mediapipe.framework.image.BitmapImageBuilder;
 import com.google.mediapipe.framework.image.MPImage;
 import com.google.mediapipe.tasks.components.containers.Embedding;
-import com.google.mediapipe.tasks.components.containers.EmbeddingResult;
 import com.google.mediapipe.tasks.components.containers.proto.EmbeddingsProto;
 import com.google.mediapipe.tasks.components.processors.proto.EmbedderOptionsProto;
 import com.google.mediapipe.tasks.components.utils.CosineSimilarity;
 import com.google.mediapipe.tasks.core.BaseOptions;
+import com.google.mediapipe.tasks.core.BaseOptionsUtils;
+import com.google.mediapipe.tasks.core.EmbeddingProvider;
 import com.google.mediapipe.tasks.core.ErrorListener;
-import com.google.mediapipe.tasks.core.OutputHandler;
 import com.google.mediapipe.tasks.core.OutputHandler.ResultListener;
-import com.google.mediapipe.tasks.core.TaskInfo;
 import com.google.mediapipe.tasks.core.TaskOptions;
-import com.google.mediapipe.tasks.core.TaskRunner;
 import com.google.mediapipe.tasks.core.proto.BaseOptionsProto;
-import com.google.mediapipe.tasks.vision.core.BaseVisionTaskApi;
 import com.google.mediapipe.tasks.vision.core.ImageProcessingOptions;
 import com.google.mediapipe.tasks.vision.core.RunningMode;
 import com.google.mediapipe.tasks.vision.imageembedder.proto.ImageEmbedderGraphOptionsProto;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -73,19 +64,9 @@ import java.util.Optional;
  *       [1 x N]} where N is the number of dimensions in the produced embeddings.
  * </ul>
  */
-public final class ImageEmbedder extends BaseVisionTaskApi {
+public final class ImageEmbedder implements AutoCloseable {
   private static final String TAG = ImageEmbedder.class.getSimpleName();
-  private static final String IMAGE_IN_STREAM_NAME = "image_in";
-  private static final String NORM_RECT_IN_STREAM_NAME = "norm_rect_in";
-  private static final List<String> INPUT_STREAMS =
-      Collections.unmodifiableList(
-          Arrays.asList("IMAGE:" + IMAGE_IN_STREAM_NAME, "NORM_RECT:" + NORM_RECT_IN_STREAM_NAME));
-  private static final List<String> OUTPUT_STREAMS =
-      Collections.unmodifiableList(Arrays.asList("EMBEDDINGS:embeddings_out", "IMAGE:image_out"));
-  private static final int EMBEDDINGS_OUT_STREAM_INDEX = 0;
-  private static final int IMAGE_OUT_STREAM_INDEX = 1;
-  private static final String TASK_GRAPH_NAME =
-      "mediapipe.tasks.vision.image_embedder.ImageEmbedderGraph";
+  private final ImageEmbedderExecutor executor;
 
   static {
     System.loadLibrary("mediapipe_tasks_jni");
@@ -150,59 +131,46 @@ public final class ImageEmbedder extends BaseVisionTaskApi {
    * @throws MediaPipeException if there is an error during {@link ImageEmbedder} creation.
    */
   public static ImageEmbedder createFromOptions(Context context, ImageEmbedderOptions options) {
-    OutputHandler<ImageEmbedderResult, MPImage> handler = new OutputHandler<>();
-    handler.setOutputPacketConverter(
-        new OutputHandler.OutputPacketConverter<ImageEmbedderResult, MPImage>() {
-          @Override
-          public ImageEmbedderResult convertToTaskResult(List<Packet> packets) {
-            try {
-              return ImageEmbedderResult.create(
-                  EmbeddingResult.createFromProto(
-                      PacketGetter.getProto(
-                          packets.get(EMBEDDINGS_OUT_STREAM_INDEX),
-                          EmbeddingsProto.EmbeddingResult.getDefaultInstance())),
-                  BaseVisionTaskApi.generateResultTimestampMs(
-                      options.runningMode(), packets.get(EMBEDDINGS_OUT_STREAM_INDEX)));
-            } catch (IOException e) {
-              throw new MediaPipeException(
-                  MediaPipeException.StatusCode.INTERNAL.ordinal(), e.getMessage());
-            }
-          }
-
-          @Override
-          public MPImage convertToTaskInput(List<Packet> packets) {
-            return new BitmapImageBuilder(
-                    AndroidPacketGetter.getBitmap(packets.get(IMAGE_OUT_STREAM_INDEX)))
-                .build();
-          }
-        });
-    options.resultListener().ifPresent(handler::setResultListener);
-    options.errorListener().ifPresent(handler::setErrorListener);
-    TaskRunner runner =
-        TaskRunner.create(
-            context,
-            TaskInfo.<ImageEmbedderOptions>builder()
-                .setTaskName(ImageEmbedder.class.getSimpleName())
-                .setTaskRunningModeName(options.runningMode().name())
-                .setTaskGraphName(TASK_GRAPH_NAME)
-                .setInputStreams(INPUT_STREAMS)
-                .setOutputStreams(OUTPUT_STREAMS)
-                .setTaskOptions(options)
-                .setEnableFlowLimiting(options.runningMode() == RunningMode.LIVE_STREAM)
-                .build(),
-            handler);
-    return new ImageEmbedder(runner, options.runningMode());
+    if (BaseOptionsUtils.isLiteRtLmModel(context, options.baseOptions())) {
+      return new ImageEmbedder(createLiteRtLmExecutor(context, options));
+    }
+    return new ImageEmbedder(createGraphExecutor(context, options));
   }
 
-  /**
-   * Constructor to initialize an {@link ImageEmbedder} from a {@link TaskRunner} and {@link
-   * RunningMode}.
-   *
-   * @param taskRunner a {@link TaskRunner}.
-   * @param runningMode a mediapipe vision task {@link RunningMode}.
-   */
-  private ImageEmbedder(TaskRunner taskRunner, RunningMode runningMode) {
-    super(taskRunner, runningMode, IMAGE_IN_STREAM_NAME, NORM_RECT_IN_STREAM_NAME);
+  private static ImageEmbedderExecutor createGraphExecutor(
+      Context context, ImageEmbedderOptions options) {
+    return ImageEmbedderGraphExecutorImpl.create(context, options);
+  }
+
+  private ImageEmbedder(ImageEmbedderExecutor executor) {
+    this.executor = executor;
+  }
+
+  @SuppressWarnings("EnumOrdinal")
+  private static ImageEmbedderExecutor createLiteRtLmExecutor(
+      Context context, ImageEmbedderOptions options) {
+    // This creates the LiteRT-LM EmbeddingEngine via reflection to avoid a hard dependency on the
+    // LiteRT-LM library.
+    try {
+      Class.forName("com.google.ai.edge.litertlm.EmbeddingEngine");
+      return Class.forName(
+              "com.google.mediapipe.tasks.vision.imageembedder.ImageEmbedderLiteRtLmExecutorImpl")
+          .asSubclass(ImageEmbedderExecutor.class)
+          .getConstructor(Context.class, ImageEmbedderOptions.class)
+          .newInstance(context, options);
+    } catch (ClassNotFoundException e) {
+      throw new MediaPipeException(
+          MediaPipeException.StatusCode.FAILED_PRECONDITION,
+          "LiteRT-LM model detected, but the required com.google.ai.edge.litertlm library is"
+              + " missing from the classpath. Please add the litertlm-android dependency to your"
+              + " build configuration.",
+          e);
+    } catch (ReflectiveOperationException e) {
+      throw new MediaPipeException(
+          MediaPipeException.StatusCode.INTERNAL,
+          "Failed to load LiteRT-LM Image Embedder integration: " + e.getMessage(),
+          e);
+    }
   }
 
   /**
@@ -239,7 +207,7 @@ public final class ImageEmbedder extends BaseVisionTaskApi {
    * @throws MediaPipeException if there is an internal error.
    */
   public ImageEmbedderResult embed(MPImage image, ImageProcessingOptions imageProcessingOptions) {
-    return (ImageEmbedderResult) processImageData(image, imageProcessingOptions);
+    return executor.embed(image, imageProcessingOptions);
   }
 
   /**
@@ -285,7 +253,7 @@ public final class ImageEmbedder extends BaseVisionTaskApi {
    */
   public ImageEmbedderResult embedForVideo(
       MPImage image, ImageProcessingOptions imageProcessingOptions, long timestampMs) {
-    return (ImageEmbedderResult) processVideoData(image, imageProcessingOptions, timestampMs);
+    return executor.embedForVideo(image, imageProcessingOptions, timestampMs);
   }
 
   /**
@@ -334,7 +302,7 @@ public final class ImageEmbedder extends BaseVisionTaskApi {
    */
   public void embedAsync(
       MPImage image, ImageProcessingOptions imageProcessingOptions, long timestampMs) {
-    sendLiveStreamData(image, imageProcessingOptions, timestampMs);
+    executor.embedAsync(image, imageProcessingOptions, timestampMs);
   }
 
   /**
@@ -346,6 +314,32 @@ public final class ImageEmbedder extends BaseVisionTaskApi {
    */
   public static double cosineSimilarity(Embedding u, Embedding v) {
     return CosineSimilarity.compute(u, v);
+  }
+
+  /** Returns a {@link EmbeddingProvider} for this embedder. */
+  @Nullable
+  public EmbeddingProvider getProvider() {
+    return new EmbeddingProvider() {
+      @Override
+      @Nullable
+      public float[] embedContent(List<Object> content) {
+        for (Object part : content) {
+          if (part instanceof MPImage) {
+            ImageEmbedderResult result = embed((MPImage) part);
+            if (result.embeddingResult().embeddings().isEmpty()) {
+              return null;
+            }
+            return result.embeddingResult().embeddings().get(0).floatEmbedding();
+          }
+        }
+        return null;
+      }
+    };
+  }
+
+  @Override
+  public void close() {
+    executor.close();
   }
 
   /** Options for setting up and {@link ImageEmbedder}. */
@@ -365,7 +359,7 @@ public final class ImageEmbedder extends BaseVisionTaskApi {
        * <ul>
        *   <li>IMAGE: The mode for performing embedding extraction on single image inputs.
        *   <li>VIDEO: The mode for performing embedding extraction on the decoded frames of a video.
-       *   <li>LIVE_STREAM: The mode for for performing embedding extraction on a live stream of
+       *   <li>LIVE_STREAM: The mode for performing embedding extraction on a livestream of
        *       input data, such as from camera. In this mode, {@code setResultListener} must be
        *       called to set up a listener to receive the embedding results asynchronously.
        * </ul>
@@ -393,8 +387,8 @@ public final class ImageEmbedder extends BaseVisionTaskApi {
       public abstract Builder setQuantize(boolean quantize);
 
       /**
-       * Sets the {@link ResultListener} to receive the embedding results asynchronously when the
-       * image embedder is in the live stream mode.
+       * Sets the {@link ResultListener} to receive the embedding results asynchronously, when the
+       * image embedder is in the livestream mode.
        */
       public abstract Builder setResultListener(
           ResultListener<ImageEmbedderResult, MPImage> resultListener);
@@ -409,7 +403,7 @@ public final class ImageEmbedder extends BaseVisionTaskApi {
        *
        * @throws IllegalArgumentException if the result listener and the running mode are not
        *     properly configured. The result listener should only be set when the image embedder is
-       *     in the live stream mode.
+       *     in the livestream mode.
        */
       public final ImageEmbedderOptions build() {
         ImageEmbedderOptions options = autoBuild();
@@ -440,6 +434,7 @@ public final class ImageEmbedder extends BaseVisionTaskApi {
 
     abstract Optional<ErrorListener> errorListener();
 
+    /** Instantiates a builder for {@link ImageEmbedderOptions}. */
     public static Builder builder() {
       return new AutoValue_ImageEmbedder_ImageEmbedderOptions.Builder()
           .setRunningMode(RunningMode.IMAGE)
@@ -453,7 +448,7 @@ public final class ImageEmbedder extends BaseVisionTaskApi {
       BaseOptionsProto.BaseOptions.Builder baseOptionsBuilder =
           BaseOptionsProto.BaseOptions.newBuilder();
       baseOptionsBuilder.setUseStreamMode(runningMode() != RunningMode.IMAGE);
-      baseOptionsBuilder.mergeFrom(convertBaseOptionsToProto(baseOptions()));
+      baseOptionsBuilder.mergeFrom(convertBaseOptionsToProto(baseOptions(), /* useLiteRt= */ true));
       EmbedderOptionsProto.EmbedderOptions.Builder embedderOptionsBuilder =
           EmbedderOptionsProto.EmbedderOptions.newBuilder();
       embedderOptionsBuilder.setL2Normalize(l2Normalize());

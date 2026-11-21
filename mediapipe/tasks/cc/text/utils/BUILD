@@ -63,7 +63,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@org_tensorflow//tensorflow/lite/schema:schema_fbs",
+        "@litert//tflite/schema:schema_fbs",
     ],
 )
 
@@ -85,9 +85,11 @@ cc_test(
         "//mediapipe/tasks/cc/core:model_resources",
         "//mediapipe/tasks/cc/core/proto:external_file_cc_proto",
         "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@org_tensorflow//tensorflow/lite:test_util",
+        "@litert//tflite:test_util",
     ],
 )
 
@@ -106,15 +108,37 @@ cc_library(
     deps = [
         "//mediapipe/framework/deps:file_path",
         "//mediapipe/framework/port:file_helpers",
-        "//mediapipe/framework/port:status",
         "//mediapipe/util:resource_util",
         "@com_github_nlohmann_json//:json",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_sentencepiece//:sentencepiece_model_cc_proto",
         "@com_google_sentencepiece//:sentencepiece_trainer",
+    ],
+)
+
+cc_library(
+    name = "genai_utils",
+    srcs = ["genai_utils.cc"],
+    hdrs = ["genai_utils.h"],
+    deps = [
+        "@com_github_nlohmann_json//:json",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "genai_utils_test",
+    srcs = ["genai_utils_test.cc"],
+    deps = [
+        ":genai_utils",
+        "//mediapipe/framework/port:gtest_main",
+        "@com_google_absl//absl/strings",
     ],
 )

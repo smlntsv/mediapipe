@@ -32,19 +32,56 @@ Classifications = classification_result_module.Classifications
 ClassifierOptions = classifier_options_module.ClassifierOptions
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(init=False)
 class LanguageDetectorResult:
+  """The language detection result.
+
+  Attributes:
+    languages: A list of `LanguagePrediction` objects, one per detected
+      language, sorted by descending probability.
+  """
 
   @dataclasses.dataclass
-  class Detection:
-    """A language code and its probability."""
+  class LanguagePrediction:
+    """A language code and its probability.
 
-    # An i18n language / locale code, e.g. "en" for English, "uz" for Uzbek,
-    # "ja"-Latn for Japanese (romaji).
+    Attributes:
+      language_code: An i18n language / locale code, e.g. "en" for English, "uz"
+        for Uzbek, "ja-Latn" for Japanese (romaji).
+      probability: The probability that the input text is in this language.
+    """
+
     language_code: str
     probability: float
 
-  detections: List[Detection]
+  Detection = LanguagePrediction  # pylint: disable=invalid-name
+
+  languages: List[LanguagePrediction]
+
+  def __init__(
+      self,
+      languages: Optional[List[LanguagePrediction]] = None,
+      detections: Optional[List[LanguagePrediction]] = None,
+  ):
+    """Initializes a `LanguageDetectorResult` instance."""
+    if languages is not None and detections is not None:
+      raise ValueError(
+          "Specify either `languages` or deprecated `detections`, not both."
+      )
+    self.languages = (
+        languages
+        if languages is not None
+        else (detections if detections is not None else [])
+    )
+
+  @property
+  def detections(self) -> List[LanguagePrediction]:
+    """Deprecated alias for `languages`."""
+    return self.languages
+
+  @detections.setter
+  def detections(self, value: List[LanguagePrediction]) -> None:
+    self.languages = value
 
 
 class MpLanguageDetectorPredictionC(ctypes.Structure):
@@ -69,14 +106,14 @@ def _convert_to_python_language_detector_result(
     c_result: MpLanguageDetectorResultC,
 ) -> LanguageDetectorResult:
   """Converts a C LanguageDetectorResult to a Python LanguageDetectorResult."""
-  py_result = LanguageDetectorResult(detections=[])
+  py_result = LanguageDetectorResult(languages=[])
   for i in range(c_result.predictions_count):
     c_prediction = c_result.predictions[i]
-    py_prediction = LanguageDetectorResult.Detection(
+    py_prediction = LanguageDetectorResult.LanguagePrediction(
         language_code=c_prediction.language_code.decode("utf-8"),
         probability=c_prediction.probability,
     )
-    py_result.detections.append(py_prediction)
+    py_result.languages.append(py_prediction)
   return py_result
 
 
@@ -233,7 +270,7 @@ class LanguageDetector:
     ctypes_options = options.to_ctypes()
 
     detector_handle = ctypes.c_void_p()
-    lib.MpLanguageDetectorCreate(
+    lib.MpLanguageDetectorCreate(  # pyrefly: ignore[missing-attribute]
         ctypes.byref(ctypes_options),
         ctypes.byref(detector_handle),
     )
@@ -255,22 +292,27 @@ class LanguageDetector:
     """
     ctypes_result = MpLanguageDetectorResultC()
 
-    self._lib.MpLanguageDetectorDetect(
+    self._lib.MpLanguageDetectorDetect(  # pyrefly: ignore[missing-attribute]
         self._detector_handle,
         text.encode("utf-8"),
         ctypes.byref(ctypes_result),
     )
     python_result = _convert_to_python_language_detector_result(ctypes_result)
-    self._lib.MpLanguageDetectorCloseResult(ctypes.byref(ctypes_result))
+    self._lib.MpLanguageDetectorCloseResult(ctypes.byref(ctypes_result))  # pyrefly: ignore[missing-attribute]
     return python_result
 
   def close(self):
     """Shuts down the MediaPipe task instance."""
     if not self._detector_handle:
       return
-    self._lib.MpLanguageDetectorClose(self._detector_handle)
-    self._detector_handle = None
-    self._lib.close()
+    # The C library frees the task even if it fails to close, so the handle
+    # must not be used again.
+    handle = self._detector_handle
+    self._detector_handle = None  # pyrefly: ignore[bad-assignment]
+    try:
+      self._lib.MpLanguageDetectorClose(handle)  # pyrefly: ignore[missing-attribute]
+    finally:
+      self._lib.close()
 
   def __enter__(self):
     """Returns `self` upon entering the runtime context."""

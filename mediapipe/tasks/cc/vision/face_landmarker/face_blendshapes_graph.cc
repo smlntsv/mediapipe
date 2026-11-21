@@ -16,6 +16,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/calculators/core/split_vector_calculator.pb.h"
 #include "mediapipe/calculators/tensor/landmarks_to_tensor_calculator.h"
 #include "mediapipe/calculators/tensor/landmarks_to_tensor_calculator.pb.h"
@@ -25,7 +27,6 @@ limitations under the License.
 #include "mediapipe/framework/formats/classification.pb.h"
 #include "mediapipe/framework/formats/landmark.pb.h"
 #include "mediapipe/framework/formats/tensor.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/tasks/cc/core/model_task_graph.h"
 #include "mediapipe/tasks/cc/vision/face_landmarker/proto/face_blendshapes_graph_options.pb.h"
 
@@ -263,11 +264,13 @@ Stream<ClassificationList> ConvertTensorToBlendshapes(
 // }
 class FaceBlendshapesGraph : public core::ModelTaskGraph {
  public:
-  absl::StatusOr<CalculatorGraphConfig> GetConfig(SubgraphContext* sc) {
-    MP_ASSIGN_OR_RETURN(const auto* model_resources,
-                        CreateModelResources<FaceBlendshapesGraphOptions>(sc));
+  absl::StatusOr<CalculatorGraphConfig> GetConfig(
+      SubgraphContext* sc) override {
+    ABSL_ASSIGN_OR_RETURN(
+        const auto* model_resources,
+        CreateModelResources<FaceBlendshapesGraphOptions>(sc));
     Graph graph;
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto face_blendshapes_outs,
         BuildFaceBlendshapesSubgraph(
             sc->Options<FaceBlendshapesGraphOptions>(), *model_resources,

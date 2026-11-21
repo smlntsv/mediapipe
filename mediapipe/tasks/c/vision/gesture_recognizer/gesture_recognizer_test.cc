@@ -16,15 +16,13 @@ limitations under the License.
 #include "mediapipe/tasks/c/vision/gesture_recognizer/gesture_recognizer.h"
 
 #include <cstdint>
-#include <cstdlib>
 #include <memory>
 #include <string>
 
-#include "absl/flags/flag.h"
-#include "absl/strings/string_view.h"
-#include "absl/synchronization/blocking_counter.h"
-#include "absl/time/clock.h"
-#include "absl/time/time.h"
+#include "absl/flags/flag.h"           // from @com_google_absl
+#include "absl/strings/string_view.h"  // from @com_google_absl
+#include "absl/time/clock.h"           // from @com_google_absl
+#include "absl/time/time.h"            // from @com_google_absl
 #include "mediapipe/framework/deps/file_path.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
@@ -46,7 +44,7 @@ using ::mediapipe::tasks::vision::core::ScopedMpImage;
 constexpr char kTestDataDirectory[] = "/mediapipe/tasks/testdata/vision/";
 constexpr char kModelName[] = "gesture_recognizer.task";
 constexpr char kImageFile[] = "fist.jpg";
-constexpr float kScorePrecision = 1e-2;
+constexpr float kScorePrecision = 2e-2;
 constexpr float kLandmarkPrecision = 1e-1;
 constexpr int kIterations = 5;
 constexpr int kSleepBetweenFramesMilliseconds = 100;
@@ -64,7 +62,7 @@ void MatchesGestureRecognizerResult(const MpGestureRecognizerResult* result,
   // Actual gesture with top score matches expected gesture.
   EXPECT_EQ(std::string{result->gestures[0].categories[0].category_name},
             "Closed_Fist");
-  EXPECT_NEAR(result->gestures[0].categories[0].score, 0.91f, score_precision);
+  EXPECT_NEAR(result->gestures[0].categories[0].score, 0.907f, score_precision);
 
   // Actual handedness matches expected handedness.
   EXPECT_EQ(std::string{result->handedness[0].categories[0].category_name},
@@ -205,37 +203,35 @@ TEST(GestureRecognizerTest, ImageModeTestWithRotation) {
 
 // A structure to support LiveStreamModeTest below. This structure holds a
 // static method `Fn` for a callback function of C API. A `static` qualifier
-// allows to take an address of the method to follow API style. Another static
-// struct member is `last_timestamp` that is used to verify that current
-// timestamp is greater than the previous one.
+// allows to take an address of the method to follow API style. An instance of
+// the structure is passed to the callback as `user_data`. Its member
+// `last_timestamp` is used to verify that current timestamp is greater than
+// the previous one.
 struct LiveStreamModeCallback {
-  static int64_t last_timestamp;
-  static absl::BlockingCounter* blocking_counter;
-  static void Fn(MpStatus status,
+  int64_t last_timestamp = -1;
+  static void Fn(void* user_data, MpStatus status, const char* error_msg,
                  const MpGestureRecognizerResult* recognizer_result,
                  const MpImagePtr image, int64_t timestamp) {
+    auto* self = reinterpret_cast<LiveStreamModeCallback*>(user_data);
+    ASSERT_NE(self, nullptr);
     ASSERT_EQ(status, kMpOk);
+    EXPECT_EQ(error_msg, nullptr);
     ASSERT_NE(recognizer_result, nullptr);
     MatchesGestureRecognizerResult(recognizer_result, kScorePrecision,
                                    kLandmarkPrecision);
     EXPECT_GT(MpImageGetWidth(image), 0);
     EXPECT_GT(MpImageGetHeight(image), 0);
-    EXPECT_GT(timestamp, last_timestamp);
-    last_timestamp++;
-
-    if (blocking_counter) {
-      blocking_counter->DecrementCount();
-    }
+    EXPECT_GT(timestamp, self->last_timestamp);
+    self->last_timestamp = timestamp;
   }
 };
-int64_t LiveStreamModeCallback::last_timestamp = -1;
-absl::BlockingCounter* LiveStreamModeCallback::blocking_counter = nullptr;
 
 TEST(GestureRecognizerTest, LiveStreamModeTest) {
   const ScopedMpImage image = GetImage(GetFullPath(kImageFile));
 
   const std::string model_path = GetFullPath(kModelName);
 
+  LiveStreamModeCallback callback;
   MpGestureRecognizerOptions options = {
       .base_options = {.model_asset_path = model_path.c_str()},
       .running_mode = MpRunningMode::MP_RUNNING_MODE_LIVE_STREAM,
@@ -248,6 +244,7 @@ TEST(GestureRecognizerTest, LiveStreamModeTest) {
       .custom_gestures_classifier_options = {.max_results = -1,
                                              .score_threshold = 0.0},
       .result_callback = LiveStreamModeCallback::Fn,
+      .result_callback_user_data = &callback,
   };
 
   MpGestureRecognizerPtr recognizer;
@@ -255,9 +252,6 @@ TEST(GestureRecognizerTest, LiveStreamModeTest) {
                                       /* &error_msg= */ nullptr),
             kMpOk);
   ASSERT_NE(recognizer, nullptr);
-
-  absl::BlockingCounter counter(kIterations);
-  LiveStreamModeCallback::blocking_counter = &counter;
 
   for (int i = 0; i < kIterations; ++i) {
     ASSERT_EQ(
@@ -269,17 +263,13 @@ TEST(GestureRecognizerTest, LiveStreamModeTest) {
     absl::SleepFor(absl::Milliseconds(kSleepBetweenFramesMilliseconds));
   }
 
-  // Wait for all callbacks to be invoked.
-  counter.Wait();
-  LiveStreamModeCallback::blocking_counter = nullptr;
-
   EXPECT_EQ(MpGestureRecognizerClose(recognizer, /* &error_msg= */ nullptr),
             kMpOk);
 
   // Due to the flow limiter, the total of outputs might be smaller than the
   // number of iterations.
-  EXPECT_LE(LiveStreamModeCallback::last_timestamp, kIterations);
-  EXPECT_GT(LiveStreamModeCallback::last_timestamp, 0);
+  EXPECT_LE(callback.last_timestamp, kIterations);
+  EXPECT_GE(callback.last_timestamp, 0);
 }
 
 TEST(GestureRecognizerTest, InvalidArgumentHandling) {

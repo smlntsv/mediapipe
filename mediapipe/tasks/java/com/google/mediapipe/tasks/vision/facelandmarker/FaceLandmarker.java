@@ -129,8 +129,8 @@ public final class FaceLandmarker extends BaseVisionTaskApi {
    * {@link FaceLandmarkerOptions}.
    *
    * @param context an Android {@link Context}.
-   * @param modelBuffer a direct {@link ByteBuffer} or a {@link MappedByteBuffer} of the detection
-   *     model.
+   * @param modelAssetBuffer a direct {@link ByteBuffer} or a {@link MappedByteBuffer} of the
+   *     detection model.
    * @throws MediaPipeException if there is an error during {@link FaceLandmarker} creation.
    */
   public static FaceLandmarker createFromBuffer(
@@ -217,7 +217,7 @@ public final class FaceLandmarker extends BaseVisionTaskApi {
         TaskRunner.create(
             context,
             TaskInfo.<FaceLandmarkerOptions>builder()
-                .setTaskName(FaceLandmarker.class.getSimpleName())
+                .setTaskName("FaceLandmarker")
                 .setTaskRunningModeName(landmarkerOptions.runningMode().name())
                 .setTaskGraphName(TASK_GRAPH_NAME)
                 .setInputStreams(INPUT_STREAMS)
@@ -445,7 +445,7 @@ public final class FaceLandmarker extends BaseVisionTaskApi {
        * <ul>
        *   <li>IMAGE: The mode for detecting face landmarks on single image inputs.
        *   <li>VIDEO: The mode for detecting face landmarks on the decoded frames of a video.
-       *   <li>LIVE_STREAM: The mode for for detecting face landmarks on a live stream of input
+       *   <li>LIVE_STREAM: The mode for detecting face landmarks on a livestream of input
        *       data, such as from camera. In this mode, {@code setResultListener} must be called to
        *       set up a listener to receive the detection results asynchronously.
        * </ul>
@@ -467,6 +467,9 @@ public final class FaceLandmarker extends BaseVisionTaskApi {
       /**
        * Whether FaceLandmarker outputs face blendshapes classification. Face blendshapes are used
        * for rendering the 3D face model.
+       *
+       * <p>Note: *Left and *Right blendshapes correspond to the subject's face, not the viewer.
+       * Passing a horizontally mirrored image will invert these outputs.
        */
       public abstract Builder setOutputFaceBlendshapes(boolean value);
 
@@ -479,7 +482,7 @@ public final class FaceLandmarker extends BaseVisionTaskApi {
 
       /**
        * Sets the result listener to receive the detection results asynchronously when the face
-       * landmarker is in the live stream mode.
+       * landmarker is in the livestream mode.
        */
       public abstract Builder setResultListener(
           ResultListener<FaceLandmarkerResult, MPImage> value);
@@ -494,7 +497,7 @@ public final class FaceLandmarker extends BaseVisionTaskApi {
        *
        * @throws IllegalArgumentException if the result listener and the running mode are not
        *     properly configured. The result listener should only be set when the face landmarker is
-       *     in the live stream mode.
+       *     in the livestream mode.
        */
       public final FaceLandmarkerOptions build() {
         FaceLandmarkerOptions options = autoBuild();

@@ -39,7 +39,9 @@ _ImageProcessingOptions = image_processing_options_module.ImageProcessingOptions
 
 _C_TYPES_RESULT_CALLBACK = ctypes.CFUNCTYPE(
     None,
+    ctypes.c_void_p,  # user_data
     ctypes.c_int32,  # MpStatus
+    ctypes.c_char_p,  # error_msg
     ctypes.POINTER(detections_c_module.MpDetectionResultC),
     ctypes.c_void_p,  # MpImage
     ctypes.c_int64,  # timestamp_ms
@@ -55,6 +57,7 @@ class MpFaceDetectorOptionsC(ctypes.Structure):
       ('min_detection_confidence', ctypes.c_float),
       ('min_suppression_threshold', ctypes.c_float),
       ('result_callback', _C_TYPES_RESULT_CALLBACK),
+      ('result_callback_user_data', ctypes.c_void_p),
   ]
 
   @classmethod
@@ -140,15 +143,15 @@ class FaceDetectorOptions:
     running_mode: The running mode of the task. Default to the image mode. Face
       detector task has three running modes: 1) The image mode for detecting
       faces on single image inputs. 2) The video mode for detecting faces on the
-      decoded frames of a video. 3) The live stream mode for detecting faces on
-      a live stream of input data, such as from camera.
+      decoded frames of a video. 3) The livestream mode for detecting faces on
+      a livestream of input data, such as from camera.
     min_detection_confidence: The minimum confidence score for the face
       detection to be considered successful.
     min_suppression_threshold: The minimum non-maximum-suppression threshold for
       face detection to be considered overlapped.
-    result_callback: The user-defined result callback for processing live stream
+    result_callback: The user-defined result callback for processing livestream
       data. The result callback should only be specified when the running mode
-      is set to the live stream mode.
+      is set to the livestream mode.
   """
 
   base_options: _BaseOptions
@@ -231,13 +234,13 @@ class FaceDetector:
       RuntimeError: If other types of error occurred.
     """
     running_mode_module.validate_running_mode(
-        options.running_mode, options.result_callback
+        options.running_mode, options.result_callback  # pyrefly: ignore[bad-argument-type]
     )
 
     lib = mediapipe_c_bindings.load_shared_library(_CTYPES_SIGNATURES)
 
     def convert_result(
-        c_result_ptr: ctypes.POINTER(detections_c_module.MpDetectionResultC),
+        c_result_ptr: ctypes.POINTER(detections_c_module.MpDetectionResultC),  # pyrefly: ignore[invalid-annotation]
         image_ptr: ctypes.c_void_p,
         timestamp_ms: int,
     ) -> Tuple[FaceDetectorResult, image_module.Image, int]:
@@ -261,7 +264,7 @@ class FaceDetector:
     )
 
     detector_handle = ctypes.c_void_p()
-    lib.MpFaceDetectorCreate(
+    lib.MpFaceDetectorCreate(  # pyrefly: ignore[missing-attribute]
         ctypes.byref(ctypes_options),
         ctypes.byref(detector_handle),
     )
@@ -305,7 +308,7 @@ class FaceDetector:
         if image_processing_options
         else None
     )
-    self._lib.MpFaceDetectorDetectImage(
+    self._lib.MpFaceDetectorDetectImage(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         c_image_processing_options,
@@ -313,7 +316,7 @@ class FaceDetector:
     )
 
     py_result = FaceDetectorResult.from_ctypes(c_result)
-    self._lib.MpFaceDetectorCloseResult(ctypes.byref(c_result))
+    self._lib.MpFaceDetectorCloseResult(ctypes.byref(c_result))  # pyrefly: ignore[missing-attribute]
     return py_result
 
   def detect_for_video(
@@ -352,7 +355,7 @@ class FaceDetector:
         if image_processing_options
         else None
     )
-    self._lib.MpFaceDetectorDetectForVideo(
+    self._lib.MpFaceDetectorDetectForVideo(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         c_image_processing_options,
@@ -361,7 +364,7 @@ class FaceDetector:
     )
 
     py_result = FaceDetectorResult.from_ctypes(c_result)
-    self._lib.MpFaceDetectorCloseResult(ctypes.byref(c_result))
+    self._lib.MpFaceDetectorCloseResult(ctypes.byref(c_result))  # pyrefly: ignore[missing-attribute]
     return py_result
 
   def detect_async(
@@ -372,12 +375,12 @@ class FaceDetector:
   ) -> None:
     """Sends live image data (an Image with a unique timestamp) to perform face detection.
 
-    Only use this method when the FaceDetector is created with the live stream
+    Only use this method when the FaceDetector is created with the livestream
     running mode. The input timestamps should be monotonically increasing for
     adjacent calls of this method. This method will return immediately after the
     input image is accepted. The results will be available via the
     `result_callback` provided in the `FaceDetectorOptions`. The
-    `detect_async` method is designed to process live stream data such as camera
+    `detect_async` method is designed to process livestream data such as camera
     input. To lower the overall latency, face detector may drop the input
     images if needed. In other words, it's not guaranteed to have output per
     input image.
@@ -408,7 +411,7 @@ class FaceDetector:
         if image_processing_options
         else None
     )
-    self._lib.MpFaceDetectorDetectAsync(
+    self._lib.MpFaceDetectorDetectAsync(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         c_image_processing_options,
@@ -419,10 +422,15 @@ class FaceDetector:
     """Shuts down the MediaPipe task instance."""
     if not self._handle:
       return
-    self._lib.MpFaceDetectorClose(self._handle)
-    self._handle = None
-    self._dispatcher.close()
-    self._lib.close()
+    # The C library frees the task even if it fails to close, so the handle
+    # must not be used again.
+    handle = self._handle
+    self._handle = None  # pyrefly: ignore[bad-assignment]
+    try:
+      self._lib.MpFaceDetectorClose(handle)  # pyrefly: ignore[missing-attribute]
+    finally:
+      self._dispatcher.close()
+      self._lib.close()
 
   def __enter__(self):
     """Returns `self` upon entering the runtime context."""

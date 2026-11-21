@@ -21,9 +21,10 @@
 #include <sstream>
 #include <string>
 
-#include "absl/log/absl_log.h"
-#include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
+#include "absl/log/absl_check.h"   // from @com_google_absl
+#include "absl/log/absl_log.h"     // from @com_google_absl
+#include "absl/status/status.h"    // from @com_google_absl
+#include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator.pb.h"
 #include "mediapipe/framework/calculator_profile.pb.h"
 #include "mediapipe/framework/port/advanced_proto_inc.h"
@@ -86,7 +87,7 @@ TEST(Reporter, ReportAllColumns) {
 // wildcards.
 TEST(Reporter, ReportOneColumn) {
   auto reporter = loadReporter({"profile_opencv_0.binarypb"});
-  MEDIAPIPE_CHECK_OK(reporter->set_columns({"time_mean"}));
+  ABSL_CHECK_OK(reporter->set_columns({"time_mean"}));
   auto report = reporter->Report();
   EXPECT_THAT(report->headers(), ElementsAre("calculator", "time_mean"));
 }
@@ -95,7 +96,7 @@ TEST(Reporter, ReportOneColumn) {
 // Notice the columns are alphabetical except for the first column, 'calendar'.
 TEST(Reporter, ReportColumnsWithWildcards) {
   auto reporter = loadReporter({"profile_opencv_0.binarypb"});
-  MEDIAPIPE_CHECK_OK(reporter->set_columns({"*_m??n", "*l?t*cy*"}));
+  ABSL_CHECK_OK(reporter->set_columns({"*_m??n", "*l?t*cy*"}));
   EXPECT_THAT(reporter->Report()->headers(),
               ElementsAre("calculator", "input_latency_mean", "time_mean",
                           "input_latency_stddev", "input_latency_total"));
@@ -103,7 +104,7 @@ TEST(Reporter, ReportColumnsWithWildcards) {
 
 TEST(Reporter, AggregatesAreRecorded) {
   auto reporter = loadReporter({"profile_opencv_0.binarypb"});
-  MEDIAPIPE_CHECK_OK(reporter->set_columns({"time_*", "*latency*"}));
+  ABSL_CHECK_OK(reporter->set_columns({"time_*", "*latency*"}));
   const auto& report = reporter->Report();
   const auto& lines = report->lines();
   ASSERT_EQ(lines.size(), 3);
@@ -117,7 +118,7 @@ TEST(Reporter, JoinsFiles) {
       "profile_opencv_0.binarypb",
       "profile_opencv_1.binarypb",
   });
-  MEDIAPIPE_CHECK_OK(reporter->set_columns({"time_*", "*latency*"}));
+  ABSL_CHECK_OK(reporter->set_columns({"time_*", "*latency*"}));
   const auto& report = reporter->Report();
   const auto& lines = report->lines();
   ASSERT_EQ(lines.size(), 3);
@@ -146,14 +147,14 @@ TEST(Reporter, PrintAllColumns) {
 TEST(Reporter, CanReportBadColumns) {
   auto reporter = loadReporter({"profile_opencv_0.binarypb"});
   auto result = reporter->set_columns({"il[leg]al"});
-  EXPECT_EQ(result.code(), StatusCode::kInvalidArgument);
+  EXPECT_EQ(result.code(), absl::StatusCode::kInvalidArgument);
   EXPECT_EQ(result.message(), "Column 'il[leg]al' is invalid.\n");
 }
 
 TEST(Reporter, CanReportNonMatchingColumns) {
   auto reporter = loadReporter({"profile_opencv_0.binarypb"});
   auto result = reporter->set_columns({"time_*", "il[leg]al"});
-  EXPECT_EQ(result.code(), StatusCode::kInvalidArgument);
+  EXPECT_EQ(result.code(), absl::StatusCode::kInvalidArgument);
   EXPECT_EQ(result.message(), "Column 'il[leg]al' is invalid.\n");
   // Should not affect active columns, which is currently still "*".
   auto report = reporter->Report();
@@ -164,7 +165,7 @@ TEST(Reporter, CanReportNonMatchingColumns) {
 TEST(Reporter, BadPatternsIgnored) {
   auto reporter = loadReporter({"profile_opencv_0.binarypb"});
   auto result = reporter->set_columns({"time_mean", "il[leg]al", "^bad"});
-  EXPECT_EQ(result.code(), StatusCode::kInvalidArgument);
+  EXPECT_EQ(result.code(), absl::StatusCode::kInvalidArgument);
   // Can report multiple errors at once, separated by newlines.
   EXPECT_EQ(result.message(),
             "Column 'il[leg]al' is invalid.\n"
@@ -177,7 +178,7 @@ TEST(Reporter, BadPatternsIgnored) {
 TEST(Reporter, NonMatchingColumnsIgnored) {
   auto reporter = loadReporter({"profile_opencv_0.binarypb"});
   auto result = reporter->set_columns({"koopa*"});
-  EXPECT_EQ(result.code(), StatusCode::kInvalidArgument);
+  EXPECT_EQ(result.code(), absl::StatusCode::kInvalidArgument);
   EXPECT_EQ(result.message(), "Column 'koopa*' did not match any columns.\n");
 }
 

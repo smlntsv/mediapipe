@@ -16,6 +16,8 @@
 #include <cmath>
 #include <vector>
 
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/calculators/tensor/image_to_tensor_utils.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/calculator_runner.h"
@@ -87,7 +89,7 @@ absl::StatusOr<Detection> RunProjectionCalculator(
           MakePacket<std::array<float, 16>>(std::move(project_mat))
               .At(Timestamp::PostStream()));
 
-  MP_RETURN_IF_ERROR(runner.Run());
+  ABSL_RETURN_IF_ERROR(runner.Run());
   const std::vector<Packet>& output =
       runner.Outputs().Tag(kDetectionsTag).packets;
   RET_CHECK_EQ(output.size(), 1);

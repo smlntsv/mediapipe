@@ -21,10 +21,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/flags/flag.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "absl/types/span.h"
+#include "absl/flags/flag.h"            // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
+#include "absl/strings/string_view.h"   // from @com_google_absl
+#include "absl/types/span.h"            // from @com_google_absl
 #include "mediapipe/calculators/util/landmarks_to_render_data_calculator.pb.h"
 #include "mediapipe/calculators/util/rect_to_render_data_calculator.pb.h"
 #include "mediapipe/framework/api2/builder.h"
@@ -36,7 +38,6 @@ limitations under the License.
 #include "mediapipe/framework/port/file_helpers.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/framework/port/status_matchers.h"
 #include "mediapipe/framework/tool/test_util.h"
 #include "mediapipe/tasks/cc/core/mediapipe_builtin_op_resolver.h"
@@ -154,7 +155,7 @@ absl::StatusOr<std::unique_ptr<tasks::core::TaskRunner>> CreateTaskRunner() {
 
   // Track holistic face.
   HolisticFaceTrackingRequest request;
-  MP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HolisticFaceTrackingOutput result,
       TrackHolisticFace(image, face_landmarks_from_pose, detector_options,
                         landmarks_detector_options, request, graph));

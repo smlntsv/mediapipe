@@ -1,7 +1,9 @@
 #include "mediapipe/tasks/cc/vision/image_segmenter/calculators/ssbo_to_texture_converter.h"
 
-#include "tensorflow/lite/delegates/gpu/gl/converters/util.h"
-#include "tensorflow/lite/delegates/gpu/gl/gl_shader.h"
+#include "absl/status/status.h"                       // from @com_google_absl
+#include "absl/status/status_macros.h"                // from @com_google_absl
+#include "tflite/delegates/gpu/gl/converters/util.h"  // from @litert
+#include "tflite/delegates/gpu/gl/gl_shader.h"        // from @litert
 
 // Quick compile-time warning to ensure usage on the proper platform.
 #if !(MEDIAPIPE_OPENGL_ES_VERSION >= MEDIAPIPE_OPENGL_ES_31)
@@ -85,11 +87,11 @@ absl::Status SsboToTextureConverter::Init() {
   std::string delinearization_shader_source_with_headers =
       absl::StrCat(tflite::gpu::gl::GetShaderHeader(workgroup_size),
                    delinearization_shader_source);
-  MP_RETURN_IF_ERROR(GlShader::CompileShader(
+  ABSL_RETURN_IF_ERROR(GlShader::CompileShader(
       GL_COMPUTE_SHADER, delinearization_shader_source_with_headers,
       &delinearization_shader));
   delinearization_program_ = absl::make_unique<GlProgram>();
-  MP_RETURN_IF_ERROR(GlProgram::CreateWithShader(
+  ABSL_RETURN_IF_ERROR(GlProgram::CreateWithShader(
       delinearization_shader, delinearization_program_.get()));
   return absl::OkStatus();
 }
@@ -128,7 +130,7 @@ absl::StatusOr<GLuint> SsboToTextureConverter::ConvertTensorToGlTexture(
   if (texture_width != texture_width_ || texture_height != texture_height_) {
     // tflite::gpu::gl::GlTexture autoreleases, so we don't have to worry about
     // freeing memory.
-    MP_RETURN_IF_ERROR(CreateReadWriteRgbaImageTexture(
+    ABSL_RETURN_IF_ERROR(CreateReadWriteRgbaImageTexture(
         tflite::gpu::DataType::FLOAT32, {texture_width, texture_height},
         &out_texture_));
     texture_width_ = texture_width;
@@ -154,7 +156,7 @@ absl::StatusOr<GLuint> SsboToTextureConverter::ConvertTensorToGlTexture(
   const tflite::gpu::uint3 workgroups = {
       NumGroups(texture_width, kWorkgroupSize),
       NumGroups(texture_height, kWorkgroupSize), 1};
-  MP_RETURN_IF_ERROR(delinearization_program_->Dispatch(workgroups));
+  ABSL_RETURN_IF_ERROR(delinearization_program_->Dispatch(workgroups));
   glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT);
   return out_texture_.id();
 }

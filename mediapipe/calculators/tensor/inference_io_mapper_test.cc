@@ -21,9 +21,9 @@
 #include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_replace.h"
+#include "absl/status/status.h"        // from @com_google_absl
+#include "absl/strings/str_cat.h"      // from @com_google_absl
+#include "absl/strings/str_replace.h"  // from @com_google_absl
 #include "mediapipe/calculators/tensor/inference_calculator.pb.h"
 #include "mediapipe/calculators/tensor/tensor_span.h"
 #include "mediapipe/framework/api2/packet.h"
@@ -37,8 +37,8 @@
 #include "mediapipe/framework/resources.h"
 #include "mediapipe/framework/tool/sink.h"
 #include "mediapipe/util/tflite/tflite_model_loader.h"
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "tflite/interpreter.h"       // from @litert
+#include "tflite/kernels/register.h"  // from @litert
 
 namespace mediapipe {
 namespace api2 {
@@ -61,6 +61,8 @@ constexpr char k3In3OutSwaps2And0ModelPath[] =
 constexpr char kTwoSignaturesModelPath[] =
     "mediapipe/calculators/tensor/testdata/"
     "test_two_signature_keys_model.tflite";
+
+using ::absl_testing::StatusIs;
 
 using ::mediapipe::MakePacket;
 using ::mediapipe::Packet;

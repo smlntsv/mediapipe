@@ -23,17 +23,17 @@
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
-#include "absl/strings/str_cat.h"
+#include "absl/memory/memory.h"    // from @com_google_absl
+#include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "mediapipe/framework/formats/image.h"
 #include "mediapipe/framework/formats/image_frame.h"
 #include "mediapipe/framework/formats/matrix.h"
 #include "mediapipe/framework/packet.h"
 #include "mediapipe/python/pybind/image_frame_util.h"
 #include "mediapipe/python/pybind/util.h"
-#include "pybind11/eigen.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/stl.h"
+#include "pybind11/eigen.h"     // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/stl.h"       // from @pybind11
 
 namespace mediapipe {
 namespace python {
@@ -682,7 +682,7 @@ void InternalPacketCreators(pybind11::module* m) {
   m->def(
       "_create_image_frame_from_image_frame",
       [](ImageFrame& image_frame) {
-        auto image_frame_copy = absl::make_unique<ImageFrame>();
+        auto image_frame_copy = std::make_unique<ImageFrame>();
         // Set alignment_boundary to kGlDefaultAlignmentBoundary so that
         // both GPU and CPU can process it.
         image_frame_copy->CopyFrom(image_frame,
@@ -694,7 +694,7 @@ void InternalPacketCreators(pybind11::module* m) {
   m->def(
       "_create_image_from_image",
       [](Image& image) {
-        auto image_frame_copy = absl::make_unique<ImageFrame>();
+        auto image_frame_copy = std::make_unique<ImageFrame>();
         // Set alignment_boundary to kGlDefaultAlignmentBoundary so that
         // both GPU and CPU can process it.
         image_frame_copy->CopyFrom(*image.GetImageFrameSharedPtr(),

@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <stddef.h>
 
-#include "Eigen/Core"
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
-#include "unsupported/Eigen/CXX11/Tensor"
+#include "Eigen/Core"                               // from @eigen
+#include "tflite/c/common.h"                        // from @litert
+#include "tflite/kernels/internal/tensor_ctypes.h"  // from @litert
+#include "tflite/kernels/kernel_util.h"             // from @litert
+#include "unsupported/Eigen/CXX11/Tensor"           // from @eigen
 
 namespace mediapipe::tflite_operations {
 namespace vision::batch_norm {

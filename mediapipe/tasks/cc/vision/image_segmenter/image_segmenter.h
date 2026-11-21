@@ -20,14 +20,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
-#include "absl/status/statusor.h"
+#include "absl/memory/memory.h"    // from @com_google_absl
+#include "absl/status/statusor.h"  // from @com_google_absl
 #include "mediapipe/framework/formats/image.h"
 #include "mediapipe/tasks/cc/core/base_options.h"
 #include "mediapipe/tasks/cc/vision/core/base_vision_task_api.h"
 #include "mediapipe/tasks/cc/vision/core/image_processing_options.h"
 #include "mediapipe/tasks/cc/vision/image_segmenter/image_segmenter_result.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "tflite/kernels/register.h"  // from @litert
 
 namespace mediapipe {
 namespace tasks {

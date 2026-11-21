@@ -16,12 +16,13 @@ limitations under the License.
 #ifndef MEDIAPIPE_TASKS_C_VISION_HAND_LANDMARKER_HAND_LANDMARKER_H_
 #define MEDIAPIPE_TASKS_C_VISION_HAND_LANDMARKER_HAND_LANDMARKER_H_
 
-#include <cstdint>
+#include <stdint.h>
 
 #include "mediapipe/tasks/c/core/base_options.h"
 #include "mediapipe/tasks/c/core/common.h"
 #include "mediapipe/tasks/c/core/mp_status.h"
 #include "mediapipe/tasks/c/vision/core/image.h"
+#include "mediapipe/tasks/c/vision/core/image_processing_options.h"
 #include "mediapipe/tasks/c/vision/hand_landmarker/hand_landmarker_result.h"
 
 #ifndef MP_EXPORT
@@ -38,13 +39,42 @@ extern "C" {
 
 typedef struct MpHandLandmarkerInternal* MpHandLandmarkerPtr;
 
+// The user-defined result callback for processing live stream data. The result
+// callback should only be specified when the running mode is set to
+// MP_RUNNING_MODE_LIVE_STREAM.
+//
+// Arguments of the callback function:
+//   - `user_data`: the `result_callback_user_data` of the options that the hand
+//     landmarker was created with, passed through unchanged.
+//   - `status`: `kMpOk` if a result is available, or the error otherwise.
+//   - `error_msg`: the message of the error, or null if `status` is `kMpOk`.
+//   - `result`: the result, or null if `status` is not `kMpOk`.
+//   - `image`: the image that the result was obtained on. If `status` is not
+//     `kMpOk`, an empty image that must not be used.
+//   - `timestamp_ms`: the timestamp of that image. Unspecified if `status` is
+//     not `kMpOk`.
+//
+// `error_msg`, `result` and `image` are only valid for the lifetime of the
+// callback and must not be freed by the caller (do not pass `error_msg` to
+// `MpErrorFree()`). The callback is invoked on a thread of the hand landmarker
+// and must not call `MpHandLandmarkerClose()`.
+typedef void (*MpHandLandmarkerResultCallback)(
+    void* user_data, MpStatus status, const char* error_msg,
+    const MpHandLandmarkerResult* result, MpImagePtr image,
+    int64_t timestamp_ms);
+
 // The options for configuring a MediaPipe hand landmarker task.
-struct MpHandLandmarkerOptions {
+//
+// The struct has no default values, in C or in C++: a field that is never
+// written is indeterminate. Zero-initialize the struct (`= {0}` in C, `= {}`
+// in C++) and then set its fields; the suggested defaults are listed below.
+// Zero is not a valid `running_mode`, so that field must always be set.
+typedef struct MpHandLandmarkerOptions {
   // Base options for configuring MediaPipe Tasks, such as specifying the model
   // file with metadata, accelerator options, op resolver, etc.
   struct MpBaseOptions base_options;
 
-  // The running mode of the task. Default to the image mode.
+  // The running mode of the task. Suggested default: MP_RUNNING_MODE_IMAGE.
   // HandLandmarker has three running modes:
   // 1) The image mode for recognizing hand landmarks on single image inputs.
   // 2) The video mode for recognizing hand landmarks on the decoded frames of a
@@ -52,49 +82,51 @@ struct MpHandLandmarkerOptions {
   // 3) The live stream mode for recognizing hand landmarks on the live stream
   //    of input data, such as from camera. In this mode, the "result_callback"
   //    below must be specified to receive the detection results asynchronously.
-  MpRunningMode running_mode;
+  enum MpRunningMode running_mode;
 
   // The maximum number of hands can be detected by the HandLandmarker.
-  int num_hands = 1;
+  // Suggested default: 1.
+  int num_hands;
 
   // The minimum confidence score for the hand detection to be considered
   // successful.
-  float min_hand_detection_confidence = 0.5;
+  // Suggested default: 0.5.
+  float min_hand_detection_confidence;
 
   // The minimum confidence score of hand presence score in the hand landmark
   // detection.
-  float min_hand_presence_confidence = 0.5;
+  // Suggested default: 0.5.
+  float min_hand_presence_confidence;
 
   // The minimum confidence score for the hand tracking to be considered
   // successful.
-  float min_tracking_confidence = 0.5;
+  // Suggested default: 0.5.
+  float min_tracking_confidence;
 
   // Scale factor for the frame-to-frame region of interest derived from the
   // previous frame's hand landmarks. Larger values expand the tracking crop so
-  // a fast-moving hand stays inside it between frames. Default 2.0.
-  float roi_scale = 2.0;
+  // a fast-moving hand stays inside it between frames. Suggested default: 2.0.
+  // Must be positive.
+  float roi_scale;
 
   // In VIDEO/LIVE_STREAM mode: number of consecutive frames a vanished hand's
   // ROI is kept in the tracking loop before its track is dropped. While held,
   // the palm detector stays skipped and the landmark model keeps retrying the
   // last-known region, so a momentarily-blurred hand is re-acquired quickly.
-  // 0 (default) drops a hand immediately (original behavior).
-  int tracking_grace_frames = 0;
+  // Suggested default: 0, which drops a hand immediately (original behavior).
+  int tracking_grace_frames;
 
-  // The user-defined result callback for processing live stream data.
-  // The result callback should only be specified when the running mode is set
-  // to MpRunningMode::MP_RUNNING_MODE_LIVE_STREAM. Arguments of the callback
-  // function include: the pointer to recognition result, the image that result
-  // was obtained on, the timestamp relevant to recognition results and pointer
-  // to error message in case of any failure. The validity of the passed
-  // arguments is true for the lifetime of the callback function.
-  //
-  // The passed arguments are only valid for the lifetime of the callback.
-  typedef void (*result_callback_fn)(MpStatus status,
-                                     const MpHandLandmarkerResult* result,
-                                     MpImagePtr image, int64_t timestamp_ms);
-  result_callback_fn result_callback;
-};
+  // The user-defined result callback for processing live stream data. The
+  // result callback should only be specified when the running mode is set to
+  // MP_RUNNING_MODE_LIVE_STREAM. See
+  // `MpHandLandmarkerResultCallback` for details.
+  MpHandLandmarkerResultCallback result_callback;
+
+  // The pointer that is passed as `user_data` to every invocation of
+  // `result_callback`. Can be null. The hand landmarker neither dereferences
+  // nor frees it. It must remain valid until `MpHandLandmarkerClose()` returns.
+  void* result_callback_user_data;
+} MpHandLandmarkerOptions;
 
 // Creates an HandLandmarker from the provided `options`.
 // If successful, returns `kMpOk` and sets `*landmarker` to the new
@@ -147,13 +179,8 @@ MP_EXPORT MpStatus MpHandLandmarkerDetectForVideo(
 // provide a timestamp (in milliseconds) to indicate when the input image is
 // sent to the hand landmarker. The input timestamps must be monotonically
 // increasing.
-// The `result_callback` provides:
-//   - The recognition results as an MpHandLandmarkerResult object.
-//   - The const reference to the corresponding input image that the hand
-//     landmarker runs on. Note that the const reference to the image will no
-//     longer be valid when the callback returns. To access the image data
-//     outside of the callback, callers need to make a copy of the image.
-//   - The input timestamp in milliseconds.
+// See `MpHandLandmarkerResultCallback` for the arguments that `result_callback`
+// receives.
 //
 // Returns 'kMpOk' on success. To obtain a detailed error, `error_msg` must be
 // non-null pointer to a `char*`, which will be populated with a newly-allocated
@@ -168,7 +195,10 @@ MpHandLandmarkerDetectAsync(MpHandLandmarkerPtr landmarker, MpImagePtr image,
 // Does not free the result pointer itself.
 MP_EXPORT void MpHandLandmarkerCloseResult(MpHandLandmarkerResult* result);
 
-// Frees hand landmarker.
+// Shuts down and frees the hand landmarker. In the live stream mode, waits for
+// the pending results. Once this function returns, `result_callback` is not
+// invoked anymore, and `landmarker` is freed and must not be used, even if an
+// error is returned.
 //
 // Returns 'kMpOk' on success. To obtain a detailed error, `error_msg` must be
 // non-null pointer to a `char*`, which will be populated with a newly-allocated

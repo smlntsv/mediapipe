@@ -21,9 +21,10 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
+#include "absl/strings/str_cat.h"       // from @com_google_absl
 #include "mediapipe/framework/api3/calculator.h"
 #include "mediapipe/framework/api3/calculator_context.h"
 #include "mediapipe/framework/api3/calculator_contract.h"
@@ -153,20 +154,20 @@ absl::Status ProcessLandmarks(LandmarkListT landmarks,
   if (IsNormalized<LandmarkListT>()) {
     RET_CHECK(cc.image_size.IsConnected() && cc.image_size);
     const auto& [width, height] = cc.image_size.GetOrDie();
-    MP_ASSIGN_OR_RETURN(landmarks,
-                        NormalizeLandmarkAspectRatio(landmarks, width, height));
+    ABSL_ASSIGN_OR_RETURN(
+        landmarks, NormalizeLandmarkAspectRatio(landmarks, width, height));
   }
 
   if (cc.norm_rect.IsConnected()) {
     RET_CHECK(cc.norm_rect);
     const NormalizedRect& norm_rect = cc.norm_rect.GetOrDie();
     const float rotation = norm_rect.rotation();
-    MP_ASSIGN_OR_RETURN(landmarks, RotateLandmarks(landmarks, rotation));
+    ABSL_ASSIGN_OR_RETURN(landmarks, RotateLandmarks(landmarks, rotation));
   }
 
   const LandmarksToMatrixCalculatorOptions& options = cc.options.Get();
   if (options.object_normalization()) {
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         landmarks,
         NormalizeObject(landmarks,
                         options.object_normalization_origin_offset()));

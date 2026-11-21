@@ -17,10 +17,10 @@
 #include <cstdint>
 #include <cstdlib>
 
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/framework/formats/matrix_data.pb.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/tasks/cc/vision/face_geometry/libs/mesh_3d_utils.h"
 #include "mediapipe/tasks/cc/vision/face_geometry/proto/environment.pb.h"
 #include "mediapipe/tasks/cc/vision/face_geometry/proto/geometry_pipeline_metadata.pb.h"
@@ -50,7 +50,7 @@ absl::Status ValidatePerspectiveCamera(
 }
 
 absl::Status ValidateEnvironment(const proto::Environment& environment) {
-  MP_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ValidatePerspectiveCamera(environment.perspective_camera()))
       << "Invalid perspective camera!";
 
@@ -77,7 +77,7 @@ absl::Status ValidateMesh3d(const proto::Mesh3d& mesh_3d) {
 }
 
 absl::Status ValidateFaceGeometry(const proto::FaceGeometry& face_geometry) {
-  MP_RETURN_IF_ERROR(ValidateMesh3d(face_geometry.mesh())) << "Invalid mesh!";
+  ABSL_RETURN_IF_ERROR(ValidateMesh3d(face_geometry.mesh())) << "Invalid mesh!";
 
   static constexpr char kInvalid4x4MatrixMessage[] =
       "Pose transformation matrix must be a 4x4 matrix!";
@@ -94,7 +94,7 @@ absl::Status ValidateFaceGeometry(const proto::FaceGeometry& face_geometry) {
 
 absl::Status ValidateGeometryPipelineMetadata(
     const proto::GeometryPipelineMetadata& metadata) {
-  MP_RETURN_IF_ERROR(ValidateMesh3d(metadata.canonical_mesh()))
+  ABSL_RETURN_IF_ERROR(ValidateMesh3d(metadata.canonical_mesh()))
       << "Invalid canonical mesh!";
 
   RET_CHECK_GT(metadata.procrustes_landmark_basis_size(), 0)

@@ -6,10 +6,10 @@
 #include <string>
 #include <utility>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/time/time.h"
-#include "mediapipe/framework/port/status_macros.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
+#include "absl/time/time.h"             // from @com_google_absl
 #include "mediapipe/gpu/webgpu/webgpu_headers.h"
 
 #ifdef __EMSCRIPTEN__
@@ -255,8 +255,8 @@ absl::Status WebGpuTexture2dUploadData(const wgpu::Device& device,
                                        const wgpu::Queue& queue,
                                        uint32_t bytes_per_pixel, void* data,
                                        const wgpu::Texture& texture) {
-  MP_ASSIGN_OR_RETURN(const uint32_t texture_bytes_per_pixel,
-                      WebGpuTextureFormatBytesPerPixel(format));
+  ABSL_ASSIGN_OR_RETURN(const uint32_t texture_bytes_per_pixel,
+                        WebGpuTextureFormatBytesPerPixel(format));
   const uint32_t buffer_size = width * height * texture_bytes_per_pixel;
   std::unique_ptr<uint8_t[]> temp_buffer;
   void* buffer;
@@ -292,7 +292,7 @@ absl::StatusOr<wgpu::Texture> CreateWebGpuTexture2dAndUploadData(
   // wgpu::TextureUsage::CopyDst is required for the WriteTexture call.
   wgpu::Texture texture = CreateTextureWebGpuTexture2d(
       device, width, height, format, usage | wgpu::TextureUsage::CopyDst);
-  MP_RETURN_IF_ERROR(WebGpuTexture2dUploadData(
+  ABSL_RETURN_IF_ERROR(WebGpuTexture2dUploadData(
       device, width, height, format, queue, bytes_per_pixel, data, texture));
   return texture;
 }

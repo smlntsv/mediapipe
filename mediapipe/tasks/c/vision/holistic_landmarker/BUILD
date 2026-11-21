@@ -57,6 +57,7 @@ HOLISTIC_LANDMARKER_DEPS = [
     "//mediapipe/tasks/c/core:base_options_converter",
     "//mediapipe/tasks/c/core:mp_status",
     "//mediapipe/tasks/c/core:mp_status_converter",
+    "//mediapipe/tasks/c/core:result_callback",
     "//mediapipe/tasks/c/core:common",
     "//mediapipe/tasks/c/vision/core:image",
     "//mediapipe/tasks/c/vision/core:image_frame_util",

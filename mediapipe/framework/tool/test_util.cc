@@ -25,20 +25,21 @@
 #include <string>
 #include <vector>
 
-#include "absl/cleanup/cleanup.h"
-#include "absl/container/flat_hash_set.h"
-#include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
-#include "absl/memory/memory.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
-#include "absl/strings/string_view.h"
-#include "absl/strings/substitute.h"
-#include "absl/time/clock.h"
-#include "absl/time/time.h"
+#include "absl/cleanup/cleanup.h"          // from @com_google_absl
+#include "absl/container/flat_hash_set.h"  // from @com_google_absl
+#include "absl/log/absl_check.h"           // from @com_google_absl
+#include "absl/log/absl_log.h"             // from @com_google_absl
+#include "absl/memory/memory.h"            // from @com_google_absl
+#include "absl/status/status.h"            // from @com_google_absl
+#include "absl/status/status_macros.h"     // from @com_google_absl
+#include "absl/status/statusor.h"          // from @com_google_absl
+#include "absl/strings/str_cat.h"          // from @com_google_absl
+#include "absl/strings/str_format.h"       // from @com_google_absl
+#include "absl/strings/str_join.h"         // from @com_google_absl
+#include "absl/strings/string_view.h"      // from @com_google_absl
+#include "absl/strings/substitute.h"       // from @com_google_absl
+#include "absl/time/clock.h"               // from @com_google_absl
+#include "absl/time/time.h"                // from @com_google_absl
 #include "mediapipe/framework/calculator.pb.h"
 #include "mediapipe/framework/deps/file_path.h"
 #include "mediapipe/framework/formats/image_format.pb.h"
@@ -46,9 +47,8 @@
 #include "mediapipe/framework/port/advanced_proto_inc.h"
 #include "mediapipe/framework/port/file_helpers.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status_macros.h"
-#include "stb_image.h"
-#include "stb_image_write.h"
+#include "stb_image.h"        // from @stblib
+#include "stb_image_write.h"  // from @stblib
 
 namespace mediapipe {
 
@@ -171,16 +171,16 @@ std::string GetBinaryDirectory() {
 absl::Status CompareAndSaveOutputInternal(
     const ImageFrame& expected, const ImageFrame& actual,
     const ImageFrameComparisonOptions& options) {
-  MP_ASSIGN_OR_RETURN(auto output_img_path,
-                      SavePngTestOutput(actual, "output"));
-  MP_ASSIGN_OR_RETURN(auto expected_img_path,
-                      SavePngTestOutput(expected, "expected"));
+  ABSL_ASSIGN_OR_RETURN(auto output_img_path,
+                        SavePngTestOutput(actual, "output"));
+  ABSL_ASSIGN_OR_RETURN(auto expected_img_path,
+                        SavePngTestOutput(expected, "expected"));
 
   std::unique_ptr<ImageFrame> diff_img;
   auto status = CompareImageFrames(expected, actual, options, diff_img);
   if (diff_img) {
-    MP_ASSIGN_OR_RETURN(auto diff_img_path,
-                        SavePngTestOutput(*diff_img, "diff"));
+    ABSL_ASSIGN_OR_RETURN(auto diff_img_path,
+                          SavePngTestOutput(*diff_img, "diff"));
   }
 
   return status;
@@ -341,14 +341,14 @@ absl::StatusOr<std::unique_ptr<ImageFrame>> DecodeTestImage(
         << "unsupported number of channels: " << output_channels;
   }
 
-  return absl::make_unique<ImageFrame>(
+  return std::make_unique<ImageFrame>(
       format, width, height, width * output_channels, data, stbi_image_free);
 }
 
 absl::StatusOr<std::unique_ptr<ImageFrame>> LoadTestImage(
     absl::string_view path, ImageFormat::Format format) {
   std::string encoded;
-  MP_RETURN_IF_ERROR(mediapipe::file::GetContents(path, &encoded));
+  ABSL_RETURN_IF_ERROR(mediapipe::file::GetContents(path, &encoded));
   return DecodeTestImage(encoded, format);
 }
 
@@ -383,7 +383,7 @@ absl::StatusOr<std::string> SavePngTestOutput(
       absl::StrCat(prefix, "_", now_string, ".png");
   std::string output_full_path =
       file::JoinPath(GetTestOutputsDir(), output_relative_path);
-  MP_RETURN_IF_ERROR(SavePngOutput(image, output_full_path));
+  ABSL_RETURN_IF_ERROR(SavePngOutput(image, output_full_path));
   return output_relative_path;
 }
 
@@ -413,8 +413,8 @@ std::unique_ptr<ImageFrame> GenerateLuminanceImage(
     return nullptr;
   }
   auto luminance_image =
-      absl::make_unique<ImageFrame>(original_image.Format(), width, height,
-                                    ImageFrame::kGlDefaultAlignmentBoundary);
+      std::make_unique<ImageFrame>(original_image.Format(), width, height,
+                                   ImageFrame::kGlDefaultAlignmentBoundary);
   const uint8_t* pixel1 = original_image.PixelData();
   uint8_t* pixel2 = luminance_image->MutablePixelData();
   const int width_padding1 = original_image.WidthStep() - width * channels;

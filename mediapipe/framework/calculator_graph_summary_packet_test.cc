@@ -1,4 +1,4 @@
-#include "absl/status/status.h"
+#include "absl/status/status.h"  // from @com_google_absl
 #include "mediapipe/framework/api2/node.h"
 #include "mediapipe/framework/api2/packet.h"
 #include "mediapipe/framework/api2/port.h"
@@ -11,6 +11,7 @@
 
 namespace mediapipe {
 
+using ::absl_testing::StatusIs;
 using ::mediapipe::api2::Input;
 using ::mediapipe::api2::Node;
 using ::mediapipe::api2::Output;

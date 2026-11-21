@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "absl/log/absl_log.h"
+#include "absl/log/absl_log.h"   // from @com_google_absl
+#include "absl/status/status.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/calculator_runner.h"
 #include "mediapipe/framework/port/gtest.h"
@@ -30,7 +31,7 @@ class GateCalculatorTest : public ::testing::Test {
  protected:
   // Helper to run a graph and return status.
   static absl::Status RunGraph(const std::string& proto) {
-    auto runner = absl::make_unique<CalculatorRunner>(
+    auto runner = std::make_unique<CalculatorRunner>(
         ParseTextProtoOrDie<CalculatorGraphConfig::Node>(proto));
     return runner->Run();
   }
@@ -63,7 +64,7 @@ class GateCalculatorTest : public ::testing::Test {
   }
 
   void SetRunner(const std::string& proto) {
-    runner_ = absl::make_unique<CalculatorRunner>(
+    runner_ = std::make_unique<CalculatorRunner>(
         ParseTextProtoOrDie<CalculatorGraphConfig::Node>(proto));
   }
 

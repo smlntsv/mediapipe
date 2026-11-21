@@ -18,12 +18,13 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
-#include "absl/strings/str_format.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/strings/str_format.h"    // from @com_google_absl
 #include "mediapipe/framework/api2/builder.h"
 #include "mediapipe/framework/calculator.pb.h"
 #include "mediapipe/framework/formats/image.h"
 #include "mediapipe/framework/formats/rect.pb.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/tasks/cc/core/utils.h"
 #include "mediapipe/tasks/cc/vision/core/image_processing_options.h"
 #include "mediapipe/tasks/cc/vision/core/running_mode.h"
@@ -208,6 +209,8 @@ absl::StatusOr<std::unique_ptr<ImageSegmenter>> ImageSegmenter::Create(
        .host_environment = options->base_options.host_environment,
        .host_system = options->base_options.host_system,
        .host_version = options->base_options.host_version,
+       .app_id = options->base_options.app_id,
+       .app_version = options->base_options.app_version,
        .ca_bundle_path = options->base_options.ca_bundle_path});
   if (!image_segmenter.ok()) {
     return image_segmenter.status();
@@ -216,7 +219,7 @@ absl::StatusOr<std::unique_ptr<ImageSegmenter>> ImageSegmenter::Create(
       options->output_confidence_masks;
   image_segmenter.value()->output_category_mask_ =
       options->output_category_mask;
-  MP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       (*image_segmenter)->labels_,
       GetLabelsFromGraphConfig((*image_segmenter)->runner_->GetGraphConfig()));
   return image_segmenter;
@@ -234,18 +237,19 @@ absl::StatusOr<ImageSegmenterResult> ImageSegmenter::Segment(
 
 absl::StatusOr<ImageSegmenterResult> ImageSegmenter::Segment(
     mediapipe::Image image, SegmentationOptions segmentation_options) {
-  MP_RETURN_IF_ERROR(ValidateSegmentationOptions(segmentation_options));
+  ABSL_RETURN_IF_ERROR(ValidateSegmentationOptions(segmentation_options));
   if (image.UsesGpu()) {
     return CreateStatusWithPayload(
         absl::StatusCode::kInvalidArgument,
         absl::StrCat("GPU input images are currently not supported."),
         MediaPipeTasksStatus::kRunnerUnexpectedInputError);
   }
-  MP_ASSIGN_OR_RETURN(NormalizedRect norm_rect,
-                      ConvertToNormalizedRect(
-                          segmentation_options.image_processing_options, image,
-                          /*roi_allowed=*/false));
-  MP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
+      NormalizedRect norm_rect,
+      ConvertToNormalizedRect(segmentation_options.image_processing_options,
+                              image,
+                              /*roi_allowed=*/false));
+  ABSL_ASSIGN_OR_RETURN(
       auto output_packets,
       ProcessImageData(
           {{kImageInStreamName, mediapipe::MakePacket<Image>(std::move(image))},
@@ -283,18 +287,19 @@ absl::StatusOr<ImageSegmenterResult> ImageSegmenter::SegmentForVideo(
 absl::StatusOr<ImageSegmenterResult> ImageSegmenter::SegmentForVideo(
     mediapipe::Image image, int64_t timestamp_ms,
     SegmentationOptions segmentation_options) {
-  MP_RETURN_IF_ERROR(ValidateSegmentationOptions(segmentation_options));
+  ABSL_RETURN_IF_ERROR(ValidateSegmentationOptions(segmentation_options));
   if (image.UsesGpu()) {
     return CreateStatusWithPayload(
         absl::StatusCode::kInvalidArgument,
         absl::StrCat("GPU input images are currently not supported."),
         MediaPipeTasksStatus::kRunnerUnexpectedInputError);
   }
-  MP_ASSIGN_OR_RETURN(NormalizedRect norm_rect,
-                      ConvertToNormalizedRect(
-                          segmentation_options.image_processing_options, image,
-                          /*roi_allowed=*/false));
-  MP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
+      NormalizedRect norm_rect,
+      ConvertToNormalizedRect(segmentation_options.image_processing_options,
+                              image,
+                              /*roi_allowed=*/false));
+  ABSL_ASSIGN_OR_RETURN(
       auto output_packets,
       ProcessVideoData(
           {{kImageInStreamName,
@@ -336,17 +341,18 @@ absl::Status ImageSegmenter::SegmentAsync(
 absl::Status ImageSegmenter::SegmentAsync(
     Image image, int64_t timestamp_ms,
     SegmentationOptions segmentation_options) {
-  MP_RETURN_IF_ERROR(ValidateSegmentationOptions(segmentation_options));
+  ABSL_RETURN_IF_ERROR(ValidateSegmentationOptions(segmentation_options));
   if (image.UsesGpu()) {
     return CreateStatusWithPayload(
         absl::StatusCode::kInvalidArgument,
         absl::StrCat("GPU input images are currently not supported."),
         MediaPipeTasksStatus::kRunnerUnexpectedInputError);
   }
-  MP_ASSIGN_OR_RETURN(NormalizedRect norm_rect,
-                      ConvertToNormalizedRect(
-                          segmentation_options.image_processing_options, image,
-                          /*roi_allowed=*/false));
+  ABSL_ASSIGN_OR_RETURN(
+      NormalizedRect norm_rect,
+      ConvertToNormalizedRect(segmentation_options.image_processing_options,
+                              image,
+                              /*roi_allowed=*/false));
   return SendLiveStreamData(
       {{kImageInStreamName,
         MakePacket<Image>(std::move(image))

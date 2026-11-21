@@ -6,8 +6,9 @@
 #include <utility>
 #include <vector>
 
-#include "absl/functional/any_invocable.h"
-#include "absl/status/status.h"
+#include "absl/functional/any_invocable.h"  // from @com_google_absl
+#include "absl/status/status.h"             // from @com_google_absl
+#include "absl/status/status_macros.h"      // from @com_google_absl
 #include "mediapipe/calculators/tensor/tensor_span.h"
 #include "mediapipe/calculators/tensor/tflite_delegate_ptr.h"
 #include "mediapipe/framework/api2/builder.h"
@@ -19,19 +20,19 @@
 #include "mediapipe/framework/formats/tensor.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/framework/port/status_matchers.h"
 #include "mediapipe/framework/resources.h"
 #include "mediapipe/util/tflite/tflite_model_loader.h"
-#include "tensorflow/lite/core/api/op_resolver.h"
-#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/util.h"
+#include "tflite/core/api/op_resolver.h"                // from @litert
+#include "tflite/delegates/xnnpack/xnnpack_delegate.h"  // from @litert
+#include "tflite/kernels/register.h"                    // from @litert
+#include "tflite/util.h"                                // from @litert
 
 namespace mediapipe {
 namespace api2 {
 namespace {
 
+using ::absl_testing::StatusIs;
 using ::mediapipe::Tensor;
 using ::testing::HasSubstr;
 
@@ -80,13 +81,13 @@ class InferenceCalculatorDelegateRunnnerTest : public ::testing::Test {
     input >> inference_calculator.In("INPUT")[0];
     auto config = graph_builder.GetConfig();
     CalculatorGraph graph;
-    MP_RETURN_IF_ERROR(graph.Initialize(config));
-    MP_RETURN_IF_ERROR(graph.StartRun({}));
-    MP_RETURN_IF_ERROR(graph.AddPacketToInputStream(
+    ABSL_RETURN_IF_ERROR(graph.Initialize(config));
+    ABSL_RETURN_IF_ERROR(graph.StartRun({}));
+    ABSL_RETURN_IF_ERROR(graph.AddPacketToInputStream(
         "input", mediapipe::MakePacket<absl::AnyInvocable<absl::Status(
                      CalculatorContext*) const>>(std::move(invokable))
                      .At(mediapipe::Timestamp(0))));
-    MP_RETURN_IF_ERROR(graph.CloseAllInputStreams());
+    ABSL_RETURN_IF_ERROR(graph.CloseAllInputStreams());
     return graph.WaitUntilDone();
   }
 
@@ -99,7 +100,7 @@ class InferenceCalculatorDelegateRunnnerTest : public ::testing::Test {
       const std::vector<std::vector<VectorT>>& expected_outputs) {
     return ExecuteAnyInvocableInGraphCalculator(
         [&](CalculatorContext* cc) -> absl::Status {
-          MP_ASSIGN_OR_RETURN(
+          ABSL_ASSIGN_OR_RETURN(
               auto inference_runner,
               CreateInferenceInterpreterDelegateRunner(
                   std::move(model), std::move(op_resolver), std::move(delegate),
@@ -125,7 +126,7 @@ class InferenceCalculatorDelegateRunnnerTest : public ::testing::Test {
             }
           }
           // Execute inference.
-          MP_ASSIGN_OR_RETURN(
+          ABSL_ASSIGN_OR_RETURN(
               std::vector<Tensor> output_tensors,
               inference_runner->Run(cc, MakeTensorSpan(input_tensors)));
           // Check output tensors.

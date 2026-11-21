@@ -23,10 +23,12 @@ cc_binary(
     srcs = ["hello_world.cc"],
     deps = [
         "//mediapipe/calculators/core:pass_through_calculator",
-        "//mediapipe/framework:calculator_graph",
+        "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework:output_stream_poller",
         "//mediapipe/framework/port:parse_text_proto",
-        "//mediapipe/framework/port:status",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
     ],
 )

@@ -21,8 +21,9 @@
 #include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
 #include "mediapipe/framework/api2/builder.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/classification.pb.h"
@@ -178,6 +179,7 @@ HolisticLandmarkerResult ConvertToHolisticLandmarkerResult(
 // added to limit the number of frames in flight.
 CalculatorGraphConfig CreateGraphConfig(
     std::unique_ptr<HolisticLandmarkerGraphOptionsProto> options,
+    bool output_face_blendshapes, bool output_pose_segmentation_masks,
     bool enable_flow_limiting) {
   api2::builder::Graph graph;
   auto& subgraph = graph.AddNode(kHolisticLandmarkerGraphTypeName);
@@ -200,11 +202,15 @@ CalculatorGraphConfig CreateGraphConfig(
   subgraph.Out(kRightHandWorldLandmarksTag)
           .SetName(kRightHandWorldLandmarksStreamName) >>
       graph.Out(kRightHandWorldLandmarksTag);
-  subgraph.Out(kPoseSegmentationMaskTag)
-          .SetName(kPoseSegmentationMaskStreamName) >>
-      graph.Out(kPoseSegmentationMaskTag);
-  subgraph.Out(kFaceBlendshapesTag).SetName(kFaceBlendshapesStreamName) >>
-      graph.Out(kFaceBlendshapesTag);
+  if (output_pose_segmentation_masks) {
+    subgraph.Out(kPoseSegmentationMaskTag)
+            .SetName(kPoseSegmentationMaskStreamName) >>
+        graph.Out(kPoseSegmentationMaskTag);
+  }
+  if (output_face_blendshapes) {
+    subgraph.Out(kFaceBlendshapesTag).SetName(kFaceBlendshapesStreamName) >>
+        graph.Out(kFaceBlendshapesTag);
+  }
   subgraph.Out(kImageTag).SetName(kImageOutStreamName) >> graph.Out(kImageTag);
   if (enable_flow_limiting) {
     return tasks::core::AddFlowLimiterCalculator(graph, subgraph, {kImageTag},
@@ -220,7 +226,8 @@ std::unique_ptr<HolisticLandmarkerGraphOptionsProto>
 ConvertHolisticLandmarkerOptionsProto(HolisticLandmarkerOptions* options) {
   auto options_proto = std::make_unique<HolisticLandmarkerGraphOptionsProto>();
   auto base_options_proto = std::make_unique<tasks::core::proto::BaseOptions>(
-      tasks::core::ConvertBaseOptionsToProto(&(options->base_options)));
+      tasks::core::ConvertBaseOptionsToProto(&(options->base_options),
+                                             /*use_litert=*/true));
   options_proto->mutable_base_options()->Swap(base_options_proto.get());
   options_proto->mutable_base_options()->set_use_stream_mode(
       options->running_mode != core::RunningMode::IMAGE);
@@ -280,12 +287,13 @@ absl::StatusOr<std::unique_ptr<HolisticLandmarker>> HolisticLandmarker::Create(
               kMicroSecondsPerMilliSecond);
     };
   }
-  MP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto landmarker,
       (core::VisionTaskApiFactory::Create<HolisticLandmarker,
                                           HolisticLandmarkerGraphOptionsProto>(
           {.config = CreateGraphConfig(
-               std::move(options_proto),
+               std::move(options_proto), options->output_face_blendshapes,
+               options->output_pose_segmentation_masks,
                options->running_mode == core::RunningMode::LIVE_STREAM),
            .task_name = kTaskName,
            .task_running_mode = core::GetCoreRunningMode(options->running_mode),
@@ -296,6 +304,8 @@ absl::StatusOr<std::unique_ptr<HolisticLandmarker>> HolisticLandmarker::Create(
            .host_environment = options->base_options.host_environment,
            .host_system = options->base_options.host_system,
            .host_version = options->base_options.host_version,
+           .app_id = options->base_options.app_id,
+           .app_version = options->base_options.app_version,
            .ca_bundle_path = options->base_options.ca_bundle_path})));
   landmarker->output_pose_segmentation_masks_ =
       options->output_pose_segmentation_masks;
@@ -313,7 +323,7 @@ absl::StatusOr<HolisticLandmarkerResult> HolisticLandmarker::Detect(
         "This task doesn't support region-of-interest.",
         MediaPipeTasksStatus::kImageProcessingInvalidArgumentError);
   }
-  MP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto output_packets,
       ProcessImageData(
           {{kImageInStreamName, MakePacket<Image>(std::move(image))}}));
@@ -333,7 +343,7 @@ absl::StatusOr<HolisticLandmarkerResult> HolisticLandmarker::DetectForVideo(
         "This task doesn't support region-of-interest.",
         MediaPipeTasksStatus::kImageProcessingInvalidArgumentError);
   }
-  MP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto output_packets,
       ProcessVideoData(
           {{kImageInStreamName,

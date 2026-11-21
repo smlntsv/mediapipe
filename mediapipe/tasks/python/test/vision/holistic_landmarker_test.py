@@ -169,7 +169,7 @@ class HolisticLandmarkerTest(parameterized.TestCase):
       self,
       actual_result: HolisticLandmarkerResult,
       expected_result: HolisticLandmarkerResult,
-      output_segmentation_mask: bool,
+      output_pose_segmentation_masks: bool,
       landmarks_margin: float,
       blendshapes_margin: float,
   ):
@@ -188,7 +188,7 @@ class HolisticLandmarkerTest(parameterized.TestCase):
         expected_result.face_blendshapes,
         blendshapes_margin,
     )
-    if output_segmentation_mask:
+    if output_pose_segmentation_masks:
       segmentation_mask = actual_result.segmentation_mask
       self.assertIsInstance(segmentation_mask, _Image)
       self.assertEqual(segmentation_mask.width, _IMAGE_WIDTH)
@@ -207,6 +207,8 @@ class HolisticLandmarkerTest(parameterized.TestCase):
     # Creates with options containing model file successfully.
     base_options = _BaseOptions(model_asset_path=self.model_path)
     options = _HolisticLandmarkerOptions(base_options=base_options)
+    self.assertEqual(options.min_face_suppression_threshold, 0.3)
+    self.assertEqual(options.min_pose_suppression_threshold, 0.3)
     with _HolisticLandmarker.create_from_options(options) as landmarker:
       self.assertIsInstance(landmarker, _HolisticLandmarker)
 
@@ -260,7 +262,7 @@ class HolisticLandmarkerTest(parameterized.TestCase):
       self,
       model_file_type,
       model_name,
-      output_segmentation_mask,
+      output_pose_segmentation_masks,
       expected_holistic_landmarker_result,
   ):
     # Creates holistic landmarker.
@@ -280,7 +282,7 @@ class HolisticLandmarkerTest(parameterized.TestCase):
         output_face_blendshapes=True
         if expected_holistic_landmarker_result.face_blendshapes
         else False,
-        output_segmentation_mask=output_segmentation_mask,
+        output_pose_segmentation_masks=output_pose_segmentation_masks,
     )
     landmarker = _HolisticLandmarker.create_from_options(options)
 
@@ -289,7 +291,7 @@ class HolisticLandmarkerTest(parameterized.TestCase):
     self._expect_holistic_landmarker_results_correct(
         detection_result,
         expected_holistic_landmarker_result,
-        output_segmentation_mask,
+        output_pose_segmentation_masks,
         _LANDMARKS_MARGIN,
         _BLENDSHAPES_MARGIN,
     )
@@ -315,7 +317,7 @@ class HolisticLandmarkerTest(parameterized.TestCase):
       self,
       model_file_type,
       model_name,
-      output_segmentation_mask,
+      output_pose_segmentation_masks,
       expected_holistic_landmarker_result,
   ):
     # Creates holistic landmarker.
@@ -335,7 +337,7 @@ class HolisticLandmarkerTest(parameterized.TestCase):
         output_face_blendshapes=True
         if expected_holistic_landmarker_result.face_blendshapes
         else False,
-        output_segmentation_mask=output_segmentation_mask,
+        output_pose_segmentation_masks=output_pose_segmentation_masks,
     )
 
     with _HolisticLandmarker.create_from_options(options) as landmarker:
@@ -344,7 +346,7 @@ class HolisticLandmarkerTest(parameterized.TestCase):
       self._expect_holistic_landmarker_results_correct(
           detection_result,
           expected_holistic_landmarker_result,
-          output_segmentation_mask,
+          output_pose_segmentation_masks,
           _LANDMARKS_MARGIN,
           _BLENDSHAPES_MARGIN,
       )
@@ -463,7 +465,7 @@ class HolisticLandmarkerTest(parameterized.TestCase):
   def test_detect_for_video(
       self,
       model_name,
-      output_segmentation_mask,
+      output_pose_segmentation_masks,
       expected_holistic_landmarker_result,
   ):
     # Creates holistic landmarker.
@@ -475,7 +477,7 @@ class HolisticLandmarkerTest(parameterized.TestCase):
         output_face_blendshapes=True
         if expected_holistic_landmarker_result.face_blendshapes
         else False,
-        output_segmentation_mask=output_segmentation_mask,
+        output_pose_segmentation_masks=output_pose_segmentation_masks,
     )
 
     with _HolisticLandmarker.create_from_options(options) as landmarker:
@@ -488,7 +490,7 @@ class HolisticLandmarkerTest(parameterized.TestCase):
         self._expect_holistic_landmarker_results_correct(
             detection_result,
             expected_holistic_landmarker_result,
-            output_segmentation_mask,
+            output_pose_segmentation_masks,
             _VIDEO_LANDMARKS_MARGIN,
             _VIDEO_BLENDSHAPES_MARGIN,
         )
@@ -548,7 +550,7 @@ class HolisticLandmarkerTest(parameterized.TestCase):
       self,
       image_path,
       model_name,
-      output_segmentation_mask,
+      output_pose_segmentation_masks,
       expected_holistic_landmarker_result,
   ):
     test_image = _Image.create_from_file(
@@ -565,7 +567,7 @@ class HolisticLandmarkerTest(parameterized.TestCase):
       self._expect_holistic_landmarker_results_correct(
           result,
           expected_holistic_landmarker_result,
-          output_segmentation_mask,
+          output_pose_segmentation_masks,
           _LIVE_STREAM_LANDMARKS_MARGIN,
           _LIVE_STREAM_BLENDSHAPES_MARGIN,
       )
@@ -582,12 +584,53 @@ class HolisticLandmarkerTest(parameterized.TestCase):
         output_face_blendshapes=True
         if expected_holistic_landmarker_result.face_blendshapes
         else False,
-        output_segmentation_mask=output_segmentation_mask,
+        output_pose_segmentation_masks=output_pose_segmentation_masks,
         result_callback=check_result,
     )
     with _HolisticLandmarker.create_from_options(options) as landmarker:
       for timestamp in range(0, 300, 30):
         landmarker.detect_async(test_image, timestamp)
+
+  def test_options_fields_and_c_struct_layout(self):
+    c_fields = holistic_landmarker.MpHolisticLandmarkerOptionsC._fields_
+    self.assertEqual(
+        [field[0] for field in c_fields],
+        [
+            'base_options',
+            'running_mode',
+            'min_face_detection_confidence',
+            'min_face_suppression_threshold',
+            'min_face_presence_confidence',
+            'min_hand_landmarks_confidence',
+            'min_pose_detection_confidence',
+            'min_pose_suppression_threshold',
+            'min_pose_presence_confidence',
+            'output_face_blendshapes',
+            'output_pose_segmentation_masks',
+            'result_callback',
+            'result_callback_user_data',
+        ],
+    )
+    model_path = test_utils.get_test_data_path(
+        _HOLISTIC_LANDMARKER_BUNDLE_ASSET_FILE
+    )
+    options = _HolisticLandmarkerOptions(
+        base_options=_BaseOptions(model_asset_path=model_path),
+        min_face_detection_confidence=0.4,
+        min_face_suppression_threshold=0.25,
+        min_face_presence_confidence=0.45,
+        min_pose_detection_confidence=0.35,
+        min_pose_suppression_threshold=0.2,
+        min_pose_presence_confidence=0.55,
+        min_hand_landmarks_confidence=0.6,
+        output_face_blendshapes=True,
+        output_pose_segmentation_masks=True,
+    )
+    with _HolisticLandmarker.create_from_options(options) as landmarker:
+      result = landmarker.detect(self.test_image)
+      self.assertNotEmpty(result.pose_landmarks)
+      self.assertIsNotNone(result.face_blendshapes)
+      self.assertIsInstance(result.segmentation_mask, _Image)
 
 
 if __name__ == '__main__':

@@ -6,16 +6,21 @@
 #include <utility>
 #include <vector>
 
-#include "absl/log/absl_log.h"
-#include "absl/status/status.h"
-#include "absl/strings/str_format.h"
+#include "absl/log/absl_log.h"          // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/strings/str_cat.h"       // from @com_google_absl
+#include "absl/strings/str_format.h"    // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
-#include "mediapipe/framework/port/status_macros.h"
+#include "mediapipe/framework/formats/image.h"
+#include "mediapipe/framework/formats/tensor.h"
+#include "mediapipe/framework/port/ret_check.h"
 #include "mediapipe/gpu/gl_calculator_helper.h"
 #include "mediapipe/gpu/gl_simple_shaders.h"
 #include "mediapipe/gpu/gpu_buffer_format.h"
 #include "mediapipe/gpu/shader_util.h"
 #include "mediapipe/tasks/cc/vision/image_segmenter/proto/segmenter_options.pb.h"
+#include "mediapipe/tasks/cc/vision/utils/image_utils.h"
 
 namespace mediapipe {
 namespace tasks {
@@ -375,13 +380,13 @@ absl::Status SegmentationPostprocessorGl::Initialize(
     CalculatorContext* cc,
     TensorsToSegmentationCalculatorOptions const& options) {
   options_ = options;  // Just copy for now
-  MP_RETURN_IF_ERROR(helper_.Open(cc));
+  ABSL_RETURN_IF_ERROR(helper_.Open(cc));
 
   // TODO: remove deprecated output type support.
   bool produce_confidence_masks = options_.segmenter_options().output_type() ==
                                       SegmenterOptions::CONFIDENCE_MASK ||
                                   cc->Outputs().HasTag("CONFIDENCE_MASK");
-  MP_RETURN_IF_ERROR(GlInit(produce_confidence_masks));
+  ABSL_RETURN_IF_ERROR(GlInit(produce_confidence_masks));
   return absl::OkStatus();
 }
 
@@ -455,13 +460,13 @@ absl::Status SegmentationPostprocessorGl::GlInit(
 
     // Compile all our shader programs and grab uniforms.
     // Simple shaders (Activation and Channel-select)
-    MP_RETURN_IF_ERROR(CreateBasicFragmentShaderProgram(
+    ABSL_RETURN_IF_ERROR(CreateBasicFragmentShaderProgram(
         "activation", activation_shader_source, {"input_texture"},
         &activation_shader_));
-    MP_RETURN_IF_ERROR(CreateBasicFragmentShaderProgram(
+    ABSL_RETURN_IF_ERROR(CreateBasicFragmentShaderProgram(
         "channel select", kChannelSelectShader,
         {"input_texture", "channel_mask"}, &channel_select_shader_));
-    MP_RETURN_IF_ERROR(CreateBasicFragmentShaderProgram(
+    ABSL_RETURN_IF_ERROR(CreateBasicFragmentShaderProgram(
         "multi-channel select", kMultiChannelSelectShader,
         {kMultiChannelSelectTextures[0], kMultiChannelSelectTextures[1],
          kMultiChannelSelectTextures[2], kMultiChannelSelectTextures[3],
@@ -470,23 +475,23 @@ absl::Status SegmentationPostprocessorGl::GlInit(
         &multi_channel_select_shader_));
 
     // Softmax shaders (Max, Transform+Sum, and Normalization)
-    MP_RETURN_IF_ERROR(CreateBasicFragmentShaderProgram(
+    ABSL_RETURN_IF_ERROR(CreateBasicFragmentShaderProgram(
         "softmax max", kMaxShader, {"current_chunk", "num_channels"},
         &softmax_max_shader_));
-    MP_RETURN_IF_ERROR(CreateBasicFragmentShaderProgram(
+    ABSL_RETURN_IF_ERROR(CreateBasicFragmentShaderProgram(
         "softmax transform-and-sum", kTransformAndSumShader,
         {"max_value_texture", "current_chunk", "num_channels"},
         &softmax_transform_and_sum_shader_, true /* is_es30_only */));
-    MP_RETURN_IF_ERROR(CreateBasicFragmentShaderProgram(
+    ABSL_RETURN_IF_ERROR(CreateBasicFragmentShaderProgram(
         "softmax normalization", kNormalizationShader,
         {"sum_texture", "current_chunk"}, &softmax_normalization_shader_));
 
     // Category mask shaders (Argmax and special 1-class fg/bg argmax)
-    MP_RETURN_IF_ERROR(CreateBasicFragmentShaderProgram(
+    ABSL_RETURN_IF_ERROR(CreateBasicFragmentShaderProgram(
         "argmax", kArgmaxShader,
         {"prev_max_texture", "current_chunk", "num_channels", "argmax_offset"},
         &argmax_shader_));
-    MP_RETURN_IF_ERROR(CreateBasicFragmentShaderProgram(
+    ABSL_RETURN_IF_ERROR(CreateBasicFragmentShaderProgram(
         "one-class argmax", kArgmaxOneClassShader, {"input_texture"},
         &argmax_one_class_shader_));
 
@@ -522,7 +527,7 @@ absl::Status SegmentationPostprocessorGl::GlInit(
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
 #ifdef TASK_SEGMENTATION_USE_GLES_31_POSTPROCESSING
-    MP_RETURN_IF_ERROR(ssbo_to_texture_converter_.Init());
+    ABSL_RETURN_IF_ERROR(ssbo_to_texture_converter_.Init());
 #endif  // TASK_SEGMENTATION_USE_GLES_31_POSTPROCESSING
 
     return absl::OkStatus();
@@ -570,9 +575,9 @@ SegmentationPostprocessorGl::GetSegmentationResultGpu(
     // If our Tensor is an SSBO, then it's also linearized, so we convert to a
     // kAligned 2d texture using a special converter and then proceed as before.
     GLuint ssbo_tex_id;
-    MP_ASSIGN_OR_RETURN(ssbo_tex_id,
-                        ssbo_to_texture_converter_.ConvertTensorToGlTexture(
-                            tensor, width, height, num_input_channels));
+    ABSL_ASSIGN_OR_RETURN(ssbo_tex_id,
+                          ssbo_to_texture_converter_.ConvertTensorToGlTexture(
+                              tensor, width, height, num_input_channels));
     std::tie(input_width, input_height) =
         ssbo_to_texture_converter_.GetTextureSize();
 #else

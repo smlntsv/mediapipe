@@ -15,23 +15,31 @@
 #include "mediapipe/util/audio_decoder.h"
 
 #include <algorithm>
+#include <cerrno>
+#include <cmath>
 #include <cstdint>  // required by avutil.h
 #include <cstdlib>
+#include <cstring>
+#include <map>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
-#include "Eigen/Core"
-#include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
-#include "absl/strings/numbers.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/substitute.h"
-#include "absl/time/time.h"
-#include "mediapipe/framework/deps/cleanup.h"
+#include "Eigen/Core"                   // from @eigen
+#include "absl/cleanup/cleanup.h"       // from @com_google_absl
+#include "absl/flags/flag.h"            // from @com_google_absl
+#include "absl/log/absl_check.h"        // from @com_google_absl
+#include "absl/log/absl_log.h"          // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/strings/str_cat.h"       // from @com_google_absl
+#include "absl/strings/substitute.h"    // from @com_google_absl
+#include "absl/time/time.h"             // from @com_google_absl
 #include "mediapipe/framework/formats/matrix.h"
+#include "mediapipe/framework/packet.h"
 #include "mediapipe/framework/port/map_util.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 #include "mediapipe/framework/tool/status_util.h"
 #include "mediapipe/util/endian.h"
 
@@ -143,9 +151,7 @@ std::string AvErrorToString(int error) {
     case AVERROR_OUTPUT_CHANGED:
       return "AVERROR_OUTPUT_CHANGED - Output changed between calls.";
     default:
-      // FALLTHRU
-      {
-      }
+      break;  // Fall back to av_strerror() below.
   }
 
   char buf[AV_ERROR_MAX_STRING_SIZE];
@@ -183,9 +189,9 @@ absl::Status SendPacket(const AVPacket& packet, AVCodecContext* avcodec_ctx) {
   if (error != 0 && error != AVERROR_EOF) {
     // Not consider AVERROR_EOF as an error because it can happen when more
     // than 1 flush packet is sent.
-    return UnknownError(absl::StrCat("Failed to send packet: error=", error,
-                                     " (", AvErrorToString(error),
-                                     "). Packet size: ", packet.size));
+    return absl::UnknownError(
+        absl::StrCat("Failed to send packet: error=", error, " (",
+                     AvErrorToString(error), "). Packet size: ", packet.size));
   }
   return absl::OkStatus();
 }
@@ -199,8 +205,9 @@ absl::Status ReceiveFrame(AVCodecContext* avcodec_ctx, AVFrame* frame,
     // Not consider AVERROR_EOF as an error because it can happen after a
     // flush, and AVERROR(EAGAIN) because it happens when there's no (more)
     // frame to be received from this packet.
-    return UnknownError(absl::StrCat(" Failed to receive frame: error=", error,
-                                     " (", AvErrorToString(error), ")."));
+    return absl::UnknownError(
+        absl::StrCat(" Failed to receive frame: error=", error, " (",
+                     AvErrorToString(error), ")."));
   }
   return absl::OkStatus();
 }
@@ -272,7 +279,7 @@ absl::Status BasePacketProcessor::Flush() {
     // ProcessPacket increments num_frames_processed_ if it is able to
     // decode a frame.  Not being able to decode a frame while being
     // flushed signals that the codec is completely done.
-    MP_RETURN_IF_ERROR(ProcessPacket(av_packet.get()));
+    ABSL_RETURN_IF_ERROR(ProcessPacket(av_packet.get()));
   } while (last_num_frames_processed != num_frames_processed_);
 
   flushed_ = true;
@@ -301,17 +308,18 @@ void BasePacketProcessor::Close() {
 
 absl::Status BasePacketProcessor::Decode(const AVPacket& packet,
                                          bool ignore_decode_failures) {
-  MP_RETURN_IF_ERROR(LogStatus(SendPacket(packet, avcodec_ctx_), *avcodec_ctx_,
-                               packet, ignore_decode_failures));
+  ABSL_RETURN_IF_ERROR(LogStatus(SendPacket(packet, avcodec_ctx_),
+                                 *avcodec_ctx_, packet,
+                                 ignore_decode_failures));
   while (true) {
     bool received;
-    MP_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         LogStatus(ReceiveFrame(avcodec_ctx_, decoded_frame_, &received),
                   *avcodec_ctx_, packet, ignore_decode_failures));
     if (received) {
       // Successfully decoded a frame (i.e., received it from the decoder). Now
       // further process it.
-      MP_RETURN_IF_ERROR(ProcessDecodedFrame(packet));
+      ABSL_RETURN_IF_ERROR(ProcessDecodedFrame(packet));
     } else {
       break;
     }
@@ -377,7 +385,7 @@ absl::Status AudioPacketProcessor::Open(int id, AVStream* stream) {
   avcodec_ctx_ = avcodec_alloc_context3(avcodec_);
   avcodec_parameters_to_context(avcodec_ctx_, stream->codecpar);
   if (avcodec_open2(avcodec_ctx_, avcodec_, &avcodec_opts_) < 0) {
-    return UnknownError("avcodec_open() failed.");
+    return absl::UnknownError("avcodec_open() failed.");
   }
   ABSL_CHECK(avcodec_ctx_->codec);
 
@@ -385,16 +393,16 @@ absl::Status AudioPacketProcessor::Open(int id, AVStream* stream) {
   source_frame_rate_ = stream->r_frame_rate;
   last_frame_time_regression_detected_ = false;
 
-  MP_RETURN_IF_ERROR(ValidateSampleFormat());
+  ABSL_RETURN_IF_ERROR(ValidateSampleFormat());
   bytes_per_sample_ = av_get_bytes_per_sample(avcodec_ctx_->sample_fmt);
   num_channels_ = AvStructChannels(*avcodec_ctx_);
   sample_rate_ = avcodec_ctx_->sample_rate;
 
   if (num_channels_ <= 0) {
-    return UnknownError("num_channels must be strictly positive.");
+    return absl::UnknownError("num_channels must be strictly positive.");
   }
   if (sample_rate_ <= 0) {
-    return UnknownError("sample_rate must be strictly positive.");
+    return absl::UnknownError("sample_rate must be strictly positive.");
   }
 
   sample_time_base_ = {1, static_cast<int>(sample_rate_)};
@@ -417,8 +425,8 @@ absl::Status AudioPacketProcessor::ValidateSampleFormat() {
     case AV_SAMPLE_FMT_FLTP:
       return absl::OkStatus();
     default:
-      return mediapipe::UnimplementedErrorBuilder(MEDIAPIPE_LOC)
-             << "sample_fmt = " << avcodec_ctx_->sample_fmt;
+      return absl::UnimplementedError(
+          absl::StrCat("sample_fmt = ", avcodec_ctx_->sample_fmt));
   }
 }
 
@@ -443,7 +451,7 @@ int64_t AudioPacketProcessor::SampleNumberToMicroseconds(
 absl::Status AudioPacketProcessor::ProcessPacket(AVPacket* packet) {
   ABSL_CHECK(packet);
   if (flushed_) {
-    return UnknownError(
+    return absl::UnknownError(
         "ProcessPacket was called, but AudioPacketProcessor is already "
         "finished.");
   }
@@ -466,7 +474,7 @@ absl::Status AudioPacketProcessor::ProcessDecodedFrame(const AVPacket& packet) {
           << " decoded:" << buf_size_bytes;
   uint8_t* const* data_ptr = decoded_frame_->data;
   if (!data_ptr[0]) {
-    return UnknownError("No data in audio frame.");
+    return absl::UnknownError("No data in audio frame.");
   }
   if (decoded_frame_->pts != AV_NOPTS_VALUE) {
     int64_t pts = MaybeCorrectPtsForRollover(decoded_frame_->pts);
@@ -496,7 +504,7 @@ absl::Status AudioPacketProcessor::ProcessDecodedFrame(const AVPacket& packet) {
     }
   }
 
-  MP_RETURN_IF_ERROR(AddAudioDataToBuffer(
+  ABSL_RETURN_IF_ERROR(AddAudioDataToBuffer(
       Timestamp(av_rescale_q(expected_sample_number_, sample_time_base_,
                              output_time_base_)),
       data_ptr, buf_size_bytes));
@@ -513,14 +521,14 @@ absl::Status AudioPacketProcessor::AddAudioDataToBuffer(
   }
 
   if (buf_size_bytes % (num_channels_ * bytes_per_sample_) != 0) {
-    return UnknownError("Buffer is not an integral number of samples.");
+    return absl::UnknownError("Buffer is not an integral number of samples.");
   }
 
   const int64_t num_samples =
       buf_size_bytes / bytes_per_sample_ / num_channels_;
   VLOG(3) << "Adding " << num_samples << " audio samples in " << num_channels_
           << " channels to output.";
-  auto current_frame = absl::make_unique<Matrix>(num_channels_, num_samples);
+  auto current_frame = std::make_unique<Matrix>(num_channels_, num_samples);
 
   const char* sample_ptr = nullptr;
   switch (avcodec_ctx_->sample_fmt) {
@@ -580,8 +588,8 @@ absl::Status AudioPacketProcessor::AddAudioDataToBuffer(
       }
       break;
     default:
-      return mediapipe::UnimplementedErrorBuilder(MEDIAPIPE_LOC)
-             << "sample_fmt = " << avcodec_ctx_->sample_fmt;
+      return absl::UnimplementedError(
+          absl::StrCat("sample_fmt = ", avcodec_ctx_->sample_fmt));
   }
 
   if (options_.output_regressing_timestamps() ||
@@ -648,13 +656,13 @@ absl::Status AudioDecoder::Initialize(
     ++options_index;
   }
 
-  Cleanup<std::function<void()>> decoder_closer([this]() {
+  absl::Cleanup decoder_closer = [this]() {
     absl::Status status = Close();
     if (!status.ok()) {
       ABSL_LOG(ERROR) << "Encountered error while closing media file: "
                       << status.message();
     }
-  });
+  };
 
   avformat_ctx_ = avformat_alloc_context();
   if (avformat_open_input(&avformat_ctx_, input_file.c_str(), NULL, NULL) < 0) {
@@ -678,7 +686,7 @@ absl::Status AudioDecoder::Initialize(
             stream_index_to_audio_options_index, current_audio_index);
         if (options_index_ptr) {
           std::unique_ptr<AudioPacketProcessor> processor =
-              absl::make_unique<AudioPacketProcessor>(
+              std::make_unique<AudioPacketProcessor>(
                   options.audio_stream(*options_index_ptr));
           if (!ContainsKey(audio_processor_, stream_id)) {
             ABSL_LOG(INFO) << "Created audio processor " << processor.get()
@@ -689,7 +697,7 @@ absl::Status AudioDecoder::Initialize(
                             << audio_processor_[stream_id].get();
           }
 
-          MP_RETURN_IF_ERROR(processor->Open(stream_id, stream));
+          ABSL_RETURN_IF_ERROR(processor->Open(stream_id, stream));
           audio_processor_.emplace(stream_id, std::move(processor));
           ABSL_CHECK(InsertIfNotPresent(
               &stream_index_to_stream_id_,
@@ -723,7 +731,7 @@ absl::Status AudioDecoder::Initialize(
   }
   is_first_packet_.resize(avformat_ctx_->nb_streams, true);
 
-  decoder_closer.release();
+  std::move(decoder_closer).Cancel();
   return absl::OkStatus();
 }
 
@@ -768,10 +776,10 @@ absl::Status AudioDecoder::GetData(int* options_index, Packet* data) {
       }
     }
     if (flushed_) {
-      MP_RETURN_IF_ERROR(Close());
+      ABSL_RETURN_IF_ERROR(Close());
       return tool::StatusStop();
     }
-    MP_RETURN_IF_ERROR(ProcessPacket());
+    ABSL_RETURN_IF_ERROR(ProcessPacket());
   }
   return absl::OkStatus();
 }
@@ -797,7 +805,7 @@ absl::Status AudioDecoder::FillAudioHeader(
       FindOrDie(stream_index_to_stream_id_, stream_option.stream_index()));
 
   RET_CHECK(processor_ptr_ && *processor_ptr_) << "audio stream is not open.";
-  MP_RETURN_IF_ERROR((*processor_ptr_)->FillHeader(header));
+  ABSL_RETURN_IF_ERROR((*processor_ptr_)->FillHeader(header));
   return absl::OkStatus();
 }
 
@@ -815,7 +823,7 @@ absl::Status AudioDecoder::ProcessPacket() {
     if (audio_iterator != audio_processor_.end()) {
       // This stream_id is belongs to an audio stream we care about.
       if (audio_iterator->second) {
-        MP_RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(
             audio_iterator->second->ProcessPacket(av_packet.get()));
       } else {
         VLOG(3) << "processor for stream " << stream_id << " is nullptr.";

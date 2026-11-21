@@ -19,7 +19,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/status/statusor.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
 #include "mediapipe/framework/api2/builder.h"
 #include "mediapipe/framework/api2/stream/detections_to_rects.h"
 #include "mediapipe/framework/api2/stream/image_size.h"
@@ -36,7 +38,6 @@ limitations under the License.
 #include "mediapipe/framework/formats/landmark.pb.h"
 #include "mediapipe/framework/formats/rect.pb.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/tasks/cc/components/utils/gate.h"
 #include "mediapipe/tasks/cc/vision/pose_detector/proto/pose_detector_graph_options.pb.h"
 #include "mediapipe/tasks/cc/vision/pose_landmarker/proto/pose_landmarks_detector_graph_options.pb.h"
@@ -162,8 +163,8 @@ TrackHolisticPoseUsingCustomPoseDetection(
   auto is_previous_roi_available = IsPresent(previous_roi, graph);
   auto image_for_detection =
       DisallowIf(image, is_previous_roi_available, graph);
-  MP_ASSIGN_OR_RETURN(auto pose_detections,
-                      pose_detection_fn(image_for_detection, graph));
+  ABSL_ASSIGN_OR_RETURN(auto pose_detections,
+                        pose_detection_fn(image_for_detection, graph));
   auto roi_from_detections = CalculateRoiFromDetections(
       pose_detections, GetImageSize(image_for_detection, graph), graph);
   // Take first non-empty.

@@ -30,6 +30,8 @@ exports_files([
     "requirements_lock_3_10.txt",
     "requirements_lock_3_11.txt",
     "requirements_lock_3_12.txt",
+    "requirements_lock_3_13.txt",
+    "requirements_lock_3_14.txt",
 ])
 
 mediapipe_files(srcs = [
@@ -163,7 +165,7 @@ OPENCV_MODULES = [
 # to switch to static libraries.
 OPENCV_SHARED_LIBS = True
 
-OPENCV_SO_VERSION = "3.4"
+OPENCV_SO_VERSION = "4.10"
 
 cmake(
     name = "opencv_cmake",
@@ -171,6 +173,7 @@ cmake(
     # here are serving to provide some CMake script configuration options
     cache_entries = {
         "CMAKE_BUILD_TYPE": "Release",
+        "OPENCV_INCLUDE_INSTALL_PATH": "include",
         # The module list is always sorted alphabetically so that we do not
         # cause a rebuild when changing the link order.
         "BUILD_LIST": ",".join(sorted(OPENCV_MODULES)),
@@ -341,10 +344,16 @@ java_library(
     ],
 )
 
-java_import(
+# Lite-runtime `com.google.protobuf.Any` for the Android MediaPipe Tasks targets.
+#
+# This must stay on the protobuf lite runtime. The Tasks AARs ship against
+# `protobuf-javalite`, and compiling them against the full runtime.
+# `@com_google_protobuf//java/lite` already bundles the lite well-known types
+# (including `Any`), so this is just a lite-runtime re-export.
+java_library(
     name = "any_java_proto",
-    jars = [
-        "@com_google_protobuf//java/core:libcore.jar",
+    exports = [
+        "@com_google_protobuf//java/lite",
     ],
 )
 

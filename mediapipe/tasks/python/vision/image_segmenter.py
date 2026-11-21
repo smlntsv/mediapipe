@@ -55,7 +55,9 @@ class MpImageSegmenterResultC(ctypes.Structure):
 
 _C_TYPES_RESULT_CALLBACK = ctypes.CFUNCTYPE(
     None,
+    ctypes.c_void_p,  # user_data
     ctypes.c_int32,  # MpStatus
+    ctypes.c_char_p,  # error_msg
     ctypes.POINTER(MpImageSegmenterResultC),
     ctypes.c_void_p,  # MpImage
     ctypes.c_int64,  # timestamp_ms
@@ -72,6 +74,7 @@ class MpImageSegmenterOptionsC(ctypes.Structure):
       ('output_confidence_masks', ctypes.c_bool),
       ('output_category_mask', ctypes.c_bool),
       ('result_callback', _C_TYPES_RESULT_CALLBACK),
+      ('result_callback_user_data', ctypes.c_void_p),
   ]
 
   @classmethod
@@ -80,16 +83,16 @@ class MpImageSegmenterOptionsC(ctypes.Structure):
       cls,
       base_options: base_options_c.MpBaseOptionsC,
       running_mode: _RunningMode,
+      display_names_locale: str,
       output_confidence_masks: bool,
       output_category_mask: bool,
       result_callback: _C_TYPES_RESULT_CALLBACK,
   ) -> 'MpImageSegmenterOptionsC':
     """Creates an MpImageSegmenterOptionsC object from the given options."""
-    empty_string = ctypes.c_char_p(b'')
     return cls(
         base_options=base_options,
         running_mode=running_mode.ctype,
-        display_names_locale=empty_string,
+        display_names_locale=display_names_locale.encode('utf-8'),
         output_confidence_masks=output_confidence_masks,
         output_category_mask=output_category_mask,
         result_callback=result_callback,
@@ -211,17 +214,20 @@ class ImageSegmenterOptions:
     running_mode: The running mode of the task. Default to the image mode. Image
       segmenter task has three running modes: 1) The image mode for segmenting
       objects on single image inputs. 2) The video mode for segmenting objects
-      on the decoded frames of a video. 3) The live stream mode for segmenting
-      objects on a live stream of input data, such as from camera.
+      on the decoded frames of a video. 3) The livestream mode for segmenting
+      objects on a livestream of input data, such as from camera.
+    display_names_locale: The locale to use for display names specified through
+      the TFLite Model Metadata.
     output_confidence_masks: Whether to output confidence masks.
     output_category_mask: Whether to output category mask.
-    result_callback: The user-defined result callback for processing live stream
+    result_callback: The user-defined result callback for processing livestream
       data. The result callback should only be specified when the running mode
-      is set to the live stream mode.
+      is set to the livestream mode.
   """
 
   base_options: _BaseOptions
   running_mode: _RunningMode = _RunningMode.IMAGE
+  display_names_locale: str = 'en'
   output_confidence_masks: bool = True
   output_category_mask: bool = False
   result_callback: Optional[
@@ -324,13 +330,13 @@ class ImageSegmenter:
     """
 
     running_mode_module.validate_running_mode(
-        options.running_mode, options.result_callback
+        options.running_mode, options.result_callback  # pyrefly: ignore[bad-argument-type]
     )
 
     lib = mediapipe_c_bindings.load_shared_library(_CTYPES_SIGNATURES)
 
     def convert_result(
-        c_result_ptr: ctypes.POINTER(MpImageSegmenterResultC),
+        c_result_ptr: ctypes.POINTER(MpImageSegmenterResultC),  # pyrefly: ignore[invalid-annotation]
         image_ptr: ctypes.c_void_p,
         timestamp_ms: int,
     ) -> tuple[ImageSegmenterResult, image_module.Image, int]:
@@ -347,12 +353,13 @@ class ImageSegmenter:
     c_options = MpImageSegmenterOptionsC.from_c_options(
         base_options=options.base_options.to_ctypes(),
         running_mode=options.running_mode,
+        display_names_locale=options.display_names_locale,
         output_confidence_masks=options.output_confidence_masks,
         output_category_mask=options.output_category_mask,
         result_callback=c_callback,
     )
     segmenter_handle = ctypes.c_void_p()
-    lib.MpImageSegmenterCreate(
+    lib.MpImageSegmenterCreate(  # pyrefly: ignore[missing-attribute]
         ctypes.byref(c_options), ctypes.byref(segmenter_handle)
     )
     return cls(
@@ -391,14 +398,14 @@ class ImageSegmenter:
         if image_processing_options
         else None
     )
-    self._lib.MpImageSegmenterSegmentImage(
+    self._lib.MpImageSegmenterSegmentImage(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         options_c,
         ctypes.byref(c_result),
     )
     result = ImageSegmenterResult.from_ctypes(c_result)
-    self._lib.MpImageSegmenterCloseResult(ctypes.byref(c_result))
+    self._lib.MpImageSegmenterCloseResult(ctypes.byref(c_result))  # pyrefly: ignore[missing-attribute]
     return result
 
   def segment_for_video(
@@ -437,7 +444,7 @@ class ImageSegmenter:
         if image_processing_options
         else None
     )
-    self._lib.MpImageSegmenterSegmentForVideo(
+    self._lib.MpImageSegmenterSegmentForVideo(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         options_c,
@@ -445,7 +452,7 @@ class ImageSegmenter:
         ctypes.byref(c_result),
     )
     result = ImageSegmenterResult.from_ctypes(c_result)
-    self._lib.MpImageSegmenterCloseResult(ctypes.byref(c_result))
+    self._lib.MpImageSegmenterCloseResult(ctypes.byref(c_result))  # pyrefly: ignore[missing-attribute]
     return result
 
   def segment_async(
@@ -456,12 +463,12 @@ class ImageSegmenter:
   ) -> None:
     """Sends live image data (an Image with a unique timestamp) to perform image segmentation.
 
-    Only use this method when the ImageSegmenter is created with the live stream
+    Only use this method when the ImageSegmenter is created with the livestream
     running mode. The input timestamps should be monotonically increasing for
     adjacent calls of this method. This method will return immediately after the
     input image is accepted. The results will be available via the
     `result_callback` provided in the `ImageSegmenterOptions`. The
-    `segment_async` method is designed to process live stream data such as
+    `segment_async` method is designed to process livestream data such as
     camera input. To lower the overall latency, image segmenter may drop the
     input images if needed. In other words, it's not guaranteed to have output
     per input image.
@@ -487,7 +494,7 @@ class ImageSegmenter:
         if image_processing_options
         else None
     )
-    self._lib.MpImageSegmenterSegmentAsync(
+    self._lib.MpImageSegmenterSegmentAsync(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         options_c,
@@ -508,7 +515,7 @@ class ImageSegmenter:
     """
     if not self._labels:
       c_labels = MpStringListC()
-      self._lib.MpImageSegmenterGetLabels(
+      self._lib.MpImageSegmenterGetLabels(  # pyrefly: ignore[missing-attribute]
           self._handle,
           ctypes.byref(c_labels),
       )
@@ -517,17 +524,22 @@ class ImageSegmenter:
         c_label = c_labels.strings[i]
         label = ctypes.string_at(c_label).decode('utf-8')
         self._labels.append(label)
-      self._lib.MpStringListFree(ctypes.byref(c_labels))
+      self._lib.MpStringListFree(ctypes.byref(c_labels))  # pyrefly: ignore[missing-attribute]
     return self._labels
 
   def close(self):
     """Closes ImageSegmenter."""
     if not self._handle:
       return
-    self._lib.MpImageSegmenterClose(self._handle)
-    self._handle = None
-    self._dispatcher.close()
-    self._lib.close()
+    # The C library frees the task even if it fails to close, so the handle
+    # must not be used again.
+    handle = self._handle
+    self._handle = None  # pyrefly: ignore[bad-assignment]
+    try:
+      self._lib.MpImageSegmenterClose(handle)  # pyrefly: ignore[missing-attribute]
+    finally:
+      self._dispatcher.close()
+      self._lib.close()
 
   def __enter__(self):
     """Returns `self` upon entering the runtime context."""

@@ -18,10 +18,11 @@
 #include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "absl/strings/substitute.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
+#include "absl/strings/string_view.h"   // from @com_google_absl
+#include "absl/strings/substitute.h"    // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/tensor.h"
 #include "mediapipe/framework/port/gmock.h"
@@ -67,20 +68,20 @@ absl::StatusOr<std::vector<std::vector<int>>> RunBertPreprocessorCalculator(
   tool::AddVectorSink("tensors", &graph_config, &output_packets);
 
   std::string model_buffer = tasks::core::LoadBinaryContent(model_path.data());
-  MP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<ModelMetadataExtractor> metadata_extractor,
       ModelMetadataExtractor::CreateFromModelBuffer(model_buffer.data(),
                                                     model_buffer.size()));
   // Run the graph.
   CalculatorGraph graph;
-  MP_RETURN_IF_ERROR(graph.Initialize(
+  ABSL_RETURN_IF_ERROR(graph.Initialize(
       graph_config,
       {{"metadata_extractor",
         MakePacket<ModelMetadataExtractor>(std::move(*metadata_extractor))}}));
-  MP_RETURN_IF_ERROR(graph.StartRun({}));
-  MP_RETURN_IF_ERROR(graph.AddPacketToInputStream(
+  ABSL_RETURN_IF_ERROR(graph.StartRun({}));
+  ABSL_RETURN_IF_ERROR(graph.AddPacketToInputStream(
       "text", MakePacket<std::string>(text).At(Timestamp(0))));
-  MP_RETURN_IF_ERROR(graph.WaitUntilIdle());
+  ABSL_RETURN_IF_ERROR(graph.WaitUntilIdle());
 
   if (output_packets.size() != 1) {
     return absl::InvalidArgumentError(absl::Substitute(
@@ -104,8 +105,8 @@ absl::StatusOr<std::vector<std::vector<int>>> RunBertPreprocessorCalculator(
     std::vector<int> buffer_view(buffer, buffer + tensor_size);
     results.push_back(buffer_view);
   }
-  MP_RETURN_IF_ERROR(graph.CloseAllPacketSources());
-  MP_RETURN_IF_ERROR(graph.WaitUntilDone());
+  ABSL_RETURN_IF_ERROR(graph.CloseAllPacketSources());
+  ABSL_RETURN_IF_ERROR(graph.WaitUntilDone());
   return results;
 }
 

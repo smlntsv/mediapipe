@@ -1,0 +1,2316 @@
+/**
+ * Copyright 2026 The MediaPipe Authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import {BaseOptions as BaseOptionsProto} from '../../../../tasks/cc/core/proto/base_options_pb';
+import {
+  CachedGraphRunner,
+  TaskRunner,
+} from '../../../../tasks/web/core/task_runner';
+import {WasmFileset} from '../../../../tasks/web/core/wasm_fileset';
+import {WasmModule} from '../../../../web/graph_runner/graph_runner';
+// Placeholder for internal dependency on trusted resource url
+import type {
+  BooleanQuestion,
+  ChoiceQuestion,
+  ClassifierEvaluateOptions,
+  ClassifierExpectedInput,
+  ClassifierOption,
+  ClassifierQuestion,
+  ClassifierQuestionType,
+  ClassifierSchema,
+  DecisionContextInput,
+  DecisionMakerOptions,
+  InputPrompt,
+  ScoreQuestion,
+} from './decision_maker_options';
+import type {
+  BooleanResult,
+  ChoiceResult,
+  ClassifierDecision,
+  ClassifierOptionProbability,
+  ClassifierResult,
+  ScoreResult,
+} from './decision_maker_result';
+
+export type {
+  BooleanQuestion,
+  BooleanResult,
+  ChoiceQuestion,
+  ChoiceResult,
+  ClassifierDecision,
+  ClassifierEvaluateOptions,
+  ClassifierExpectedInput,
+  ClassifierOption,
+  ClassifierOptionProbability,
+  ClassifierQuestion,
+  ClassifierQuestionType,
+  ClassifierResult,
+  ClassifierSchema,
+  DecisionContextInput,
+  DecisionMakerOptions,
+  InputPrompt,
+  ScoreQuestion,
+  ScoreResult,
+};
+
+/**
+ * `DecisionMakerOptions.backendType` value for the encoder backend. This is
+ * the only backend that runs on CPU; all other backends run on WebGPU (see the
+ * delegate selection in `decision_maker_api.cc`).
+ */
+const ENCODER_BACKEND_TYPE = 1;
+
+/**
+ * `backendType` value passed to `createDecision` / `createDecisionFromBuffers`
+ * in `decision_maker_api.cc` to select `MP_DELEGATE_CPU` (`backend_type < 0`).
+ */
+const CPU_DELEGATE_BACKEND_TYPE = -1;
+
+type RawWasmChoiceResult = Omit<ChoiceResult, 'predictionSet'> & {
+  predictionSet?: string[];
+};
+
+/**
+ * The Wasm module for Decision with custom C++ bindings.
+ */
+declare interface DecisionMakerWasmModule {
+  createDecision(
+    modelPath: string,
+    backendType: number,
+    maxNumTokens: number,
+    skipHeadCompatibilityCheck?: boolean,
+  ): Promise<number>;
+
+  createDecisionFromBuffers?(
+    modelPtr: number,
+    modelSize: number,
+    plePtr: number,
+    pleSize: number,
+    backendType: number,
+    maxNumTokens: number,
+    skipHeadCompatibilityCheck?: boolean,
+  ): Promise<number>;
+
+  deleteDecision(makerPtr: number): void;
+
+  evaluateBoolean(
+    makerPtr: number,
+    text: string,
+    condition: string,
+    threshold: number,
+    temperature: number,
+    normalizePrior: boolean,
+    examples: WasmBooleanExamples,
+    fittedHead?: Uint8Array,
+  ): Promise<BooleanResult>;
+
+  evaluateContextBoolean(
+    makerPtr: number,
+    text: string,
+    condition: string,
+    threshold: number,
+    temperature: number,
+    media: {imageBytes?: Uint8Array; audioSamples?: Float32Array},
+    normalizePrior: boolean,
+    examples: WasmBooleanExamples,
+    fittedHead?: Uint8Array,
+  ): Promise<BooleanResult>;
+
+  evaluateChoice(
+    makerPtr: number,
+    text: string,
+    criteria: Record<string, string>,
+    temperature: number,
+    instructions: string,
+    normalizePrior: boolean,
+    examples: WasmChoiceExamples,
+    fittedHead?: Uint8Array,
+  ): Promise<RawWasmChoiceResult>;
+
+  evaluateContextChoice(
+    makerPtr: number,
+    text: string,
+    criteria: Record<string, string>,
+    options: ClassifierOption[],
+    temperature: number,
+    instructions: string,
+    media: {imageBytes?: Uint8Array; audioSamples?: Float32Array},
+    normalizePrior: boolean,
+    examples: WasmChoiceExamples,
+    fittedHead?: Uint8Array,
+  ): Promise<RawWasmChoiceResult>;
+
+  evaluateScore(
+    makerPtr: number,
+    text: string,
+    rubric: string[],
+    temperature: number,
+    instructions: string,
+  ): Promise<ScoreResult>;
+
+  evaluateContextScore(
+    makerPtr: number,
+    text: string,
+    rubric: string[],
+    temperature: number,
+    instructions: string,
+    media: {imageBytes?: Uint8Array; audioSamples?: Float32Array},
+  ): Promise<ScoreResult>;
+
+  evaluateBooleanBatch?(
+    makerPtr: number,
+    texts: string[],
+    condition: string,
+    threshold: number,
+    temperature: number,
+    sharedPrefix: string,
+    normalizePrior: boolean,
+    examples: WasmBooleanExamples,
+    fittedHead?: Uint8Array,
+  ): Promise<BooleanResult[]>;
+
+  evaluateChoiceBatch?(
+    makerPtr: number,
+    texts: string[],
+    criteria: Record<string, string>,
+    temperature: number,
+    instructions: string,
+    sharedPrefix: string,
+    normalizePrior: boolean,
+    examples: WasmChoiceExamples,
+    fittedHead?: Uint8Array,
+  ): Promise<RawWasmChoiceResult[]>;
+
+  evaluateScoreBatch?(
+    makerPtr: number,
+    texts: string[],
+    rubric: string[],
+    temperature: number,
+    instructions: string,
+    sharedPrefix: string,
+  ): Promise<ScoreResult[]>;
+
+  prewarmChoice?(
+    makerPtr: number,
+    criteria: Record<string, string>,
+    options: ClassifierOption[],
+    temperature: number,
+    instructions: string,
+    normalizePrior: boolean,
+    examples: WasmChoiceExamples,
+    fittedHead?: Uint8Array,
+  ): Promise<boolean>;
+
+  prewarmSchema?(
+    makerPtr: number,
+    schemaContext: string,
+    questions: ClassifierQuestion[],
+  ): Promise<boolean>;
+
+  exportFittedHeadBoolean?(
+    makerPtr: number,
+    condition: string,
+    threshold: number,
+    temperature: number,
+    normalizePrior: boolean,
+    examples: WasmBooleanExamples,
+  ): Promise<Uint8Array>;
+
+  exportFittedHeadChoice?(
+    makerPtr: number,
+    criteria: Record<string, string>,
+    options: ClassifierOption[],
+    temperature: number,
+    instructions: string,
+    normalizePrior: boolean,
+    examples: WasmChoiceExamples,
+  ): Promise<Uint8Array>;
+
+  exportFittedHeads?(
+    makerPtr: number,
+    schemaContext: string,
+    questions: ClassifierQuestion[],
+  ): Promise<Record<string, Uint8Array>>;
+
+  evaluateSchema(
+    makerPtr: number,
+    text: string,
+    schemaContext: string,
+    questions: ClassifierQuestion[],
+  ): Promise<ClassifierResult>;
+
+  evaluateContextSchema(
+    makerPtr: number,
+    text: string,
+    schemaContext: string,
+    questions: ClassifierQuestion[],
+    media: {imageBytes?: Uint8Array; audioSamples?: Float32Array},
+  ): Promise<ClassifierResult>;
+}
+
+/** Example fields passed to the Wasm Boolean functions. */
+declare interface WasmBooleanExamples {
+  positiveExamples: string[];
+  negativeExamples: string[];
+  /** Unset leaves the prompt unspecified. */
+  inputPrompt?: InputPrompt;
+}
+
+/** Example fields passed to the Wasm Choice functions. */
+declare interface WasmChoiceExamples {
+  /** Choice key to examples; empty when the question has no examples. */
+  examples: Record<string, string[]>;
+  /** Unset leaves the prompt unspecified. */
+  inputPrompt?: InputPrompt;
+  balanceClassWeights: boolean;
+}
+
+function hasBooleanExamples(question: {
+  positiveExamples?: string[];
+  negativeExamples?: string[];
+}): boolean {
+  return (
+    (question.positiveExamples?.length ?? 0) > 0 ||
+    (question.negativeExamples?.length ?? 0) > 0
+  );
+}
+
+/**
+ * Checks the example lists of a Boolean question (both or neither) and returns
+ * them for Wasm.
+ */
+function resolveBooleanExamples(question: {
+  positiveExamples?: string[];
+  negativeExamples?: string[];
+  inputPrompt?: InputPrompt;
+}): WasmBooleanExamples {
+  const positiveExamples = question.positiveExamples ?? [];
+  const negativeExamples = question.negativeExamples ?? [];
+  if (positiveExamples.length > 0 !== negativeExamples.length > 0) {
+    throw new Error(
+      'A BooleanQuestion with examples needs both positiveExamples and ' +
+        'negativeExamples.',
+    );
+  }
+  return {
+    positiveExamples,
+    negativeExamples,
+    inputPrompt: question.inputPrompt,
+  };
+}
+
+/** Whether `record` has `key` as an own (not inherited) property. */
+function hasOwn(record: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(record, key);
+}
+
+/** Returns `record[key]` if `record` has `key` as an own property. */
+function getOwn<T>(record: Record<string, T>, key: string): T | undefined {
+  return hasOwn(record, key) ? record[key] : undefined;
+}
+
+/**
+ * Checks the all-or-nothing rule for choice examples: either no choice has
+ * examples, or there are at least 2 choices and every one has at least one.
+ */
+function validateChoiceExamples(
+  keys: string[],
+  examples: Record<string, string[] | undefined>,
+): void {
+  const exampleKeys = Object.keys(examples);
+  if (!exampleKeys.some((k) => (examples[k]?.length ?? 0) > 0)) return;
+  if (keys.length < 2) {
+    throw new Error('A ChoiceQuestion with examples needs at least 2 choices.');
+  }
+  if (
+    exampleKeys.length !== keys.length ||
+    !keys.every((k) => hasOwn(examples, k))
+  ) {
+    throw new Error('examples and criteria must list the same choices.');
+  }
+  for (const k of keys) {
+    if ((getOwn(examples, k)?.length ?? 0) === 0) {
+      throw new Error(`Choice '${k}' needs at least one example.`);
+    }
+  }
+}
+
+/**
+ * Collects a choice question's examples (from `examples` and from
+ * `options[].examples`), checks them, and returns them for Wasm.
+ */
+function resolveChoiceExamples(
+  question: ChoiceQuestion,
+  criteria: Record<string, string>,
+): WasmChoiceExamples {
+  const examples: Record<string, string[]> = {};
+  const options = question.options ?? [];
+  if (options.some((o) => (o.examples?.length ?? 0) > 0)) {
+    for (const opt of options) examples[opt.label] = opt.examples ?? [];
+  }
+  for (const [k, v] of Object.entries(question.examples ?? {})) {
+    examples[k] = v;
+  }
+  if (
+    question.fittedHead != null &&
+    Object.keys(examples).some((k) => (getOwn(examples, k)?.length ?? 0) > 0)
+  ) {
+    throw new Error(
+      'A ChoiceQuestion cannot specify both fittedHead and examples.',
+    );
+  }
+  const keys = Object.keys(criteria);
+  if (keys.length === 0 && !question.fittedHead) {
+    throw new Error('ChoiceQuestion must contain at least 1 choice.');
+  }
+  validateChoiceExamples(keys, examples);
+  return {
+    examples,
+    inputPrompt: question.inputPrompt,
+    balanceClassWeights: question.balanceClassWeights ?? true,
+  };
+}
+
+/** Checks the example rules of every question in a schema. */
+function validateSchemaExamples(questions: ClassifierQuestion[]): void {
+  for (const q of questions) {
+    if (q.type === 'binary' || q.type === 'boolean') {
+      resolveBooleanExamples(q);
+    } else if (q.type === 'categorical' || q.type === 'choice') {
+      const options = q.options ?? [];
+      const examples: Record<string, string[] | undefined> = {};
+      if (options.some((o) => (o.examples?.length ?? 0) > 0)) {
+        for (const o of options) examples[o.label] = o.examples;
+      }
+      validateChoiceExamples(
+        options.map((o) => o.label),
+        examples,
+      );
+    }
+  }
+}
+
+function hasQuestionMedia(question?: {
+  imageBytes?: Uint8Array;
+  audioSamples?: Float32Array;
+}): boolean {
+  return (
+    Boolean(question?.imageBytes && question.imageBytes.byteLength > 0) ||
+    Boolean(question?.audioSamples && question.audioSamples.length > 0)
+  );
+}
+
+function normalizeContextInput(
+  input: string | DecisionContextInput,
+  fallbackMedia?: {imageBytes?: Uint8Array; audioSamples?: Float32Array},
+): {
+  text: string;
+  imageBytes?: Uint8Array;
+  audioSamples?: Float32Array;
+  hasMedia: boolean;
+} {
+  const isObj = typeof input === 'object' && input !== null;
+  const text = isObj ? (input.text ?? '') : input;
+  const imageBytes =
+    (isObj ? input.imageBytes : undefined) ?? fallbackMedia?.imageBytes;
+  const audioSamples =
+    (isObj ? input.audioSamples : undefined) ?? fallbackMedia?.audioSamples;
+  const hasMedia =
+    Boolean(imageBytes && imageBytes.byteLength > 0) ||
+    Boolean(audioSamples && audioSamples.length > 0);
+  return {text, imageBytes, audioSamples, hasMedia};
+}
+
+function estimateTokens(text: string): number {
+  const trimmed = text.trim();
+  if (!trimmed) return 0;
+  return Math.max(1, Math.ceil(trimmed.length / 4));
+}
+
+function resolveChoiceCriteria(
+  question: ChoiceQuestion,
+): Record<string, string> {
+  const criteria: Record<string, string> = {};
+  if (question.criteria) {
+    for (const [k, v] of Object.entries(question.criteria)) {
+      criteria[k] = v;
+    }
+  }
+  if (question.options) {
+    for (const opt of question.options) {
+      criteria[opt.label] = opt.description ?? '';
+    }
+  }
+  // A question with only examples takes its choice keys from them.
+  const examples = question.examples;
+  if (Object.keys(criteria).length === 0 && examples) {
+    const exampleKeys = Object.keys(examples);
+    if (exampleKeys.some((k) => (getOwn(examples, k)?.length ?? 0) > 0)) {
+      for (const k of exampleKeys) {
+        criteria[k] = '';
+      }
+    }
+  }
+  return criteria;
+}
+
+/**
+ * Returns a single-element tuple when `value` is set, or an empty tuple
+ * otherwise, so optional Embind overload arguments are omitted when unset.
+ */
+function optionalArg<T>(value: T | undefined): [T] | [] {
+  return value != null ? [value] : [];
+}
+
+/**
+ * Returns `schema` with each question's `fittedHead` copied, so that later
+ * caller mutations of those arrays do not change a stored session schema.
+ */
+function copySchemaFittedHeads(schema: ClassifierSchema): ClassifierSchema {
+  const questions = schema.questions;
+  if (!questions?.some((q) => q.fittedHead)) return schema;
+  return {
+    ...schema,
+    questions: questions.map((q) =>
+      q.fittedHead ? {...q, fittedHead: q.fittedHead.slice()} : q,
+    ),
+  };
+}
+
+/**
+ * Rejects an empty `fittedHead` payload (`byteLength === 0`), which would
+ * otherwise be treated as "no head" by the Wasm layer.
+ */
+function checkFittedHeadNotEmpty(
+  fittedHead: Uint8Array | undefined,
+  questionType: string,
+): void {
+  if (fittedHead != null && fittedHead.byteLength === 0) {
+    throw new Error(`${questionType}.fittedHead must not be empty.`);
+  }
+}
+
+/**
+ * Rejects any question in `schema` whose `fittedHead` is set to an empty
+ * `Uint8Array`, attached to an `ordinal` / `score` question, combined with
+ * examples, or combined with two or more `options` on a boolean question.
+ */
+function checkSchemaFittedHeads(schema: ClassifierSchema): void {
+  for (const q of schema.questions ?? []) {
+    const label = q.id ? `ClassifierQuestion "${q.id}"` : 'ClassifierQuestion';
+    checkFittedHeadNotEmpty(q.fittedHead, label);
+    if (q.fittedHead == null) continue;
+    if (q.type === 'ordinal' || q.type === 'score') {
+      throw new Error(
+        `${label} of type "${q.type}" does not support fittedHead.`,
+      );
+    }
+    if (
+      ((q.type === 'binary' || q.type === 'boolean') &&
+        hasBooleanExamples(q)) ||
+      ((q.type === 'categorical' || q.type === 'choice') &&
+        (q.options ?? []).some((o) => (o.examples?.length ?? 0) > 0))
+    ) {
+      throw new Error(`${label} cannot specify both fittedHead and examples.`);
+    }
+    if (
+      (q.type === 'binary' || q.type === 'boolean') &&
+      (q.options?.length ?? 0) >= 2
+    ) {
+      throw new Error(
+        `${label} cannot set both fittedHead and two or more options.`,
+      );
+    }
+  }
+}
+
+/**
+ * Rejects a boolean question that sets an empty `fittedHead`, combines
+ * `fittedHead` with examples, or sets both custom `options` (two or more, which
+ * route it to the choice path) and a `fittedHead`.
+ */
+function checkBooleanQuestionFittedHead(question: BooleanQuestion): void {
+  checkFittedHeadNotEmpty(question.fittedHead, 'BooleanQuestion');
+  if (question.fittedHead != null && hasBooleanExamples(question)) {
+    throw new Error(
+      'A BooleanQuestion cannot specify both fittedHead and examples.',
+    );
+  }
+  if (question.options && question.options.length >= 2 && question.fittedHead) {
+    throw new Error(
+      'BooleanQuestion cannot set both fittedHead and two or more options.',
+    );
+  }
+}
+
+function validateUniqueOptionLabels(
+  options: ClassifierOption[] | undefined,
+  questionLabel?: string,
+): void {
+  if (!options || options.length === 0) return;
+  const seen = new Set<string>();
+  for (const opt of options) {
+    if (seen.has(opt.label)) {
+      throw new Error(
+        questionLabel
+          ? `Duplicate choice option label "${opt.label}" in ${questionLabel}.`
+          : `Duplicate choice option label "${opt.label}".`,
+      );
+    }
+    seen.add(opt.label);
+  }
+}
+
+function resolveScoreRubric(question: ScoreQuestion): {
+  rubric: string[];
+  labels: string[];
+  levels: number[];
+  hasCustomLevels: boolean;
+} {
+  if (question.options && question.options.length > 0) {
+    const rubric = question.options.map((o) =>
+      o.description ? `${o.label}: ${o.description}` : o.label,
+    );
+    const labels = question.options.map((o) => o.label);
+    const parsed = labels.map((l) => Number(l));
+    const allNumeric =
+      parsed.every((n) => Number.isFinite(n)) &&
+      labels.every((l) => l.trim() !== '');
+    const levels = allNumeric ? parsed : labels.map((_, i) => i);
+    return {rubric, labels, levels, hasCustomLevels: allNumeric};
+  }
+  const rubric = question.rubric ?? [];
+  const labels = rubric.map((_, i) => String(i));
+  const levels = rubric.map((_, i) => i);
+  return {rubric, labels, levels, hasCustomLevels: false};
+}
+
+const DEFAULT_CONFORMAL_COVERAGE = 0.9;
+
+function computePredictionSetFromPairs(
+  items: Array<{key: string; probability: number}>,
+  coverage = DEFAULT_CONFORMAL_COVERAGE,
+): string[] {
+  if (items.length === 0) return [];
+  const sorted = [...items].sort((a, b) => {
+    if (a.probability !== b.probability) return b.probability - a.probability;
+    return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
+  });
+  const clampedCoverage = Math.min(1, Math.max(0, coverage));
+  const predictionSet: string[] = [];
+  let cumulative = 0;
+  for (const item of sorted) {
+    predictionSet.push(item.key);
+    cumulative += item.probability;
+    if (cumulative >= clampedCoverage) {
+      break;
+    }
+  }
+  return predictionSet;
+}
+
+function enrichChoiceResult(raw: RawWasmChoiceResult): ChoiceResult {
+  if (raw.predictionSet !== undefined) {
+    return {...raw, predictionSet: raw.predictionSet};
+  }
+  const items = Object.entries(raw.probabilities ?? {}).map(
+    ([key, probability]) => ({key, probability}),
+  );
+  return {
+    ...raw,
+    predictionSet: computePredictionSetFromPairs(items),
+  };
+}
+
+function enrichClassifierResult(
+  raw: ClassifierResult,
+  questions: ClassifierQuestion[],
+): ClassifierResult {
+  const out: ClassifierResult = {...raw};
+  for (const q of questions) {
+    if (q.type !== 'categorical' && q.type !== 'choice') continue;
+    const dec = out[q.id];
+    if (dec && dec.predictionSet === undefined) {
+      out[q.id] = {
+        ...dec,
+        predictionSet: computePredictionSetFromPairs(
+          (dec.probabilities ?? []).map((p) => ({
+            key: p.label,
+            probability: p.probability,
+          })),
+        ),
+      };
+    }
+  }
+  return out;
+}
+
+function enrichOrdinalResult(
+  raw: ScoreResult,
+  labels: string[],
+  levels: number[],
+  hasCustomLevels: boolean,
+): ScoreResult {
+  const probs = raw.probabilities ?? [];
+  let bestIdx = 0;
+  let maxProb = -1;
+  let expectedScore = 0;
+  for (let i = 0; i < probs.length; i++) {
+    const p = probs[i];
+    if (p > maxProb) {
+      maxProb = p;
+      bestIdx = i;
+    }
+    const levelVal = i < levels.length ? levels[i] : i;
+    expectedScore += levelVal * p;
+  }
+  return {
+    ...raw,
+    expectedScore:
+      hasCustomLevels && probs.length > 0 ? expectedScore : raw.expectedScore,
+    selectedKey:
+      bestIdx < labels.length
+        ? labels[bestIdx]
+        : (raw.selectedKey ?? String(bestIdx)),
+  };
+}
+
+const recycledWasmModules: WasmModule[] = [];
+
+/**
+ * MediaPipe Task that performs semantic decision making.
+ */
+export class DecisionMaker extends TaskRunner {
+  protected override baseOptions: BaseOptionsProto = new BaseOptionsProto();
+  private backendType = 0;
+  private maxNumTokens = 0;
+  private skipHeadCompatibilityCheck = false;
+  private makerPtr = 0;
+  private modelWasmPtr = 0;
+  private modelWasmRawPtr = 0;
+  private pleWasmPtr = 0;
+  private pleWasmRawPtr = 0;
+  private isClosed = false;
+  private sessionSchema?: ClassifierSchema;
+  private lastContextUsage = 0;
+  private loggerTimestamp = 0;
+
+  /**
+   * Initializes the Wasm runtime and creates a new Decision based
+   * on options.
+   *
+   * @export
+   * @param wasmFileset A configuration object that provides the location of
+   *     the Wasm binary and its loader.
+   * @param options The options for the DecisionMaker. Note that either a path
+   *     to the model or the model itself needs to be provided (via
+   *     `baseOptions`).
+   */
+  static async createFromOptions(
+    wasmFileset: WasmFileset,
+    options: DecisionMakerOptions,
+  ): Promise<DecisionMaker> {
+    const recycledWasm = recycledWasmModules.pop();
+    if (recycledWasm) {
+      const instance = new DecisionMaker(recycledWasm, null);
+      instance.enableLogging(options);
+      try {
+        await instance.setOptions(options);
+        return instance;
+      } catch (e) {
+        instance.close();
+        throw e;
+      }
+    }
+    return TaskRunner.createInstance(
+      DecisionMaker,
+      /* canvas= */ null,
+      wasmFileset,
+      options,
+    );
+  }
+
+  /**
+   * Initializes the Wasm runtime and creates a new Decision from
+   * model asset path.
+   *
+   * @export
+   * @param wasmFileset A configuration object that provides the location of
+   *     the Wasm binary and its loader.
+   * @param modelAssetPath The path to the model asset.
+   * @param backendType The backend type (0=AUTO, 1=ENCODER, 2=DIRECT_LOGIT,
+   *     3=EMBEDDING).
+   * @param maxNumTokens The maximum number of tokens in prompt context.
+   */
+  static createFromModelPath(
+    wasmFileset: WasmFileset,
+    modelAssetPath: string,
+    backendType = 0,
+    maxNumTokens = 0,
+  ): Promise<DecisionMaker> {
+    return DecisionMaker.createFromOptions(wasmFileset, {
+      baseOptions: {
+        modelAssetPath,
+      },
+      backendType,
+      maxNumTokens,
+    });
+  }
+
+  /**
+   * Initializes the Wasm runtime and creates a new Decision from
+   * model buffer.
+   *
+   * @export
+   * @param wasmFileset A configuration object that provides the location of
+   *     the Wasm binary and its loader.
+   * @param modelAssetBuffer An array or a stream containing a binary
+   *     representation of the model.
+   * @param backendType The backend type (0=AUTO, 1=ENCODER, 2=DIRECT_LOGIT,
+   *     3=EMBEDDING).
+   * @param maxNumTokens The maximum number of tokens in prompt context.
+   */
+  static createFromModelBuffer(
+    wasmFileset: WasmFileset,
+    modelAssetBuffer: Uint8Array | ReadableStreamDefaultReader,
+    backendType = 0,
+    maxNumTokens = 0,
+  ): Promise<DecisionMaker> {
+    return DecisionMaker.createFromOptions(wasmFileset, {
+      baseOptions: {
+        modelAssetBuffer,
+      },
+      backendType,
+      maxNumTokens,
+    });
+  }
+
+  /** @hideconstructor */
+  constructor(
+    wasmModule: WasmModule,
+    glCanvas?: HTMLCanvasElement | OffscreenCanvas | null,
+  ) {
+    super(new CachedGraphRunner(wasmModule, glCanvas));
+  }
+
+  protected override getTaskName(): string {
+    return 'DecisionMaker';
+  }
+
+  private invocationQueue: Promise<unknown> = Promise.resolve();
+
+  /**
+   * Runs a native evaluation serialized through `invocationQueue` (preventing
+   * concurrent Asyncify Wasm re-entry while holding native mutexes) and records
+   * it with the usage logger.
+   */
+  private logInvocation<T>(run: () => Promise<T>): Promise<T> {
+    const next = this.invocationQueue.then(() => {
+      const timestamp = this.loggerTimestamp++;
+      if (this.logger) {
+        if (
+          this.backendType === ENCODER_BACKEND_TYPE ||
+          this.backendType === CPU_DELEGATE_BACKEND_TYPE
+        ) {
+          this.logger.recordCpuInputArrival(timestamp);
+        } else {
+          this.logger.recordGpuInputArrival(timestamp);
+        }
+      }
+      return Promise.resolve()
+        .then(run)
+        .then(
+          (result) => {
+            this.logger?.recordInvocationEnd(timestamp);
+            return result;
+          },
+          (error: unknown) => {
+            this.logger?.recordInvocationEnd(timestamp);
+            throw error;
+          },
+        );
+    });
+    this.invocationQueue = next.then(
+      () => {},
+      () => {},
+    );
+    return next;
+  }
+
+  /**
+   * Maximum token window supported by the active model/session.
+   *
+   * @export
+   */
+  get contextWindow(): number {
+    return this.maxNumTokens;
+  }
+
+  /**
+   * Estimated token usage of the active schema and most recent evaluation.
+   *
+   * @export
+   */
+  get contextUsage(): number {
+    return this.lastContextUsage;
+  }
+
+  /**
+   * Updates the session-bound ClassifierSchema used by `classify()`.
+   *
+   * @export
+   * @param schema The schema to bind to this session.
+   */
+  setSchema(schema: ClassifierSchema): void {
+    this.sessionSchema = copySchemaFittedHeads(schema);
+    this.lastContextUsage = this.computeSchemaTokens(schema);
+  }
+
+  /**
+   * Prewarms the underlying engine KV/prefix cache for the given schema.
+   *
+   * @export
+   * @param schema The schema whose shared prefix should be prewarmed.
+   */
+  async prewarm(schema: ClassifierSchema): Promise<void> {
+    if (this.makerPtr === 0) return;
+    checkSchemaFittedHeads(schema);
+    const questions = schema.questions ?? [];
+    if (questions.length === 0) return;
+    validateSchemaExamples(questions);
+    const wasmModule = this.graphRunner
+      .wasmModule as unknown as DecisionMakerWasmModule;
+    if (typeof wasmModule.prewarmSchema === 'function') {
+      await this.logInvocation(() =>
+        wasmModule.prewarmSchema!(
+          this.makerPtr,
+          schema.context ?? '',
+          questions,
+        ),
+      );
+    } else {
+      await this.logInvocation(() =>
+        wasmModule.evaluateSchema(
+          this.makerPtr,
+          '__PREWARM__',
+          schema.context ?? '',
+          questions,
+        ),
+      );
+    }
+  }
+
+  /**
+   * Prewarms candidate choice options in Wasm memory before evaluation.
+   *
+   * @export
+   * @param question The categorical choice question whose options should be
+   *     prewarmed.
+   */
+  async prewarmChoice(question: ChoiceQuestion): Promise<void> {
+    if (this.makerPtr === 0) return;
+    checkFittedHeadNotEmpty(question.fittedHead, 'ChoiceQuestion');
+    const criteria = resolveChoiceCriteria(question);
+    const hasFittedHead = Boolean(question.fittedHead);
+    if (Object.keys(criteria).length === 0 && !hasFittedHead) return;
+    const examples = resolveChoiceExamples(question, criteria);
+    const baseInstructions = question.instructions ?? '';
+    const instructions = question.context
+      ? baseInstructions
+        ? `${question.context}\n${baseInstructions}`
+        : question.context
+      : baseInstructions;
+    const wasmModule = this.graphRunner
+      .wasmModule as unknown as DecisionMakerWasmModule;
+    if (typeof wasmModule.prewarmChoice === 'function') {
+      await this.logInvocation(() =>
+        wasmModule.prewarmChoice!(
+          this.makerPtr,
+          criteria,
+          question.options ?? [],
+          question.temperature ?? 0,
+          instructions,
+          question.normalizePrior ?? false,
+          examples,
+          ...optionalArg(question.fittedHead),
+        ),
+      );
+      return;
+    }
+    const optionsByLabel = new Map<string, ClassifierOption>();
+    for (const opt of question.options ?? []) {
+      optionsByLabel.set(opt.label, opt);
+    }
+    const options: ClassifierOption[] = Object.entries(criteria).map(
+      ([label, description]) => {
+        const existing = optionsByLabel.get(label);
+        const option = existing
+          ? {...existing, label, description}
+          : {label, description};
+        const choiceExamples = getOwn(examples.examples, label);
+        return choiceExamples ? {...option, examples: choiceExamples} : option;
+      },
+    );
+    await this.prewarm({
+      context: question.context,
+      questions: [
+        {
+          id: '__choice__',
+          type: 'choice',
+          prompt: baseInstructions,
+          options,
+          temperature: question.temperature,
+          normalizePrior: question.normalizePrior,
+          ...(question.inputPrompt !== undefined
+            ? {inputPrompt: question.inputPrompt}
+            : {}),
+          ...(question.balanceClassWeights !== undefined
+            ? {balanceClassWeights: question.balanceClassWeights}
+            : {}),
+          ...(hasFittedHead ? {fittedHead: question.fittedHead} : {}),
+        },
+      ],
+    });
+  }
+
+  /**
+   * Prewarms a boolean predicate question in Wasm memory before evaluation.
+   *
+   * @export
+   * @param question The boolean question to prewarm.
+   */
+  async prewarmBoolean(question: BooleanQuestion): Promise<void> {
+    if (this.makerPtr === 0) return;
+    checkBooleanQuestionFittedHead(question);
+    const examples = resolveBooleanExamples(question);
+    const conditionText = question.condition ?? '';
+    if (
+      question.options &&
+      question.options.length >= 2 &&
+      !hasBooleanExamples(question)
+    ) {
+      await this.prewarmChoice({
+        options: question.options,
+        instructions: conditionText,
+        context: question.context,
+        temperature: question.temperature,
+        normalizePrior: question.normalizePrior,
+      });
+      return;
+    }
+    const hasFittedHead = Boolean(question.fittedHead);
+    await this.prewarm({
+      context: question.context,
+      questions: [
+        {
+          id: '__boolean__',
+          type: 'boolean',
+          prompt: conditionText,
+          threshold: question.threshold,
+          temperature: question.temperature,
+          normalizePrior: question.normalizePrior,
+          ...(hasBooleanExamples(question)
+            ? {
+                positiveExamples: examples.positiveExamples,
+                negativeExamples: examples.negativeExamples,
+              }
+            : {}),
+          ...(question.inputPrompt !== undefined
+            ? {inputPrompt: question.inputPrompt}
+            : {}),
+          ...(hasFittedHead ? {fittedHead: question.fittedHead} : {}),
+        },
+      ],
+    });
+  }
+
+  /**
+   * Prewarms an ordinal score rubric question in Wasm memory before evaluation.
+   *
+   * @export
+   * @param question The score question to prewarm.
+   */
+  async prewarmScore(question: ScoreQuestion): Promise<void> {
+    if (this.makerPtr === 0) return;
+    const {rubric} = resolveScoreRubric(question);
+    if (rubric.length === 0) return;
+    await this.prewarm({
+      context: question.context,
+      questions: [
+        {
+          id: '__score__',
+          type: 'score',
+          prompt: question.instructions ?? '',
+          options: rubric.map((desc) => ({label: '', description: desc})),
+          temperature: question.temperature,
+        },
+      ],
+    });
+  }
+
+  /**
+   * Fits `question`'s examples on an embedding model and exports the resulting
+   * `FittedHead` binary payload.
+   *
+   * @export
+   * @param question The boolean question with `positiveExamples` and
+   *     `negativeExamples` to fit.
+   * @return The serialized `FittedHead` bytes.
+   */
+  async exportFittedHeadBoolean(
+    question: BooleanQuestion,
+  ): Promise<Uint8Array> {
+    if (this.makerPtr === 0) {
+      throw new Error('Decision is already closed.');
+    }
+    if (question.fittedHead != null) {
+      throw new Error(
+        'exportFittedHeadBoolean requires examples, not an existing fittedHead.',
+      );
+    }
+    const examples = resolveBooleanExamples(question);
+    if (!hasBooleanExamples(question)) {
+      throw new Error(
+        'exportFittedHeadBoolean requires positiveExamples and negativeExamples.',
+      );
+    }
+    const conditionText = question.condition ?? '';
+    const condition = question.context
+      ? conditionText
+        ? `${question.context}\n${conditionText}`
+        : question.context
+      : conditionText;
+    const threshold = question.threshold ?? 0.5;
+    const temperature = question.temperature ?? 0;
+    const normalizePrior = question.normalizePrior ?? false;
+    const examplesSnapshot: WasmBooleanExamples = {
+      positiveExamples: [...examples.positiveExamples],
+      negativeExamples: [...examples.negativeExamples],
+      inputPrompt: examples.inputPrompt,
+    };
+    const wasmModule = this.graphRunner
+      .wasmModule as unknown as DecisionMakerWasmModule;
+    if (typeof wasmModule.exportFittedHeadBoolean !== 'function') {
+      throw new Error('Wasm module does not support exportFittedHeadBoolean.');
+    }
+    return this.logInvocation(() => {
+      if (this.makerPtr === 0) {
+        throw new Error('Decision is already closed.');
+      }
+      return wasmModule.exportFittedHeadBoolean!(
+        this.makerPtr,
+        condition,
+        threshold,
+        temperature,
+        normalizePrior,
+        examplesSnapshot,
+      );
+    });
+  }
+
+  /**
+   * Fits `question`'s choice examples on an embedding model and exports the
+   * resulting `FittedHead` binary payload.
+   *
+   * @export
+   * @param question The choice question with `examples` (or per-option
+   *     `options[].examples`) to fit.
+   * @return The serialized `FittedHead` bytes.
+   */
+  async exportFittedHeadChoice(question: ChoiceQuestion): Promise<Uint8Array> {
+    if (this.makerPtr === 0) {
+      throw new Error('Decision is already closed.');
+    }
+    if (question.fittedHead != null) {
+      throw new Error(
+        'exportFittedHeadChoice requires examples, not an existing fittedHead.',
+      );
+    }
+    validateUniqueOptionLabels(question.options);
+    const criteria = resolveChoiceCriteria(question);
+    const examples = resolveChoiceExamples(question, criteria);
+    if (
+      !Object.keys(examples.examples).some(
+        (k) => (getOwn(examples.examples, k)?.length ?? 0) > 0,
+      )
+    ) {
+      throw new Error('exportFittedHeadChoice requires choice examples.');
+    }
+    const baseInstructions = question.instructions ?? '';
+    const instructions = question.context
+      ? baseInstructions
+        ? `${question.context}\n${baseInstructions}`
+        : question.context
+      : baseInstructions;
+    const optionsSnapshot = (question.options ?? []).map((o) => ({
+      ...o,
+      ...(o.examples ? {examples: [...o.examples]} : {}),
+    }));
+    const examplesByKeySnapshot: Record<string, string[]> = {};
+    for (const key of Object.keys(examples.examples)) {
+      const list = getOwn(examples.examples, key);
+      if (list !== undefined) {
+        Object.defineProperty(examplesByKeySnapshot, key, {
+          value: [...list],
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
+      }
+    }
+    const examplesSnapshot: WasmChoiceExamples = {
+      examples: examplesByKeySnapshot,
+      inputPrompt: examples.inputPrompt,
+      balanceClassWeights: examples.balanceClassWeights,
+    };
+    const temperature = question.temperature ?? 0;
+    const normalizePrior = question.normalizePrior ?? false;
+    const wasmModule = this.graphRunner
+      .wasmModule as unknown as DecisionMakerWasmModule;
+    if (typeof wasmModule.exportFittedHeadChoice !== 'function') {
+      throw new Error('Wasm module does not support exportFittedHeadChoice.');
+    }
+    return this.logInvocation(() => {
+      if (this.makerPtr === 0) {
+        throw new Error('Decision is already closed.');
+      }
+      return wasmModule.exportFittedHeadChoice!(
+        this.makerPtr,
+        criteria,
+        optionsSnapshot,
+        temperature,
+        instructions,
+        normalizePrior,
+        examplesSnapshot,
+      );
+    });
+  }
+
+  /**
+   * Fits every question's examples in `schema` sequentially on an embedding
+   * model and returns a map of question `id` to serialized `FittedHead` bytes.
+   * All schema structure checks run upfront before queueing Wasm execution,
+   * while backend-level fitting runs question by question in schema order.
+   *
+   * @export
+   * @param schema The schema of example-driven boolean and/or choice questions.
+   * @return Exported `FittedHead` bytes keyed by question `id`.
+   */
+  async exportFittedHeads(
+    schema: ClassifierSchema,
+  ): Promise<Record<string, Uint8Array>> {
+    if (this.makerPtr === 0) {
+      throw new Error('Decision is already closed.');
+    }
+    const questions = schema.questions ?? [];
+    const seenIds = new Set<string>();
+    const questionsSnapshot: ClassifierQuestion[] = [];
+
+    for (const q of questions) {
+      if (!q.id) {
+        throw new Error('ClassifierQuestion id must not be empty.');
+      }
+      if (seenIds.has(q.id)) {
+        throw new Error(`Duplicate ClassifierQuestion id "${q.id}".`);
+      }
+      seenIds.add(q.id);
+      const label = `ClassifierQuestion "${q.id}"`;
+      if (q.fittedHead != null) {
+        throw new Error(
+          `${label}: exportFittedHeads requires examples, not an existing fittedHead.`,
+        );
+      }
+      if (q.type === 'ordinal' || q.type === 'score') {
+        throw new Error(
+          `${label} of type "${q.type}" does not support fitted head export.`,
+        );
+      }
+      if (q.type === 'binary' || q.type === 'boolean') {
+        resolveBooleanExamples(q);
+        if (!hasBooleanExamples(q)) {
+          throw new Error(
+            `${label} requires positiveExamples and negativeExamples for exportFittedHeads.`,
+          );
+        }
+        questionsSnapshot.push({
+          ...q,
+          ...(q.positiveExamples
+            ? {positiveExamples: [...q.positiveExamples]}
+            : {}),
+          ...(q.negativeExamples
+            ? {negativeExamples: [...q.negativeExamples]}
+            : {}),
+          ...(q.options ? {options: q.options.map((o) => ({...o}))} : {}),
+        });
+      } else if (q.type === 'categorical' || q.type === 'choice') {
+        const options = q.options ?? [];
+        validateUniqueOptionLabels(options, label);
+        const examplesByKey: Record<string, string[]> = {};
+        if (options.some((o) => (o.examples?.length ?? 0) > 0)) {
+          for (const o of options) {
+            Object.defineProperty(examplesByKey, o.label, {
+              value: o.examples ?? [],
+              enumerable: true,
+              writable: true,
+              configurable: true,
+            });
+          }
+        }
+        validateChoiceExamples(
+          options.map((o) => o.label),
+          examplesByKey,
+        );
+        if (!options.some((o) => (o.examples?.length ?? 0) > 0)) {
+          throw new Error(
+            `${label} requires option examples for exportFittedHeads.`,
+          );
+        }
+        questionsSnapshot.push({
+          ...q,
+          options: options.map((o) => ({
+            ...o,
+            ...(o.examples ? {examples: [...o.examples]} : {}),
+          })),
+        });
+      } else {
+        throw new Error(`${label} has unsupported type "${String(q.type)}".`);
+      }
+    }
+
+    if (questionsSnapshot.length === 0) {
+      return {};
+    }
+    const schemaContext = schema.context ?? '';
+    const wasmModule = this.graphRunner
+      .wasmModule as unknown as DecisionMakerWasmModule;
+    if (typeof wasmModule.exportFittedHeads !== 'function') {
+      throw new Error('Wasm module does not support exportFittedHeads.');
+    }
+    return this.logInvocation(() => {
+      if (this.makerPtr === 0) {
+        throw new Error('Decision is already closed.');
+      }
+      return wasmModule.exportFittedHeads!(
+        this.makerPtr,
+        schemaContext,
+        questionsSnapshot,
+      );
+    });
+  }
+
+  private computeSchemaTokens(schema?: ClassifierSchema): number {
+    if (!schema) return 0;
+    let total = schema.context ? estimateTokens(schema.context) : 0;
+    for (const q of schema.questions ?? []) {
+      total += estimateTokens(q.prompt ?? '') + 4;
+      for (const opt of q.options ?? []) {
+        total +=
+          estimateTokens(
+            opt.description ? `${opt.label}: ${opt.description}` : opt.label,
+          ) + 2;
+      }
+    }
+    return total;
+  }
+
+  /**
+   * Estimates the total token usage for evaluating `input` (and optional
+   * per-call `context`) against the session schema.
+   *
+   * @export
+   * @param input The input text to be evaluated.
+   * @param options Optional per-call evaluation options.
+   */
+  async measureContextUsage(
+    input: string,
+    options?: ClassifierEvaluateOptions,
+  ): Promise<number> {
+    const stateText = options?.context ? `${options.context}\n${input}` : input;
+    return (
+      this.computeSchemaTokens(this.sessionSchema) + estimateTokens(stateText)
+    );
+  }
+
+  private getZipFirstEntryOffset(bytes: Uint8Array): number {
+    if (
+      bytes.byteLength >= 30 &&
+      bytes[0] === 0x50 &&
+      bytes[1] === 0x4b &&
+      bytes[2] === 0x03 &&
+      bytes[3] === 0x04
+    ) {
+      const nameLen = bytes[26] | (bytes[27] << 8);
+      const extraLen = bytes[28] | (bytes[29] << 8);
+      if (nameLen + extraLen <= 4096) {
+        return 30 + nameLen + extraLen;
+      }
+    }
+    return 0;
+  }
+
+  private allocateAlignedWasmBuffer(
+    size: number,
+    payloadOffset = 0,
+  ): {
+    ptr: number;
+    rawPtr: number;
+  } {
+    const rawWasm = this.graphRunner.wasmModule;
+    if (size < 64) {
+      const rawPtr = rawWasm._malloc(size) >>> 0;
+      if (!rawPtr) {
+        throw new Error(`Failed to allocate ${size} bytes on Wasm heap.`);
+      }
+      return {ptr: rawPtr, rawPtr};
+    }
+    const rawPtr = rawWasm._malloc(size + 64) >>> 0;
+    if (!rawPtr) {
+      throw new Error(`Failed to allocate ${size} bytes on Wasm heap.`);
+    }
+    const ptr = (((rawPtr + payloadOffset + 63) & ~63) - payloadOffset) >>> 0;
+    return {ptr, rawPtr};
+  }
+
+  /**
+   * Streams an asset (from URL, ReadableStreamDefaultReader, or Uint8Array)
+   * directly into aligned Wasm linear memory using the `WasmFileReference` /
+   * `StreamingReader` pattern so no large JS ArrayBuffer or MEMFS copy is
+   * retained. When the asset is a `.task` ZIP archive, aligns the buffer so
+   * the first entry (`model.tflite`) starts on a 64-byte boundary for
+   * zero-copy FlatBuffer mapping.
+   */
+  private async streamAssetToWasmHeap(
+    assetPath?: string | string,
+    assetBuffer?: Uint8Array | ReadableStreamDefaultReader,
+    knownSize?: number,
+  ): Promise<{ptr: number; rawPtr: number; size: number}> {
+    const rawWasm = this.graphRunner.wasmModule;
+    if (assetBuffer instanceof Uint8Array) {
+      const size = assetBuffer.byteLength;
+      if (size === 0) return {ptr: 0, rawPtr: 0, size: 0};
+      const payloadOffset = this.getZipFirstEntryOffset(assetBuffer);
+      const {ptr, rawPtr} = this.allocateAlignedWasmBuffer(size, payloadOffset);
+      rawWasm.HEAPU8.set(assetBuffer, ptr);
+      return {ptr, rawPtr, size};
+    }
+
+    let reader: ReadableStreamDefaultReader | undefined = assetBuffer;
+    let expectedSize = knownSize && knownSize > 0 ? knownSize : 0;
+
+    if (!reader && assetPath) {
+      const urlStr = assetPath.toString();
+      const response = await fetch(urlStr);
+      if (!response.ok || !response.body) {
+        throw new Error(
+          `Failed to fetch asset: ${urlStr} (${response.status})`,
+        );
+      }
+      const headerLen = Number(response.headers.get('content-length') || 0);
+      if (headerLen > 0) {
+        expectedSize = headerLen;
+      }
+      reader = response.body.getReader();
+    }
+
+    if (!reader) {
+      return {ptr: 0, rawPtr: 0, size: 0};
+    }
+
+    if (expectedSize > 0) {
+      const initialChunks: Uint8Array[] = [];
+      let bufferedLen = 0;
+      while (bufferedLen < 30) {
+        const {value, done} = await reader.read();
+        if (done) break;
+        if (value && value.byteLength > 0) {
+          initialChunks.push(value);
+          bufferedLen += Number(value.byteLength);
+        }
+      }
+      if (bufferedLen === 0) {
+        return {ptr: 0, rawPtr: 0, size: 0};
+      }
+      let headerProbe = initialChunks[0];
+      if (headerProbe.byteLength < 30 && initialChunks.length > 1) {
+        headerProbe = new Uint8Array(Math.min(bufferedLen, 30));
+        let pOff = 0;
+        for (const c of initialChunks) {
+          const take = Math.min(c.byteLength, headerProbe.byteLength - pOff);
+          headerProbe.set(c.subarray(0, take), pOff);
+          pOff += take;
+          if (pOff >= headerProbe.byteLength) break;
+        }
+      }
+      const payloadOffset = this.getZipFirstEntryOffset(headerProbe);
+      const {ptr, rawPtr} = this.allocateAlignedWasmBuffer(
+        expectedSize,
+        payloadOffset,
+      );
+      let offset = 0;
+      for (const c of initialChunks) {
+        const chunkLen = Number(c.byteLength);
+        if (offset + chunkLen > expectedSize) {
+          rawWasm._free(rawPtr);
+          throw new Error(
+            `Stream exceeded expected content-length (${expectedSize} bytes).`,
+          );
+        }
+        rawWasm.HEAPU8.set(c, (ptr + offset) >>> 0);
+        offset += chunkLen;
+      }
+      initialChunks.length = 0;
+
+      while (true) {
+        const {value, done} = await reader.read();
+        if (done) break;
+        if (value && value.byteLength > 0) {
+          const chunkLen = Number(value.byteLength);
+          if (offset + chunkLen > expectedSize) {
+            rawWasm._free(rawPtr);
+            throw new Error(
+              `Stream exceeded expected content-length (${expectedSize} bytes).`,
+            );
+          }
+          rawWasm.HEAPU8.set(value, (ptr + offset) >>> 0);
+          offset += chunkLen;
+        }
+      }
+      return {ptr, rawPtr, size: offset};
+    }
+
+    // Fallback when content-length / knownSize is unavailable: accumulate
+    // small stream chunks and release each chunk immediately as it is copied
+    // to Wasm linear memory (StreamingReader DiscardableDataChunk pattern).
+    const chunks: Array<Uint8Array | undefined> = [];
+    let totalSize = 0;
+    while (true) {
+      const {value, done} = await reader.read();
+      if (done) break;
+      if (value && value.byteLength > 0) {
+        const chunkLen = Number(value.byteLength);
+        chunks.push(value);
+        totalSize += chunkLen;
+      }
+    }
+    if (totalSize === 0) {
+      return {ptr: 0, rawPtr: 0, size: 0};
+    }
+    const firstChunk = chunks[0];
+    const payloadOffset = firstChunk
+      ? this.getZipFirstEntryOffset(firstChunk)
+      : 0;
+    const {ptr, rawPtr} = this.allocateAlignedWasmBuffer(
+      totalSize,
+      payloadOffset,
+    );
+    let offset = 0;
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      if (chunk) {
+        rawWasm.HEAPU8.set(chunk, (ptr + offset) >>> 0);
+        offset += chunk.byteLength;
+        chunks[i] = undefined;
+      }
+    }
+    return {ptr, rawPtr, size: totalSize};
+  }
+
+  /**
+   * Sets the options for the DecisionMaker and initializes the underlying
+   * engine. Options cannot be updated once the engine has been created.
+   *
+   * @export
+   * @param options The options for the DecisionMaker.
+   */
+  override async setOptions(options: DecisionMakerOptions): Promise<void> {
+    if (this.makerPtr !== 0) {
+      throw new Error(
+        'Decision does not support updating options after ' + 'initialization.',
+      );
+    }
+    if (options.baseOptions?.delegate === 'CPU') {
+      this.backendType = CPU_DELEGATE_BACKEND_TYPE;
+    } else if (options.backendType !== undefined) {
+      this.backendType = options.backendType;
+    }
+    if (options.maxNumTokens !== undefined) {
+      this.maxNumTokens = options.maxNumTokens;
+    }
+    this.skipHeadCompatibilityCheck = Boolean(
+      options.skipHeadCompatibilityCheck,
+    );
+    if (options.schema) {
+      this.setSchema(options.schema);
+    } else if (options.questions || options.context || options.expectedInputs) {
+      this.setSchema({
+        context: options.context,
+        expectedInputs: options.expectedInputs,
+        questions: options.questions,
+      });
+    }
+
+    if (this.backendType === CPU_DELEGATE_BACKEND_TYPE) {
+      // Use quoted property access: Emscripten reads this field by name
+      // from the Module object, so it must not be renamed by the compiler.
+      const wasmModule = this.graphRunner.wasmModule as unknown as Record<
+        string,
+        unknown
+      >;
+      wasmModule['preinitializedWebGPUDevice'] = undefined;
+      const globalScope = (typeof self !== 'undefined'
+        ? self
+        : globalThis) as unknown as Record<string, unknown>;
+      if (typeof globalScope['Module'] === 'object' && globalScope['Module']) {
+        (globalScope['Module'] as Record<string, unknown>)[
+          'preinitializedWebGPUDevice'
+        ] = undefined;
+      }
+    } else if (typeof navigator !== 'undefined' && navigator.gpu) {
+      try {
+        // Use quoted property access: Emscripten reads this field by name
+        // from the Module object, so it must not be renamed by the compiler.
+        const wasmModule = this.graphRunner.wasmModule as unknown as Record<
+          string,
+          unknown
+        >;
+        if (!wasmModule['preinitializedWebGPUDevice']) {
+          const adapter = await navigator.gpu.requestAdapter({
+            powerPreference: 'high-performance',
+          });
+          const adapterInfo = (
+            adapter as unknown as {
+              info?: {
+                vendor?: string;
+                architecture?: string;
+                description?: string;
+              };
+            }
+          )?.info;
+          const isFallback = Boolean(
+            (adapter as unknown as {isFallbackAdapter?: boolean})
+              ?.isFallbackAdapter,
+          );
+          const isSoftwareAdapter =
+            isFallback ||
+            /swiftshader|llvmpipe|software|lavapipe/i.test(
+              `${adapterInfo?.vendor ?? ''} ${adapterInfo?.architecture ?? ''} ${adapterInfo?.description ?? ''}`,
+            );
+          if (adapter && !isSoftwareAdapter) {
+            const requiredFeatures: GPUFeatureName[] = [];
+            for (const feat of [
+              'shader-f16',
+              'subgroups',
+            ] as GPUFeatureName[]) {
+              if (adapter.features.has(feat)) {
+                requiredFeatures.push(feat);
+              }
+            }
+            const requiredLimits: Record<string, number> = {};
+            for (const limitKey of [
+              'maxBufferSize',
+              'maxStorageBufferBindingSize',
+              'maxStorageBuffersPerShaderStage',
+              'maxComputeWorkgroupStorageSize',
+              'maxTextureDimension2D',
+            ]) {
+              const val = (
+                adapter.limits as unknown as Record<string, number | undefined>
+              )[limitKey];
+              if (typeof val === 'number') {
+                requiredLimits[limitKey] = val;
+              }
+            }
+            const device = await adapter.requestDevice({
+              requiredFeatures,
+              requiredLimits,
+            });
+            const deviceWithInfo = device as unknown as {adapterInfo?: unknown};
+            if (!deviceWithInfo.adapterInfo && adapterInfo) {
+              try {
+                Object.defineProperty(device, 'adapterInfo', {
+                  value: adapterInfo,
+                  writable: true,
+                  configurable: true,
+                });
+              } catch {
+                try {
+                  deviceWithInfo.adapterInfo = adapterInfo;
+                } catch {}
+              }
+            }
+            wasmModule['preinitializedWebGPUDevice'] = device;
+          }
+        }
+        if (wasmModule['preinitializedWebGPUDevice']) {
+          const globalScope = self as unknown as Record<string, unknown>;
+          if (
+            typeof globalScope['Module'] === 'object' &&
+            globalScope['Module']
+          ) {
+            (globalScope['Module'] as Record<string, unknown>)[
+              'preinitializedWebGPUDevice'
+            ] = wasmModule['preinitializedWebGPUDevice'];
+          }
+        }
+      } catch (e) {
+        console.warn('WebGPU device initialization failed:', e);
+      }
+    }
+
+    const wasmModule = this.graphRunner
+      .wasmModule as unknown as DecisionMakerWasmModule;
+    const rawWasm = this.graphRunner.wasmModule;
+
+    const loadTfliteModel =
+      !!options.baseOptions &&
+      (!!options.baseOptions.modelAssetPath ||
+        !!options.baseOptions.modelAssetBuffer);
+
+    if (
+      loadTfliteModel &&
+      typeof wasmModule.createDecisionFromBuffers === 'function' &&
+      typeof rawWasm._malloc === 'function'
+    ) {
+      const modelAlloc = await this.streamAssetToWasmHeap(
+        options.baseOptions?.modelAssetPath,
+        options.baseOptions?.modelAssetBuffer,
+        options.modelAssetSize,
+      );
+      this.modelWasmPtr = modelAlloc.ptr;
+      this.modelWasmRawPtr = modelAlloc.rawPtr;
+
+      let pleSize = 0;
+      if (options.companionPleAssetPath || options.companionPleAssetBuffer) {
+        try {
+          const pleAlloc = await this.streamAssetToWasmHeap(
+            options.companionPleAssetPath,
+            options.companionPleAssetBuffer,
+            options.companionPleAssetSize,
+          );
+          this.pleWasmPtr = pleAlloc.ptr;
+          this.pleWasmRawPtr = pleAlloc.rawPtr;
+          pleSize = pleAlloc.size;
+        } catch (e) {
+          console.warn('Optional companion per-layer embedder not loaded:', e);
+        }
+      }
+
+      this.makerPtr = await wasmModule.createDecisionFromBuffers(
+        this.modelWasmPtr,
+        modelAlloc.size,
+        this.pleWasmPtr,
+        pleSize,
+        this.backendType,
+        this.maxNumTokens,
+        ...optionalArg(this.skipHeadCompatibilityCheck ? true : undefined),
+      );
+      this.logger?.logSessionStart();
+      return;
+    }
+
+    await this.applyOptions(
+      options,
+      /* loadTfliteModel= */ loadTfliteModel,
+      /* isLiteRtLmModel= */ true,
+    );
+
+    const modelPath = '/model.litertlm';
+
+    this.makerPtr = await wasmModule.createDecision(
+      modelPath,
+      this.backendType,
+      this.maxNumTokens,
+      ...optionalArg(this.skipHeadCompatibilityCheck ? true : undefined),
+    );
+    this.logger?.logSessionStart();
+  }
+
+  protected override refreshGraph(): void {
+    // Initialization is performed asynchronously in setOptions().
+  }
+
+  /**
+   * Evaluates a Boolean Predicate condition against input text or multimodal context.
+   *
+   * @export
+   * @param text The input text or multimodal context to be evaluated.
+   * @param question The boolean question to evaluate.
+   * @return The boolean evaluation result.
+   */
+  evaluateBoolean(
+    text: string | DecisionContextInput,
+    question: BooleanQuestion,
+  ): Promise<BooleanResult> {
+    if (this.makerPtr === 0) {
+      throw new Error('Decision is already closed.');
+    }
+    checkBooleanQuestionFittedHead(question);
+    const examples = resolveBooleanExamples(question);
+    const conditionText = question.condition ?? '';
+    // With examples, custom options are ignored and the question stays a
+    // Boolean.
+    if (
+      question.options &&
+      question.options.length >= 2 &&
+      !hasBooleanExamples(question)
+    ) {
+      const threshold =
+        question.threshold !== undefined && question.threshold > 0
+          ? question.threshold
+          : 0.5;
+      return this.evaluateChoice(text, {
+        options: question.options,
+        instructions: conditionText,
+        context: question.context,
+        temperature: question.temperature,
+        normalizePrior: question.normalizePrior,
+        imageBytes: question.imageBytes,
+        audioSamples: question.audioSamples,
+      }).then((choiceRes) => {
+        const opts = question.options!;
+        const affirmRe = /^(true|yes|1|allow|allowed|entailment|supported)$/i;
+        const negRe =
+          /^(false|no|0|deny|denied|reject|rejected|contradiction|contradicted|refuted)$/i;
+        let affirmOpt = opts.find((o) => affirmRe.test(o.label.trim()));
+        if (!affirmOpt) {
+          affirmOpt =
+            negRe.test(opts[1].label.trim()) &&
+            !negRe.test(opts[0].label.trim())
+              ? opts[0]
+              : opts[1];
+        }
+        const probabilityTrue = choiceRes.probabilities[affirmOpt.label] ?? 0;
+        const value = probabilityTrue >= threshold;
+        const confidence =
+          threshold > 0 && threshold < 1
+            ? Math.min(
+                1,
+                Math.max(
+                  0,
+                  value
+                    ? (probabilityTrue - threshold) / (1 - threshold)
+                    : (threshold - probabilityTrue) / threshold,
+                ),
+              )
+            : choiceRes.confidence;
+        return {value, probabilityTrue, confidence};
+      });
+    }
+    const wasmModule = this.graphRunner
+      .wasmModule as unknown as DecisionMakerWasmModule;
+    // Matches the schema path (used by prewarmBoolean), which drops the
+    // newline when there is no condition, so both share one fingerprint.
+    const condition = question.context
+      ? conditionText
+        ? `${question.context}\n${conditionText}`
+        : question.context
+      : conditionText;
+    const normalizePrior = question.normalizePrior ?? false;
+    const norm = normalizeContextInput(text, question);
+    if (norm.hasMedia) {
+      return this.logInvocation(() =>
+        wasmModule.evaluateContextBoolean(
+          this.makerPtr,
+          norm.text,
+          condition,
+          question.threshold ?? 0.5,
+          question.temperature ?? 0,
+          {imageBytes: norm.imageBytes, audioSamples: norm.audioSamples},
+          normalizePrior,
+          examples,
+          ...optionalArg(question.fittedHead),
+        ),
+      );
+    }
+    return this.logInvocation(() =>
+      wasmModule.evaluateBoolean(
+        this.makerPtr,
+        norm.text,
+        condition,
+        question.threshold ?? 0.5,
+        question.temperature ?? 0,
+        normalizePrior,
+        examples,
+        ...optionalArg(question.fittedHead),
+      ),
+    );
+  }
+
+  /**
+   * Evaluates a Categorical Choice against input text or multimodal context.
+   *
+   * @export
+   * @param text The input text or multimodal context to be evaluated.
+   * @param question The choice question to evaluate.
+   * @return The choice evaluation result.
+   */
+  evaluateChoice(
+    text: string | DecisionContextInput,
+    question: ChoiceQuestion,
+  ): Promise<ChoiceResult> {
+    if (this.makerPtr === 0) {
+      throw new Error('Decision is already closed.');
+    }
+    checkFittedHeadNotEmpty(question.fittedHead, 'ChoiceQuestion');
+    const wasmModule = this.graphRunner
+      .wasmModule as unknown as DecisionMakerWasmModule;
+    const criteria = resolveChoiceCriteria(question);
+    const examples = resolveChoiceExamples(question, criteria);
+    const baseInstructions = question.instructions ?? '';
+    const instructions = question.context
+      ? baseInstructions
+        ? `${question.context}\n${baseInstructions}`
+        : question.context
+      : baseInstructions;
+    const normalizePrior = question.normalizePrior ?? false;
+    const norm = normalizeContextInput(text, question);
+    const hasOptionMedia = (question.options ?? []).some(
+      (o) =>
+        (o.imageBytes && o.imageBytes.byteLength > 0) ||
+        (o.audioSamples && o.audioSamples.length > 0),
+    );
+    const evalPromise =
+      norm.hasMedia || hasOptionMedia
+        ? this.logInvocation(() =>
+            wasmModule.evaluateContextChoice(
+              this.makerPtr,
+              norm.text,
+              criteria,
+              question.options ?? [],
+              question.temperature ?? 0,
+              instructions,
+              {
+                imageBytes: norm.imageBytes,
+                audioSamples: norm.audioSamples,
+              },
+              normalizePrior,
+              examples,
+              ...optionalArg(question.fittedHead),
+            ),
+          )
+        : this.logInvocation(() =>
+            wasmModule.evaluateChoice(
+              this.makerPtr,
+              norm.text,
+              criteria,
+              question.temperature ?? 0,
+              instructions,
+              normalizePrior,
+              examples,
+              ...optionalArg(question.fittedHead),
+            ),
+          );
+    return evalPromise.then(enrichChoiceResult);
+  }
+
+  /**
+   * Evaluates an Ordinal Score rubric against input text or multimodal context.
+   *
+   * @export
+   * @param text The input text or multimodal context to be evaluated.
+   * @param question The score question to evaluate.
+   * @return The score evaluation result.
+   */
+  async evaluateScore(
+    text: string | DecisionContextInput,
+    question: ScoreQuestion,
+  ): Promise<ScoreResult> {
+    if (this.makerPtr === 0) {
+      throw new Error('Decision is already closed.');
+    }
+    const wasmModule = this.graphRunner
+      .wasmModule as unknown as DecisionMakerWasmModule;
+    const {rubric, labels, levels, hasCustomLevels} =
+      resolveScoreRubric(question);
+    const baseInstructions = question.instructions ?? '';
+    const instructions = question.context
+      ? baseInstructions
+        ? `${question.context}\n${baseInstructions}`
+        : question.context
+      : baseInstructions;
+    const norm = normalizeContextInput(text, question);
+    const raw = norm.hasMedia
+      ? await this.logInvocation(() =>
+          wasmModule.evaluateContextScore(
+            this.makerPtr,
+            norm.text,
+            rubric,
+            question.temperature ?? 0,
+            instructions,
+            {imageBytes: norm.imageBytes, audioSamples: norm.audioSamples},
+          ),
+        )
+      : await this.logInvocation(() =>
+          wasmModule.evaluateScore(
+            this.makerPtr,
+            norm.text,
+            rubric,
+            question.temperature ?? 0,
+            instructions,
+          ),
+        );
+    return enrichOrdinalResult(raw, labels, levels, hasCustomLevels);
+  }
+
+  /**
+   * Evaluates a multi-question `ClassifierSchema` against `input` and returns
+   * a unified `ClassifierResult` record keyed by question `id` (compatible
+   * with `window.Classifier`).
+   *
+   * @export
+   * @param input The input text or multimodal context to be evaluated.
+   * @param schema The schema containing the questions to evaluate.
+   * @param options Optional per-call evaluation options.
+   * @return The results keyed by question `id`.
+   */
+  async evaluate(
+    input: string | DecisionContextInput,
+    schema: ClassifierSchema,
+    options?: ClassifierEvaluateOptions,
+  ): Promise<ClassifierResult> {
+    if (this.makerPtr === 0) {
+      throw new Error('Decision is already closed.');
+    }
+    if (options?.signal?.aborted) {
+      throw new DOMException('The operation was aborted.', 'AbortError');
+    }
+    checkSchemaFittedHeads(schema);
+    const norm = normalizeContextInput(input, options);
+    const stateText = options?.context
+      ? norm.text
+        ? `${options.context}\n${norm.text}`
+        : options.context
+      : norm.text;
+    const schemaContext = schema.context;
+    const mediaTokens =
+      (norm.imageBytes && norm.imageBytes.byteLength > 0 ? 70 : 0) +
+      (norm.audioSamples && norm.audioSamples.length > 0
+        ? Math.ceil(norm.audioSamples.length / 640)
+        : 0);
+    this.lastContextUsage =
+      this.computeSchemaTokens(schema) +
+      estimateTokens(stateText) +
+      mediaTokens;
+
+    const wasmModule = this.graphRunner
+      .wasmModule as unknown as DecisionMakerWasmModule;
+    const questions = schema.questions ?? [];
+    if (questions.length === 0) {
+      return {};
+    }
+    validateSchemaExamples(questions);
+    const hasOptionMedia = questions.some((q) =>
+      (q.options ?? []).some(
+        (o) =>
+          (o.imageBytes && o.imageBytes.byteLength > 0) ||
+          (o.audioSamples && o.audioSamples.length > 0),
+      ),
+    );
+    const raw =
+      norm.hasMedia || hasOptionMedia
+        ? await this.logInvocation(() =>
+            wasmModule.evaluateContextSchema(
+              this.makerPtr,
+              stateText,
+              schemaContext ?? '',
+              questions,
+              {imageBytes: norm.imageBytes, audioSamples: norm.audioSamples},
+            ),
+          )
+        : await this.logInvocation(() =>
+            wasmModule.evaluateSchema(
+              this.makerPtr,
+              stateText,
+              schemaContext ?? '',
+              questions,
+            ),
+          );
+    return enrichClassifierResult(raw, questions);
+  }
+
+  /**
+   * Evaluates a multi-question `ClassifierSchema` across a batch of `inputs`.
+   *
+   * @export
+   * @param inputs The input texts or multimodal contexts to be evaluated.
+   * @param schema The schema containing the questions to evaluate.
+   * @param options Optional per-call evaluation options.
+   * @return One result per input, in the same order as `inputs`.
+   */
+  async evaluateBatch(
+    inputs: Array<string | DecisionContextInput>,
+    schema: ClassifierSchema,
+    options?: ClassifierEvaluateOptions,
+  ): Promise<ClassifierResult[]> {
+    if (this.makerPtr === 0) {
+      throw new Error('Decision is already closed.');
+    }
+    checkSchemaFittedHeads(schema);
+    const results: ClassifierResult[] = [];
+    for (const input of inputs) {
+      results.push(await this.evaluate(input, schema, options));
+    }
+    return results;
+  }
+
+  /**
+   * Evaluates `input` against the session-bound `ClassifierSchema` configured
+   * via `DecisionMakerOptions` or `setSchema()`.
+   *
+   * @export
+   * @param input The input text or multimodal context to be evaluated.
+   * @param options Optional per-call evaluation options.
+   * @return The results keyed by question `id`.
+   */
+  async classify(
+    input: string | DecisionContextInput,
+    options?: ClassifierEvaluateOptions,
+  ): Promise<ClassifierResult> {
+    if (!this.sessionSchema) {
+      throw new Error(
+        'No session schema configured. Pass `schema` or `questions` in ' +
+          'DecisionMakerOptions or call setSchema() before classify().',
+      );
+    }
+    return this.evaluate(input, this.sessionSchema, options);
+  }
+
+  /**
+   * Evaluates a Boolean Predicate condition against a batch of input texts
+   * (with an optional sharedPrefix for candidate batching).
+   *
+   * @export
+   * @param texts The input texts to be evaluated.
+   * @param question The boolean question to evaluate.
+   * @param sharedPrefix An optional prefix shared by all inputs.
+   * @return One result per input text.
+   */
+  async evaluateBooleanBatch(
+    texts: string[],
+    question: BooleanQuestion,
+    sharedPrefix = '',
+  ): Promise<BooleanResult[]> {
+    if (this.makerPtr === 0) {
+      throw new Error('Decision is already closed.');
+    }
+    checkBooleanQuestionFittedHead(question);
+    if (texts.length === 0) {
+      return [];
+    }
+    const wasmModule = this.graphRunner
+      .wasmModule as unknown as DecisionMakerWasmModule;
+    const conditionText = question.condition ?? '';
+    // Matches the schema path (used by prewarmBoolean), which drops the
+    // newline when there is no condition, so both share one fingerprint.
+    const condition = question.context
+      ? conditionText
+        ? `${question.context}\n${conditionText}`
+        : question.context
+      : conditionText;
+    const examples = resolveBooleanExamples(question);
+    if (
+      !hasQuestionMedia(question) &&
+      !(
+        question.options &&
+        question.options.length >= 2 &&
+        !hasBooleanExamples(question)
+      ) &&
+      typeof wasmModule.evaluateBooleanBatch === 'function'
+    ) {
+      return this.logInvocation(() =>
+        wasmModule.evaluateBooleanBatch!(
+          this.makerPtr,
+          texts,
+          condition,
+          question.threshold ?? 0.5,
+          question.temperature ?? 0,
+          sharedPrefix,
+          question.normalizePrior ?? false,
+          examples,
+          ...optionalArg(question.fittedHead),
+        ),
+      );
+    }
+    const results: BooleanResult[] = [];
+    for (const t of texts) {
+      const merged = sharedPrefix ? `${sharedPrefix}\n${t}` : t;
+      results.push(await this.evaluateBoolean(merged, question));
+    }
+    return results;
+  }
+
+  /**
+   * Evaluates a Categorical Choice against a batch of input texts
+   * (with an optional sharedPrefix for candidate batching).
+   *
+   * @export
+   * @param texts The input texts to be evaluated.
+   * @param question The choice question to evaluate.
+   * @param sharedPrefix An optional prefix shared by all inputs.
+   * @return One result per input text.
+   */
+  async evaluateChoiceBatch(
+    texts: string[],
+    question: ChoiceQuestion,
+    sharedPrefix = '',
+  ): Promise<ChoiceResult[]> {
+    if (this.makerPtr === 0) {
+      throw new Error('Decision is already closed.');
+    }
+    checkFittedHeadNotEmpty(question.fittedHead, 'ChoiceQuestion');
+    if (texts.length === 0) {
+      return [];
+    }
+    const wasmModule = this.graphRunner
+      .wasmModule as unknown as DecisionMakerWasmModule;
+    const criteria = resolveChoiceCriteria(question);
+    const examples = resolveChoiceExamples(question, criteria);
+    const baseInstructions = question.instructions ?? '';
+    const instructions = question.context
+      ? baseInstructions
+        ? `${question.context}\n${baseInstructions}`
+        : question.context
+      : baseInstructions;
+    const hasOptionMedia = (question.options ?? []).some(
+      (o) =>
+        (o.imageBytes && o.imageBytes.byteLength > 0) ||
+        (o.audioSamples && o.audioSamples.length > 0),
+    );
+    if (
+      !hasQuestionMedia(question) &&
+      !hasOptionMedia &&
+      typeof wasmModule.evaluateChoiceBatch === 'function'
+    ) {
+      const rawBatch = await this.logInvocation(() =>
+        wasmModule.evaluateChoiceBatch!(
+          this.makerPtr,
+          texts,
+          criteria,
+          question.temperature ?? 0,
+          instructions,
+          sharedPrefix,
+          question.normalizePrior ?? false,
+          examples,
+          ...optionalArg(question.fittedHead),
+        ),
+      );
+      return rawBatch.map(enrichChoiceResult);
+    }
+    const results: ChoiceResult[] = [];
+    for (const t of texts) {
+      const merged = sharedPrefix ? `${sharedPrefix}\n${t}` : t;
+      results.push(await this.evaluateChoice(merged, question));
+    }
+    return results;
+  }
+
+  /**
+   * Evaluates an Ordinal Score rubric against a batch of input texts
+   * (with an optional sharedPrefix for candidate batching).
+   *
+   * @export
+   * @param texts The input texts to be evaluated.
+   * @param question The score question to evaluate.
+   * @param sharedPrefix An optional prefix shared by all inputs.
+   * @return One result per input text.
+   */
+  async evaluateScoreBatch(
+    texts: string[],
+    question: ScoreQuestion,
+    sharedPrefix = '',
+  ): Promise<ScoreResult[]> {
+    if (this.makerPtr === 0) {
+      throw new Error('Decision is already closed.');
+    }
+    if (texts.length === 0) {
+      return [];
+    }
+    const wasmModule = this.graphRunner
+      .wasmModule as unknown as DecisionMakerWasmModule;
+    const {rubric, labels, levels, hasCustomLevels} =
+      resolveScoreRubric(question);
+    const baseInstructions = question.instructions ?? '';
+    const instructions = question.context
+      ? baseInstructions
+        ? `${question.context}\n${baseInstructions}`
+        : question.context
+      : baseInstructions;
+    if (
+      !hasQuestionMedia(question) &&
+      typeof wasmModule.evaluateScoreBatch === 'function'
+    ) {
+      const rawBatch = await this.logInvocation(() =>
+        wasmModule.evaluateScoreBatch!(
+          this.makerPtr,
+          texts,
+          rubric,
+          question.temperature ?? 0,
+          instructions,
+          sharedPrefix,
+        ),
+      );
+      return rawBatch.map((r) =>
+        enrichOrdinalResult(r, labels, levels, hasCustomLevels),
+      );
+    }
+    const results: ScoreResult[] = [];
+    for (const t of texts) {
+      const merged = sharedPrefix ? `${sharedPrefix}\n${t}` : t;
+      results.push(await this.evaluateScore(merged, question));
+    }
+    return results;
+  }
+
+  /**
+   * Closes the DecisionMaker and releases the native engine and model memory.
+   *
+   * @export
+   */
+  override close(): void {
+    if (this.isClosed) return;
+    this.isClosed = true;
+    const rawWasm = this.graphRunner.wasmModule;
+    const wasmModule = rawWasm as unknown as DecisionMakerWasmModule;
+    if (this.makerPtr !== 0) {
+      try {
+        wasmModule.deleteDecision(this.makerPtr);
+      } catch {}
+      this.makerPtr = 0;
+    }
+    const modelFreePtr = this.modelWasmRawPtr || this.modelWasmPtr;
+    if (modelFreePtr !== 0) {
+      try {
+        rawWasm._free(modelFreePtr);
+      } catch {}
+      this.modelWasmPtr = 0;
+      this.modelWasmRawPtr = 0;
+    }
+    const pleFreePtr = this.pleWasmRawPtr || this.pleWasmPtr;
+    if (pleFreePtr !== 0) {
+      try {
+        rawWasm._free(pleFreePtr);
+      } catch {}
+      this.pleWasmPtr = 0;
+      this.pleWasmRawPtr = 0;
+    }
+    super.close();
+    if (rawWasm && !recycledWasmModules.includes(rawWasm)) {
+      recycledWasmModules.push(rawWasm);
+    }
+  }
+}
+
+

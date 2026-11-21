@@ -9,14 +9,14 @@
 #include <vector>
 
 #include "HalideBuffer.h"
-#include "absl/log/absl_check.h"
-#include "absl/log/log_entry.h"
-#include "absl/log/log_sink.h"
-#include "absl/log/log_sink_registry.h"
-#include "absl/strings/match.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_split.h"
-#include "absl/strings/string_view.h"
+#include "absl/log/absl_check.h"         // from @com_google_absl
+#include "absl/log/log_entry.h"          // from @com_google_absl
+#include "absl/log/log_sink.h"           // from @com_google_absl
+#include "absl/log/log_sink_registry.h"  // from @com_google_absl
+#include "absl/strings/match.h"          // from @com_google_absl
+#include "absl/strings/str_cat.h"        // from @com_google_absl
+#include "absl/strings/str_split.h"      // from @com_google_absl
+#include "absl/strings/string_view.h"    // from @com_google_absl
 #include "mediapipe/framework/deps/file_path.h"
 #include "mediapipe/framework/formats/image.h"
 #include "mediapipe/framework/formats/image_frame.h"
@@ -578,6 +578,30 @@ TEST_F(LoggingTest, LogMat) {
 -==++**##%
 =++**##%%@)"));
 }
+
+#if CV_VERSION_MAJOR >= 5
+TEST_F(LoggingTest, LogMatExtendedDepths) {
+  cv::Mat mat_u32 = cv::Mat::zeros(1, 4, CV_32UC1);
+  LogMat(mat_u32, "u32");
+  EXPECT_THAT(log_lines(), HasSubstr("u32[4 1 1 32UC1]"));
+
+  cv::Mat mat_s64 = cv::Mat::zeros(1, 4, CV_64SC1);
+  LogMat(mat_s64, "s64");
+  EXPECT_THAT(log_lines(), HasSubstr("s64[4 1 1 64SC1]"));
+
+  cv::Mat mat_u64 = cv::Mat::zeros(1, 4, CV_64UC1);
+  LogMat(mat_u64, "u64");
+  EXPECT_THAT(log_lines(), HasSubstr("u64[4 1 1 64UC1]"));
+
+  cv::Mat mat_bool = cv::Mat::zeros(1, 4, CV_BoolC1);
+  LogMat(mat_bool, "bool");
+  EXPECT_THAT(log_lines(), HasSubstr("bool[4 1 1 BoolC1]"));
+
+  cv::Mat mat_bf16 = cv::Mat::zeros(1, 4, CV_16BFC1);
+  LogMat(mat_bf16, "bf16");
+  EXPECT_THAT(log_lines(), HasSubstr("bf16[4 1 1 16BFC1]"));
+}
+#endif
 
 TEST_F(LoggingTest, LogHalideBufferGrayscale) {
   Halide::Runtime::Buffer<uint8_t> buffer(10, 10);

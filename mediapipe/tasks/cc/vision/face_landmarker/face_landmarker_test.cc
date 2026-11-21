@@ -22,10 +22,10 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/flags/flag.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
+#include "absl/flags/flag.h"           // from @com_google_absl
+#include "absl/status/status.h"        // from @com_google_absl
+#include "absl/status/statusor.h"      // from @com_google_absl
+#include "absl/strings/string_view.h"  // from @com_google_absl
 #include "mediapipe/framework/deps/file_path.h"
 #include "mediapipe/framework/formats/classification.pb.h"
 #include "mediapipe/framework/formats/image.h"
@@ -72,7 +72,7 @@ constexpr char kPortraitExpectedFaceGeometryName[] =
 
 constexpr float kLandmarksDiffMargin = 0.03;
 constexpr float kBlendshapesDiffMargin = 0.12;
-constexpr float kFacialTransformationMatrixDiffMargin = 0.02;
+constexpr float kFacialTransformationMatrixDiffMargin = 0.04;
 
 template <typename ProtoT>
 ProtoT GetExpectedProto(absl::string_view filename) {

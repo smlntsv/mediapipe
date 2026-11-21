@@ -15,24 +15,24 @@
 // A simple main function to run a MediaPipe graph.
 #include <cstdlib>
 #include <fstream>
-#include <iostream>
 #include <map>
 #include <string>
 #include <vector>
 
-#include "absl/flags/flag.h"
-#include "absl/flags/parse.h"
-#include "absl/log/absl_log.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_split.h"
-#include "absl/strings/string_view.h"
+#include "absl/flags/flag.h"            // from @com_google_absl
+#include "absl/flags/parse.h"           // from @com_google_absl
+#include "absl/log/absl_log.h"          // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/strings/str_cat.h"       // from @com_google_absl
+#include "absl/strings/str_split.h"     // from @com_google_absl
+#include "absl/strings/string_view.h"   // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
+#include "mediapipe/framework/output_stream_poller.h"
 #include "mediapipe/framework/port/file_helpers.h"
 #include "mediapipe/framework/port/map_util.h"
 #include "mediapipe/framework/port/parse_text_proto.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
-#include "mediapipe/framework/port/statusor.h"
 
 ABSL_FLAG(std::string, calculator_graph_config_file, "",
           "Name of file containing text format CalculatorGraphConfig proto.");
@@ -83,8 +83,8 @@ absl::Status OutputSidePacketsToLocalFile(mediapipe::CalculatorGraph& graph) {
     std::vector<std::string> side_packet_names =
         absl::StrSplit(absl::GetFlag(FLAGS_output_side_packets), ',');
     for (const std::string& side_packet_name : side_packet_names) {
-      MP_ASSIGN_OR_RETURN(auto status_or_packet,
-                          graph.GetOutputSidePacket(side_packet_name));
+      ABSL_ASSIGN_OR_RETURN(auto status_or_packet,
+                            graph.GetOutputSidePacket(side_packet_name));
       file << absl::StrCat(side_packet_name, ":",
                            status_or_packet.Get<std::string>(), "\n");
     }
@@ -100,7 +100,7 @@ absl::Status OutputSidePacketsToLocalFile(mediapipe::CalculatorGraph& graph) {
 
 absl::Status RunMPPGraph() {
   std::string calculator_graph_config_contents;
-  MP_RETURN_IF_ERROR(mediapipe::file::GetContents(
+  ABSL_RETURN_IF_ERROR(mediapipe::file::GetContents(
       absl::GetFlag(FLAGS_calculator_graph_config_file),
       &calculator_graph_config_contents));
   ABSL_LOG(INFO) << "Get calculator graph config contents: "
@@ -122,23 +122,23 @@ absl::Status RunMPPGraph() {
   }
   ABSL_LOG(INFO) << "Initialize the calculator graph.";
   mediapipe::CalculatorGraph graph;
-  MP_RETURN_IF_ERROR(graph.Initialize(config, input_side_packets));
+  ABSL_RETURN_IF_ERROR(graph.Initialize(config, input_side_packets));
   if (!absl::GetFlag(FLAGS_output_stream).empty() &&
       !absl::GetFlag(FLAGS_output_stream_file).empty()) {
-    MP_ASSIGN_OR_RETURN(auto poller, graph.AddOutputStreamPoller(
-                                         absl::GetFlag(FLAGS_output_stream)));
+    ABSL_ASSIGN_OR_RETURN(auto poller, graph.AddOutputStreamPoller(
+                                           absl::GetFlag(FLAGS_output_stream)));
     ABSL_LOG(INFO) << "Start running the calculator graph.";
-    MP_RETURN_IF_ERROR(graph.StartRun({}));
-    MP_RETURN_IF_ERROR(OutputStreamToLocalFile(poller));
+    ABSL_RETURN_IF_ERROR(graph.StartRun({}));
+    ABSL_RETURN_IF_ERROR(OutputStreamToLocalFile(poller));
   } else {
     RET_CHECK(absl::GetFlag(FLAGS_output_stream).empty() &&
               absl::GetFlag(FLAGS_output_stream_file).empty())
         << "--output_stream and --output_stream_file should be specified in "
            "pair.";
     ABSL_LOG(INFO) << "Start running the calculator graph.";
-    MP_RETURN_IF_ERROR(graph.StartRun({}));
+    ABSL_RETURN_IF_ERROR(graph.StartRun({}));
   }
-  MP_RETURN_IF_ERROR(graph.WaitUntilDone());
+  ABSL_RETURN_IF_ERROR(graph.WaitUntilDone());
   return OutputSidePacketsToLocalFile(graph);
 }
 

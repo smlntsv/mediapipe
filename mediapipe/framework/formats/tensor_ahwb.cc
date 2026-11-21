@@ -1,22 +1,28 @@
-#include "absl/status/status.h"
+#include "absl/status/status.h"  // from @com_google_absl
 #include "mediapipe/framework/formats/tensor.h"
 
 #ifdef MEDIAPIPE_TENSOR_USE_AHWB
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <list>
+#include <memory>
 #include <utility>
 #include <vector>
 
-#include "absl/base/const_init.h"
-#include "absl/base/log_severity.h"
-#include "absl/functional/any_invocable.h"
-#include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
-#include "absl/synchronization/mutex.h"
-#include "mediapipe/framework/deps/no_destructor.h"
+#include "absl/base/const_init.h"           // from @com_google_absl
+#include "absl/base/log_severity.h"         // from @com_google_absl
+#include "absl/base/no_destructor.h"        // from @com_google_absl
+#include "absl/base/thread_annotations.h"   // from @com_google_absl
+#include "absl/container/flat_hash_set.h"   // from @com_google_absl
+#include "absl/functional/any_invocable.h"  // from @com_google_absl
+#include "absl/log/absl_check.h"            // from @com_google_absl
+#include "absl/log/absl_log.h"              // from @com_google_absl
+#include "absl/status/status_macros.h"      // from @com_google_absl
+#include "absl/synchronization/mutex.h"     // from @com_google_absl
 #include "mediapipe/framework/formats/ahwb_gpu_releaser.h"
 #include "mediapipe/framework/formats/hardware_buffer.h"
 #include "mediapipe/gpu/gl_base.h"
@@ -106,12 +112,13 @@ class AhwbUsageTrack {
 
   // TODO: Tracks all unique tensors. Can grow to a large number. LRU
   // (Least Recently Used) can be more predicted.
-  static NoDestructor<absl::flat_hash_set<uint64_t>> ahwb_usage_track_
+  static absl::NoDestructor<absl::flat_hash_set<uint64_t>> ahwb_usage_track_
       ABSL_GUARDED_BY(mutex_);
 };
 
 ABSL_CONST_INIT absl::Mutex AhwbUsageTrack::mutex_(absl::kConstInit);
-NoDestructor<absl::flat_hash_set<uint64_t>> AhwbUsageTrack::ahwb_usage_track_;
+absl::NoDestructor<absl::flat_hash_set<uint64_t>>
+    AhwbUsageTrack::ahwb_usage_track_;
 
 }  // namespace
 
@@ -128,8 +135,6 @@ Tensor::AHardwareBufferView Tensor::GetAHardwareBufferReadView() const {
   valid_ |= kValidAHardwareBuffer;
   if (transfer) {
     MoveCpuOrSsboToAhwb();
-  } else {
-    if (valid_ & kValidOpenGlBuffer) CreateEglSyncAndFd();
   }
 
   EraseCompletedUsages(ahwb_usages_);
@@ -141,28 +146,35 @@ Tensor::AHardwareBufferView Tensor::GetAHardwareBufferReadView() const {
 }
 
 void Tensor::CreateEglSyncAndFd() const {
-  gl_context_->Run([this]() {
-    if (IsGlSupported()) {
-      auto egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-      if (egl_display != EGL_NO_DISPLAY) {
-        fence_sync_ = eglCreateSyncKHR(egl_display,
-                                       EGL_SYNC_NATIVE_FENCE_ANDROID, nullptr);
-        if (fence_sync_ != EGL_NO_SYNC_KHR) {
-          // TODO: Ensure we don't leak GL sync objects and fd
-          // fences. This can happen if write_complete_fence_fd_ is already
-          // valid here.
-          write_complete_fence_fd_ =
-              UniqueFd(eglDupNativeFenceFDANDROID(egl_display, fence_sync_));
-          if (!write_complete_fence_fd_.IsValid()) {
-            eglDestroySyncKHR(egl_display, fence_sync_);
-            fence_sync_ = EGL_NO_SYNC_KHR;
-          }
+  // Expected to be called from ~OpenGlBufferView() after
+  // glMemoryBarrier(GL_ALL_BARRIER_BITS) on gl_context_.
+  ABSL_DCHECK(gl_context_ != nullptr && gl_context_->IsCurrent());
+  if (IsGlSupported()) {
+    auto egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    if (egl_display != EGL_NO_DISPLAY) {
+      if (fence_sync_ != EGL_NO_SYNC_KHR) {
+        eglDestroySyncKHR(egl_display, fence_sync_);
+        fence_sync_ = EGL_NO_SYNC_KHR;
+      }
+      fence_sync_ =
+          eglCreateSyncKHR(egl_display, EGL_SYNC_NATIVE_FENCE_ANDROID, nullptr);
+      if (fence_sync_ != EGL_NO_SYNC_KHR) {
+        // Per EGL_ANDROID_native_fence_sync, the next Flush() operation
+        // performed by the current client API creates the native fence object
+        // and populates its file descriptor before eglDupNativeFenceFDANDROID
+        // is called.
+        glFlush();
+        write_complete_fence_fd_ =
+            UniqueFd(eglDupNativeFenceFDANDROID(egl_display, fence_sync_));
+        if (!write_complete_fence_fd_.IsValid()) {
+          eglDestroySyncKHR(egl_display, fence_sync_);
+          fence_sync_ = EGL_NO_SYNC_KHR;
         }
       }
     }
-    // Can't use Sync object.
-    if (fence_sync_ == EGL_NO_SYNC_KHR) glFinish();
-  });
+  }
+  // Can't use Sync object.
+  if (fence_sync_ == EGL_NO_SYNC_KHR) glFinish();
 }
 
 Tensor::AHardwareBufferView Tensor::GetAHardwareBufferWriteView() const {
@@ -212,10 +224,10 @@ absl::Status Tensor::AllocateAHardwareBuffer() const {
                  HardwareBufferSpec::AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN |
                  HardwareBufferSpec::AHARDWAREBUFFER_USAGE_GPU_DATA_BUFFER;
     if (hardware_buffer_pool_ == nullptr) {
-      MP_ASSIGN_OR_RETURN(auto new_ahwb, HardwareBuffer::Create(spec));
+      ABSL_ASSIGN_OR_RETURN(auto new_ahwb, HardwareBuffer::Create(spec));
       ahwb_ = std::make_shared<HardwareBuffer>(std::move(new_ahwb));
     } else {
-      MP_ASSIGN_OR_RETURN(ahwb_, hardware_buffer_pool_->GetBuffer(spec));
+      ABSL_ASSIGN_OR_RETURN(ahwb_, hardware_buffer_pool_->GetBuffer(spec));
     }
   }
   return absl::OkStatus();
@@ -223,13 +235,49 @@ absl::Status Tensor::AllocateAHardwareBuffer() const {
 
 bool Tensor::AllocateAhwbMapToSsbo() const {
   if (__builtin_available(android 26, *)) {
+    const bool had_ahwb = ahwb_ != nullptr;
     if (AllocateAHardwareBuffer().ok()) {
-      if (MapAHardwareBufferToGlBuffer(ahwb_->GetAHardwareBuffer(), bytes())
-              .ok()) {
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+      auto& releaser = gl_context_->GetCachedAttachment(kAhwbGpuReleaser);
+      GLuint cached_ssbo = releaser.LookupSsbo(ahwb_->GetAHardwareBuffer());
+      if (cached_ssbo != GL_INVALID_INDEX) {
+        opengl_buffer_ = cached_ssbo;
         return true;
       }
+      glGenBuffers(1, &opengl_buffer_);
+      glBindBuffer(GL_SHADER_STORAGE_BUFFER, opengl_buffer_);
+      if (MapAHardwareBufferToGlBuffer(ahwb_->GetAHardwareBuffer(),
+                                       ahwb_->spec().width)
+              .ok()) {
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+        releaser.RegisterSsbo(*ahwb_, opengl_buffer_);
+        return true;
+      }
+      glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+      glDeleteBuffers(1, &opengl_buffer_);
+      opengl_buffer_ = GL_INVALID_INDEX;
       // Unable to make OpenGL <-> AHWB binding. Use regular SSBO instead.
+      // If the AHWB existed before this call, it holds the tensor's latest
+      // AHWB or CPU data: while `ahwb_` is set, GetCpuWriteView() writes into
+      // and GetCpuReadView() reads from the AHWB, even if a stale `cpu_buffer_`
+      // is still allocated from an earlier CPU write. Copy that data into host
+      // memory first; otherwise the SSBO fallback in GetOpenGlBufferReadView()
+      // would read from a null or stale `cpu_buffer_`. An AHWB allocated by
+      // this call holds no data, so there is nothing to copy.
+      if (had_ahwb && (valid_ & (kValidAHardwareBuffer | kValidCpu))) {
+        void* src = MapAhwbToCpuRead();
+        ABSL_CHECK(src) << "MapAhwbToCpuRead failed.";
+        // AllocateCpuBuffer() returns early without allocating host memory
+        // while `use_ahwb_` is set; this Tensor is no longer AHWB backed.
+        use_ahwb_ = false;
+        ABSL_CHECK_OK(AllocateCpuBuffer()) << "AllocateCpuBuffer failed.";
+        std::memcpy(cpu_buffer_, src, bytes());
+        ABSL_CHECK_OK(ahwb_->Unlock()) << "Unlock of AHWB failed.";
+        valid_ |= kValidCpu;
+      }
+      valid_ &= ~kValidAHardwareBuffer;
+      write_complete_fence_fd_.Reset();
+      CompleteAndEraseUsages(ahwb_usages_);
+      use_ahwb_ = false;
       ahwb_.reset();
     }
   }
@@ -318,6 +366,18 @@ absl::Status Tensor::ReleaseAhwbStuff() {
   write_complete_fence_fd_.Reset();
   if (__builtin_available(android 26, *)) {
     if (ahwb_) {
+      // opengl_buffer_ is cached in kAhwbGpuReleaser::ssbo_cache_ and owned by
+      // the GlContext attachment, so detach it from this Tensor instance.
+      opengl_buffer_ = GL_INVALID_INDEX;
+      if (fence_sync_ != EGL_NO_SYNC_KHR && IsGlSupported()) {
+        auto egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+        if (egl_display != EGL_NO_DISPLAY &&
+            eglClientWaitSyncKHR(egl_display, fence_sync_, 0, 0) !=
+                EGL_TIMEOUT_EXPIRED_KHR) {
+          eglDestroySyncKHR(egl_display, fence_sync_);
+          fence_sync_ = EGL_NO_SYNC_KHR;
+        }
+      }
       const bool gl_operation_maybe_pending =
           ssbo_read_ != 0 || fence_sync_ != EGL_NO_SYNC_KHR;
       if (gl_operation_maybe_pending && gl_context_ == nullptr) {
@@ -327,14 +387,31 @@ absl::Status Tensor::ReleaseAhwbStuff() {
       if ((gl_operation_maybe_pending || HasIncompleteUsages(ahwb_usages_)) &&
           gl_context_ != nullptr) {
 #if MEDIAPIPE_OPENGL_ES_VERSION >= MEDIAPIPE_OPENGL_ES_31
-        // Delay release until the GPU usage is finished.
-        MP_RETURN_IF_ERROR(gl_context_->Run([this]() -> absl::Status {
+        // Delay release until the GPU usage is finished. When called off the GL
+        // context thread, schedule asynchronously so ~Tensor() does not block
+        // on a busy or blocked GL thread.
+        if (gl_context_->IsCurrent()) {
           auto& releaser = gl_context_->GetCachedAttachment(kAhwbGpuReleaser);
-          return releaser.AddAndFreeUnusedResources(ahwb_, opengl_buffer_,
-                                                    fence_sync_, ssbo_read_,
-                                                    std::move(ahwb_usages_));
-        }));
-        opengl_buffer_ = GL_INVALID_INDEX;
+          ABSL_RETURN_IF_ERROR(releaser.AddAndFreeUnusedResources(
+              std::move(ahwb_), GL_INVALID_INDEX,
+              std::exchange(fence_sync_, EGL_NO_SYNC_KHR),
+              std::exchange(ssbo_read_, static_cast<GLsync>(0)),
+              std::move(ahwb_usages_)));
+        } else {
+          auto ahwb_usages = std::make_shared<std::list<TensorAhwbUsage>>(
+              std::move(ahwb_usages_));
+          gl_context_->RunWithoutWaiting(
+              [gl_context = gl_context_, ahwb = std::move(ahwb_),
+               fence_sync = std::exchange(fence_sync_, EGL_NO_SYNC_KHR),
+               ssbo_read = std::exchange(ssbo_read_, static_cast<GLsync>(0)),
+               ahwb_usages = std::move(ahwb_usages)]() mutable {
+                auto& releaser =
+                    gl_context->GetCachedAttachment(kAhwbGpuReleaser);
+                ABSL_CHECK_OK(releaser.AddAndFreeUnusedResources(
+                    std::move(ahwb), GL_INVALID_INDEX, fence_sync, ssbo_read,
+                    std::move(*ahwb_usages)));
+              });
+        }
 #else
         return absl::InternalError("OpenGL ES 3.1 is not spported.");
 #endif
@@ -349,19 +426,11 @@ absl::Status Tensor::ReleaseAhwbStuff() {
 
 void* Tensor::MapAhwbToCpuRead() const {
   if (ahwb_ != nullptr) {
-    if (!(valid_ & kValidCpu)) {
-      if ((valid_ & kValidOpenGlBuffer) &&
-          !write_complete_fence_fd_.IsValid()) {
-        // EGLSync is failed. Use another synchronization method.
-        // TODO: Use tflite::gpu::GlBufferSync and GlActiveSync.
-        gl_context_->Run([]() { glFinish(); });
-      } else if (valid_ & kValidAHardwareBuffer) {
-        ABSL_CHECK_GT(ahwb_usages_.size(), 0);
-        // ahwb_usages_.size() can be greater than one and can contain reader
-        // and writer usages, see b/349348621.
-
-        CompleteAndEraseUsages(ahwb_usages_);
-      }
+    if (!(valid_ & kValidCpu) && (valid_ & kValidAHardwareBuffer)) {
+      ABSL_CHECK_GT(ahwb_usages_.size(), 0);
+      // ahwb_usages_.size() can be greater than one and can contain reader
+      // and writer usages, see b/349348621.
+      CompleteAndEraseUsages(ahwb_usages_);
     }
     auto ptr =
         ahwb_->Lock(HardwareBufferSpec::AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN,

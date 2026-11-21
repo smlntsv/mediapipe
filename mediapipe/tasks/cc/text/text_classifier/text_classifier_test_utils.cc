@@ -18,17 +18,17 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
-#include "absl/strings/string_view.h"
-#include "mediapipe/framework/port/status_macros.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
+#include "absl/strings/str_format.h"    // from @com_google_absl
+#include "absl/strings/string_view.h"   // from @com_google_absl
 #include "mediapipe/tasks/cc/common.h"
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/mutable_op_resolver.h"
-#include "tensorflow/lite/portable_type_to_tflitetype.h"
-#include "tensorflow/lite/string_util.h"
+#include "tflite/c/common.h"                     // from @litert
+#include "tflite/kernels/kernel_util.h"          // from @litert
+#include "tflite/mutable_op_resolver.h"          // from @litert
+#include "tflite/portable_type_to_tflitetype.h"  // from @litert
+#include "tflite/string_util.h"                  // from @litert
 
 namespace mediapipe {
 namespace tasks {
@@ -73,7 +73,7 @@ template <typename T, typename = std::enable_if_t<
                           std::negation_v<std::is_same<T, std::string>>>>
 absl::Status PopulateTensor(const T* data, int num_elements,
                             TfLiteTensor* tensor) {
-  MP_ASSIGN_OR_RETURN(T * v, AssertAndReturnTypedTensor<T>(tensor));
+  ABSL_ASSIGN_OR_RETURN(T * v, AssertAndReturnTypedTensor<T>(tensor));
   size_t bytes = num_elements * sizeof(T);
   if (tensor->bytes != bytes) {
     return CreateStatusWithPayload(

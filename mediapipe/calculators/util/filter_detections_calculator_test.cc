@@ -14,6 +14,8 @@
 
 #include <vector>
 
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/calculator_runner.h"
 #include "mediapipe/framework/formats/detection.pb.h"
@@ -44,7 +46,7 @@ absl::Status RunScoreGraph(std::vector<Detection>& input_detections,
       ->Tag("INPUT_DETECTIONS")
       .packets.push_back(MakePacket<std::vector<Detection>>(input_detections)
                              .At(input_timestamp));
-  MP_RETURN_IF_ERROR(runner.Run()) << "Calculator run failed.";
+  ABSL_RETURN_IF_ERROR(runner.Run()) << "Calculator run failed.";
 
   const std::vector<Packet>& output_packets =
       runner.Outputs().Tag("OUTPUT_DETECTIONS").packets;
@@ -118,7 +120,7 @@ absl::Status RunSizeGraph(std::vector<Detection>& input_detections,
       ->Tag("IMAGE_SIZE")
       .packets.push_back(MakePacket<std::pair<int, int>>(image_dimensions)
                              .At(input_timestamp));
-  MP_RETURN_IF_ERROR(runner.Run()) << "Calculator run failed.";
+  ABSL_RETURN_IF_ERROR(runner.Run()) << "Calculator run failed.";
 
   const std::vector<Packet>& output_packets =
       runner.Outputs().Tag("OUTPUT_DETECTIONS").packets;

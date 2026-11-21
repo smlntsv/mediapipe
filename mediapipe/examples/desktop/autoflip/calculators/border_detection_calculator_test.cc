@@ -12,7 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "absl/strings/string_view.h"
+#include <cmath>
+#include <cstdlib>
+#include <memory>
+#include <vector>
+
+#include "absl/strings/string_view.h"  // from @com_google_absl
 #include "mediapipe/examples/desktop/autoflip/autoflip_messages.pb.h"
 #include "mediapipe/examples/desktop/autoflip/calculators/border_detection_calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
@@ -24,8 +29,6 @@
 #include "mediapipe/framework/port/gtest.h"
 #include "mediapipe/framework/port/opencv_core_inc.h"
 #include "mediapipe/framework/port/parse_text_proto.h"
-#include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 #include "mediapipe/framework/port/status_matchers.h"
 
 using mediapipe::CalculatorGraphConfig;
@@ -73,10 +76,10 @@ const int kTestFrameWidthTall = 1200;
 const int kTestFrameHeightTall = 2001;
 
 TEST(BorderDetectionCalculatorTest, NoBorderTest) {
-  auto runner = ::absl::make_unique<CalculatorRunner>(
+  auto runner = std::make_unique<CalculatorRunner>(
       ParseTextProtoOrDie<CalculatorGraphConfig::Node>(kConfig));
 
-  auto input_frame = ::absl::make_unique<ImageFrame>(
+  auto input_frame = std::make_unique<ImageFrame>(
       ImageFormat::SRGB, kTestFrameWidth, kTestFrameHeight);
   cv::Mat input_mat = mediapipe::formats::MatView(input_frame.get());
   input_mat.setTo(cv::Scalar(0, 0, 0));
@@ -102,12 +105,12 @@ TEST(BorderDetectionCalculatorTest, NoBorderTest) {
 }
 
 TEST(BorderDetectionCalculatorTest, TopBorderTest) {
-  auto runner = ::absl::make_unique<CalculatorRunner>(
+  auto runner = std::make_unique<CalculatorRunner>(
       ParseTextProtoOrDie<CalculatorGraphConfig::Node>(kConfig));
 
   const int kTopBorderHeight = 50;
 
-  auto input_frame = ::absl::make_unique<ImageFrame>(
+  auto input_frame = std::make_unique<ImageFrame>(
       ImageFormat::SRGB, kTestFrameWidth, kTestFrameHeight);
   cv::Mat input_mat = mediapipe::formats::MatView(input_frame.get());
   input_mat.setTo(cv::Scalar(0, 0, 0));
@@ -142,12 +145,12 @@ TEST(BorderDetectionCalculatorTest, TopBorderTest) {
 }
 
 TEST(BorderDetectionCalculatorTest, TopBorderPadTest) {
-  auto runner = ::absl::make_unique<CalculatorRunner>(
+  auto runner = std::make_unique<CalculatorRunner>(
       ParseTextProtoOrDie<CalculatorGraphConfig::Node>(kConfigPad));
 
   const int kTopBorderHeight = 50;
 
-  auto input_frame = ::absl::make_unique<ImageFrame>(
+  auto input_frame = std::make_unique<ImageFrame>(
       ImageFormat::SRGB, kTestFrameWidth, kTestFrameHeight);
   cv::Mat input_mat = mediapipe::formats::MatView(input_frame.get());
   input_mat.setTo(cv::Scalar(0, 0, 0));
@@ -183,12 +186,12 @@ TEST(BorderDetectionCalculatorTest, TopBorderPadTest) {
 }
 
 TEST(BorderDetectionCalculatorTest, BottomBorderTest) {
-  auto runner = ::absl::make_unique<CalculatorRunner>(
+  auto runner = std::make_unique<CalculatorRunner>(
       ParseTextProtoOrDie<CalculatorGraphConfig::Node>(kConfig));
 
   const int kBottomBorderHeight = 50;
 
-  auto input_frame = ::absl::make_unique<ImageFrame>(
+  auto input_frame = std::make_unique<ImageFrame>(
       ImageFormat::SRGB, kTestFrameWidth, kTestFrameHeight);
   cv::Mat input_mat = mediapipe::formats::MatView(input_frame.get());
   input_mat.setTo(cv::Scalar(0, 0, 0));
@@ -220,13 +223,13 @@ TEST(BorderDetectionCalculatorTest, BottomBorderTest) {
 }
 
 TEST(BorderDetectionCalculatorTest, TopBottomBorderTest) {
-  auto runner = ::absl::make_unique<CalculatorRunner>(
+  auto runner = std::make_unique<CalculatorRunner>(
       ParseTextProtoOrDie<CalculatorGraphConfig::Node>(kConfig));
 
   const int kBottomBorderHeight = 50;
   const int kTopBorderHeight = 25;
 
-  auto input_frame = ::absl::make_unique<ImageFrame>(
+  auto input_frame = std::make_unique<ImageFrame>(
       ImageFormat::SRGB, kTestFrameWidth, kTestFrameHeight);
   cv::Mat input_mat = mediapipe::formats::MatView(input_frame.get());
   input_mat.setTo(cv::Scalar(0, 0, 0));
@@ -273,13 +276,13 @@ TEST(BorderDetectionCalculatorTest, TopBottomBorderTest) {
 }
 
 TEST(BorderDetectionCalculatorTest, TopBottomBorderTestAspect2) {
-  auto runner = ::absl::make_unique<CalculatorRunner>(
+  auto runner = std::make_unique<CalculatorRunner>(
       ParseTextProtoOrDie<CalculatorGraphConfig::Node>(kConfig));
 
   const int kBottomBorderHeight = 50;
   const int kTopBorderHeight = 25;
 
-  auto input_frame = ::absl::make_unique<ImageFrame>(
+  auto input_frame = std::make_unique<ImageFrame>(
       ImageFormat::SRGB, kTestFrameWidthTall, kTestFrameHeightTall);
   cv::Mat input_mat = mediapipe::formats::MatView(input_frame.get());
   input_mat.setTo(cv::Scalar(0, 0, 0));
@@ -332,9 +335,9 @@ TEST(BorderDetectionCalculatorTest, DominantColor) {
       ->MutableExtension(BorderDetectionCalculatorOptions::ext)
       ->set_solid_background_tol_perc(.25);
 
-  auto runner = ::absl::make_unique<CalculatorRunner>(node);
+  auto runner = std::make_unique<CalculatorRunner>(node);
 
-  auto input_frame = ::absl::make_unique<ImageFrame>(
+  auto input_frame = std::make_unique<ImageFrame>(
       ImageFormat::SRGB, kTestFrameWidth, kTestFrameHeight);
   cv::Mat input_mat = mediapipe::formats::MatView(input_frame.get());
   input_mat.setTo(cv::Scalar(0, 0, 0));
@@ -370,12 +373,12 @@ TEST(BorderDetectionCalculatorTest, DominantColor) {
 
 void BM_Large(benchmark::State& state) {
   for (auto _ : state) {
-    auto runner = ::absl::make_unique<CalculatorRunner>(
+    auto runner = std::make_unique<CalculatorRunner>(
         ParseTextProtoOrDie<CalculatorGraphConfig::Node>(kConfig));
 
     const int kTopBorderHeight = 50;
 
-    auto input_frame = ::absl::make_unique<ImageFrame>(
+    auto input_frame = std::make_unique<ImageFrame>(
         ImageFormat::SRGB, kTestFrameLargeWidth, kTestFrameLargeHeight);
     cv::Mat input_mat = mediapipe::formats::MatView(input_frame.get());
     input_mat.setTo(cv::Scalar(0, 0, 0));

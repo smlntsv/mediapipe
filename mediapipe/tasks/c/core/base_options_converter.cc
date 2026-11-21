@@ -17,8 +17,9 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
-#include "absl/log/absl_log.h"
+#include "absl/log/absl_log.h"  // from @com_google_absl
 #include "mediapipe/tasks/c/core/base_options.h"
 #include "mediapipe/tasks/cc/core/base_options.h"
 #include "mediapipe/tasks/cc/core/host_environment.h"
@@ -29,12 +30,15 @@ namespace {
 mediapipe::tasks::core::BaseOptions::Delegate CppConvertToDelegate(
     const MpDelegate& in) {
   switch (in) {
+    case MP_DELEGATE_DEFAULT:
     case MP_DELEGATE_CPU:
       return mediapipe::tasks::core::BaseOptions::Delegate::CPU;
     case MP_DELEGATE_GPU:
       return mediapipe::tasks::core::BaseOptions::Delegate::GPU;
     case MP_DELEGATE_EDGETPU_NNAPI:
       return mediapipe::tasks::core::BaseOptions::Delegate::EDGETPU_NNAPI;
+    case MP_DELEGATE_NPU:
+      return mediapipe::tasks::core::BaseOptions::Delegate::NPU;
     case MP_DELEGATE_COREML:
       return mediapipe::tasks::core::BaseOptions::Delegate::COREML;
   }
@@ -51,6 +55,11 @@ mediapipe::tasks::core::HostEnvironment CppConvertToHostEnvironment(
       return mediapipe::tasks::core::HostEnvironment::HOST_ENVIRONMENT_PYTHON;
     case MP_HOST_ENVIRONMENT_WEB:
       return mediapipe::tasks::core::HostEnvironment::HOST_ENVIRONMENT_WEB;
+    case MP_HOST_ENVIRONMENT_FLUTTER:
+      return mediapipe::tasks::core::HostEnvironment::HOST_ENVIRONMENT_FLUTTER;
+    case MP_HOST_ENVIRONMENT_FLUTTER_WEB:
+      return mediapipe::tasks::core::HostEnvironment::
+          HOST_ENVIRONMENT_FLUTTER_WEB;
     default:
       return mediapipe::tasks::core::HostEnvironment::HOST_ENVIRONMENT_UNKNOWN;
   }
@@ -71,6 +80,22 @@ mediapipe::tasks::core::HostSystem CppConvertToHostSystem(
       return mediapipe::tasks::core::HostSystem::HOST_SYSTEM_ANDROID;
     default:
       return mediapipe::tasks::core::HostSystem::HOST_SYSTEM_UNKNOWN;
+  }
+}
+
+mediapipe::tasks::core::BaseOptions::GpuOptions::Backend CppConvertToGpuBackend(
+    const MpGpuBackend& in) {
+  switch (in) {
+    case MP_GPU_BACKEND_OPENGL:
+      return mediapipe::tasks::core::BaseOptions::GpuOptions::Backend::OPENGL;
+    case MP_GPU_BACKEND_OPENCL:
+      return mediapipe::tasks::core::BaseOptions::GpuOptions::Backend::OPENCL;
+    case MP_GPU_BACKEND_WEBGPU:
+      return mediapipe::tasks::core::BaseOptions::GpuOptions::Backend::WEBGPU;
+    case MP_GPU_BACKEND_DEFAULT:
+    default:
+      return mediapipe::tasks::core::BaseOptions::GpuOptions::Backend::
+          AUTOMATIC;
   }
 }
 
@@ -103,6 +128,38 @@ void CppConvertToBaseOptions(const MpBaseOptions& in,
   out->app_version = in.app_version ? std::string(in.app_version) : "";
   out->model_asset_descriptor_meta.fd =
       in.file_descriptor != 0 ? in.file_descriptor : -1;
+
+  if (in.delegate == MP_DELEGATE_GPU &&
+      ((in.gpu_cached_kernel_path != nullptr &&
+        in.gpu_cached_kernel_path[0] != '\0') ||
+       (in.gpu_serialized_model_dir != nullptr &&
+        in.gpu_serialized_model_dir[0] != '\0') ||
+       (in.gpu_model_token != nullptr && in.gpu_model_token[0] != '\0') ||
+       in.gpu_backend != MP_GPU_BACKEND_DEFAULT)) {
+    mediapipe::tasks::core::BaseOptions::GpuOptions gpu_options;
+    if (in.gpu_cached_kernel_path != nullptr) {
+      gpu_options.cached_kernel_path = in.gpu_cached_kernel_path;
+    }
+    if (in.gpu_serialized_model_dir != nullptr) {
+      gpu_options.serialized_model_dir = in.gpu_serialized_model_dir;
+    }
+    if (in.gpu_model_token != nullptr) {
+      gpu_options.model_token = in.gpu_model_token;
+    }
+    gpu_options.backend = CppConvertToGpuBackend(in.gpu_backend);
+    out->delegate_options = std::move(gpu_options);
+  }
+
+  if (in.delegate == MP_DELEGATE_NPU &&
+      in.npu_dispatch_library_dir != nullptr &&
+      in.npu_dispatch_library_dir[0] != '\0') {
+    mediapipe::tasks::core::BaseOptions::NpuOptions npu_options;
+    npu_options.dispatch_library_directory = in.npu_dispatch_library_dir;
+    out->delegate_options = std::move(npu_options);
+  }
+
+  // Don't load GPU service unless delegate is GPU.
+  out->disable_default_service = (in.delegate != MP_DELEGATE_GPU);
 }
 
 MpHostEnvironment ToMpHostEnvironment(int host_environment) {
@@ -117,6 +174,10 @@ MpHostEnvironment ToMpHostEnvironment(int host_environment) {
       return MP_HOST_ENVIRONMENT_PYTHON;
     case MP_HOST_ENVIRONMENT_WEB:
       return MP_HOST_ENVIRONMENT_WEB;
+    case MP_HOST_ENVIRONMENT_FLUTTER:
+      return MP_HOST_ENVIRONMENT_FLUTTER;
+    case MP_HOST_ENVIRONMENT_FLUTTER_WEB:
+      return MP_HOST_ENVIRONMENT_FLUTTER_WEB;
     default:
       ABSL_LOG(DFATAL) << "Unknown MpHostEnvironment int value: "
                        << host_environment;

@@ -58,7 +58,9 @@ class MpHolisticLandmarkerResultC(ctypes.Structure):
 
 _C_TYPES_RESULT_CALLBACK = ctypes.CFUNCTYPE(
     None,
+    ctypes.c_void_p,  # user_data
     ctypes.c_int32,  # MpStatus
+    ctypes.c_char_p,  # error_msg
     ctypes.POINTER(MpHolisticLandmarkerResultC),
     ctypes.c_void_p,  # MpImage
     ctypes.c_int64,  # timestamp_ms
@@ -178,14 +180,15 @@ class MpHolisticLandmarkerOptionsC(ctypes.Structure):
       ('running_mode', ctypes.c_int),
       ('min_face_detection_confidence', ctypes.c_float),
       ('min_face_suppression_threshold', ctypes.c_float),
-      ('min_face_landmarks_confidence', ctypes.c_float),
+      ('min_face_presence_confidence', ctypes.c_float),
+      ('min_hand_landmarks_confidence', ctypes.c_float),
       ('min_pose_detection_confidence', ctypes.c_float),
       ('min_pose_suppression_threshold', ctypes.c_float),
-      ('min_pose_landmarks_confidence', ctypes.c_float),
-      ('min_hand_landmarks_confidence', ctypes.c_float),
+      ('min_pose_presence_confidence', ctypes.c_float),
       ('output_face_blendshapes', ctypes.c_bool),
-      ('output_segmentation_masks', ctypes.c_bool),
+      ('output_pose_segmentation_masks', ctypes.c_bool),
       ('result_callback', _C_TYPES_RESULT_CALLBACK),
+      ('result_callback_user_data', ctypes.c_void_p),
   ]
 
   @classmethod
@@ -196,13 +199,13 @@ class MpHolisticLandmarkerOptionsC(ctypes.Structure):
       running_mode: _RunningMode,
       min_face_detection_confidence: float,
       min_face_suppression_threshold: float,
-      min_face_landmarks_confidence: float,
+      min_face_presence_confidence: float,
+      min_hand_landmarks_confidence: float,
       min_pose_detection_confidence: float,
       min_pose_suppression_threshold: float,
-      min_pose_landmarks_confidence: float,
-      min_hand_landmarks_confidence: float,
+      min_pose_presence_confidence: float,
       output_face_blendshapes: bool,
-      output_segmentation_masks: bool,
+      output_pose_segmentation_masks: bool,
       result_callback: _C_TYPES_RESULT_CALLBACK,
   ) -> 'MpHolisticLandmarkerOptionsC':
     """Creates a MpHolisticLandmarkerOptionsC object from the given options."""
@@ -211,18 +214,18 @@ class MpHolisticLandmarkerOptionsC(ctypes.Structure):
         running_mode=running_mode.ctype,
         min_face_detection_confidence=min_face_detection_confidence,
         min_face_suppression_threshold=min_face_suppression_threshold,
-        min_face_landmarks_confidence=min_face_landmarks_confidence,
+        min_face_presence_confidence=min_face_presence_confidence,
+        min_hand_landmarks_confidence=min_hand_landmarks_confidence,
         min_pose_detection_confidence=min_pose_detection_confidence,
         min_pose_suppression_threshold=min_pose_suppression_threshold,
-        min_pose_landmarks_confidence=min_pose_landmarks_confidence,
-        min_hand_landmarks_confidence=min_hand_landmarks_confidence,
+        min_pose_presence_confidence=min_pose_presence_confidence,
         output_face_blendshapes=output_face_blendshapes,
-        output_segmentation_masks=output_segmentation_masks,
+        output_pose_segmentation_masks=output_pose_segmentation_masks,
         result_callback=result_callback,
     )
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(init=False)
 class HolisticLandmarkerOptions:
   """Options for the holistic landmarker task.
 
@@ -231,46 +234,152 @@ class HolisticLandmarkerOptions:
     running_mode: The running mode of the task. Default to the image mode.
       HolisticLandmarker has three running modes: 1) The image mode for
       detecting holistic landmarks on single image inputs. 2) The video mode for
-      detecting holistic landmarks on the decoded frames of a video. 3) The live
-      stream mode for detecting holistic landmarks on the live stream of input
-      data, such as from camera. In this mode, the "result_callback" below must
-      be specified to receive the detection results asynchronously.
+      detecting holistic landmarks on the decoded frames of a video. 3) The
+      livestream mode for detecting holistic landmarks on the livestream of
+      input data, such as from camera. In this mode, the "result_callback"
+      below must be specified to receive the detection results asynchronously.
     min_face_detection_confidence: The minimum confidence score for the face
       detection to be considered successful.
     min_face_suppression_threshold: The minimum non-maximum-suppression
       threshold for face detection to be considered overlapped.
-    min_face_landmarks_confidence: The minimum confidence score for the face
+    min_face_presence_confidence: The minimum confidence score for the face
       landmark detection to be considered successful.
     min_pose_detection_confidence: The minimum confidence score for the pose
       detection to be considered successful.
     min_pose_suppression_threshold: The minimum non-maximum-suppression
       threshold for pose detection to be considered overlapped.
-    min_pose_landmarks_confidence: The minimum confidence score for the pose
+    min_pose_presence_confidence: The minimum confidence score for the pose
       landmark detection to be considered successful.
     min_hand_landmarks_confidence: The minimum confidence score for the hand
       landmark detection to be considered successful.
     output_face_blendshapes: Whether HolisticLandmarker outputs face blendshapes
       classification. Face blendshapes are used for rendering the 3D face model.
-    output_segmentation_mask: whether to output segmentation masks.
-    result_callback: The user-defined result callback for processing live stream
+    output_pose_segmentation_masks: Whether to output pose segmentation masks.
+    result_callback: The user-defined result callback for processing livestream
       data. The result callback should only be specified when the running mode
-      is set to the live stream mode.
+      is set to the livestream mode.
   """
 
   base_options: _BaseOptions
   running_mode: _RunningMode = _RunningMode.IMAGE
   min_face_detection_confidence: float = 0.5
-  min_face_suppression_threshold: float = 0.5
-  min_face_landmarks_confidence: float = 0.5
+  min_face_suppression_threshold: float = 0.3
+  min_face_presence_confidence: float = 0.5
   min_pose_detection_confidence: float = 0.5
-  min_pose_suppression_threshold: float = 0.5
-  min_pose_landmarks_confidence: float = 0.5
+  min_pose_suppression_threshold: float = 0.3
+  min_pose_presence_confidence: float = 0.5
   min_hand_landmarks_confidence: float = 0.5
   output_face_blendshapes: bool = False
-  output_segmentation_mask: bool = False
+  output_pose_segmentation_masks: bool = False
   result_callback: Optional[
       Callable[[HolisticLandmarkerResult, image_lib.Image, int], None]
   ] = None
+
+  def __init__(
+      self,
+      base_options: _BaseOptions,
+      running_mode: _RunningMode = _RunningMode.IMAGE,
+      min_face_detection_confidence: float = 0.5,
+      min_face_suppression_threshold: float = 0.3,
+      min_face_presence_confidence: Optional[float] = None,
+      min_pose_detection_confidence: float = 0.5,
+      min_pose_suppression_threshold: float = 0.3,
+      min_pose_presence_confidence: Optional[float] = None,
+      min_hand_landmarks_confidence: float = 0.5,
+      output_face_blendshapes: bool = False,
+      output_pose_segmentation_masks: Optional[bool] = None,
+      result_callback: Optional[
+          Callable[[HolisticLandmarkerResult, image_lib.Image, int], None]
+      ] = None,
+      *,
+      min_face_landmarks_confidence: Optional[float] = None,
+      min_pose_landmarks_confidence: Optional[float] = None,
+      output_segmentation_mask: Optional[bool] = None,
+  ):
+    """Initializes a `HolisticLandmarkerOptions` instance."""
+    if (
+        min_face_presence_confidence is not None
+        and min_face_landmarks_confidence is not None
+    ):
+      raise ValueError(
+          'Specify either `min_face_presence_confidence` or'
+          ' `min_face_landmarks_confidence`, not both.'
+      )
+    if (
+        min_pose_presence_confidence is not None
+        and min_pose_landmarks_confidence is not None
+    ):
+      raise ValueError(
+          'Specify either `min_pose_presence_confidence` or'
+          ' `min_pose_landmarks_confidence`, not both.'
+      )
+    if (
+        output_pose_segmentation_masks is not None
+        and output_segmentation_mask is not None
+    ):
+      raise ValueError(
+          'Specify either `output_pose_segmentation_masks` or'
+          ' `output_segmentation_mask`, not both.'
+      )
+
+    if min_face_presence_confidence is None:
+      min_face_presence_confidence = (
+          min_face_landmarks_confidence
+          if min_face_landmarks_confidence is not None
+          else 0.5
+      )
+    if min_pose_presence_confidence is None:
+      min_pose_presence_confidence = (
+          min_pose_landmarks_confidence
+          if min_pose_landmarks_confidence is not None
+          else 0.5
+      )
+    if output_pose_segmentation_masks is None:
+      output_pose_segmentation_masks = (
+          output_segmentation_mask
+          if output_segmentation_mask is not None
+          else False
+      )
+
+    self.base_options = base_options
+    self.running_mode = running_mode
+    self.min_face_detection_confidence = min_face_detection_confidence
+    self.min_face_suppression_threshold = min_face_suppression_threshold
+    self.min_face_presence_confidence = min_face_presence_confidence
+    self.min_pose_detection_confidence = min_pose_detection_confidence
+    self.min_pose_suppression_threshold = min_pose_suppression_threshold
+    self.min_pose_presence_confidence = min_pose_presence_confidence
+    self.min_hand_landmarks_confidence = min_hand_landmarks_confidence
+    self.output_face_blendshapes = output_face_blendshapes
+    self.output_pose_segmentation_masks = output_pose_segmentation_masks
+    self.result_callback = result_callback
+
+  @property
+  def min_face_landmarks_confidence(self) -> float:
+    """Deprecated alias for `min_face_presence_confidence`."""
+    return self.min_face_presence_confidence
+
+  @min_face_landmarks_confidence.setter
+  def min_face_landmarks_confidence(self, value: float) -> None:
+    self.min_face_presence_confidence = value
+
+  @property
+  def min_pose_landmarks_confidence(self) -> float:
+    """Deprecated alias for `min_pose_presence_confidence`."""
+    return self.min_pose_presence_confidence
+
+  @min_pose_landmarks_confidence.setter
+  def min_pose_landmarks_confidence(self, value: float) -> None:
+    self.min_pose_presence_confidence = value
+
+  @property
+  def output_segmentation_mask(self) -> bool:
+    """Deprecated alias for `output_pose_segmentation_masks`."""
+    return self.output_pose_segmentation_masks
+
+  @output_segmentation_mask.setter
+  def output_segmentation_mask(self, value: bool) -> None:
+    self.output_pose_segmentation_masks = value
 
 
 _CTYPES_SIGNATURES = (
@@ -398,12 +507,12 @@ class HolisticLandmarker:
       RuntimeError: If other types of error occurred.
     """
     running_mode_lib.validate_running_mode(
-        options.running_mode, options.result_callback
+        options.running_mode, options.result_callback  # pyrefly: ignore[bad-argument-type]
     )
     lib = mediapipe_c_bindings_lib.load_shared_library(_CTYPES_SIGNATURES)
 
     def convert_result(
-        c_result_ptr: ctypes.POINTER(MpHolisticLandmarkerResultC),
+        c_result_ptr: ctypes.POINTER(MpHolisticLandmarkerResultC),  # pyrefly: ignore[invalid-annotation]
         image_ptr: ctypes.c_void_p,
         timestamp_ms: int,
     ) -> Tuple[HolisticLandmarkerResult, image_lib.Image, int]:
@@ -421,17 +530,17 @@ class HolisticLandmarker:
         running_mode=options.running_mode,
         min_face_detection_confidence=options.min_face_detection_confidence,
         min_face_suppression_threshold=options.min_face_suppression_threshold,
-        min_face_landmarks_confidence=options.min_face_landmarks_confidence,
+        min_face_presence_confidence=options.min_face_presence_confidence,
+        min_hand_landmarks_confidence=options.min_hand_landmarks_confidence,
         min_pose_detection_confidence=options.min_pose_detection_confidence,
         min_pose_suppression_threshold=options.min_pose_suppression_threshold,
-        min_pose_landmarks_confidence=options.min_pose_landmarks_confidence,
-        min_hand_landmarks_confidence=options.min_hand_landmarks_confidence,
+        min_pose_presence_confidence=options.min_pose_presence_confidence,
         output_face_blendshapes=options.output_face_blendshapes,
-        output_segmentation_masks=options.output_segmentation_mask,
+        output_pose_segmentation_masks=options.output_pose_segmentation_masks,
         result_callback=c_callback,
     )
     landmarker = ctypes.c_void_p()
-    lib.MpHolisticLandmarkerCreate(
+    lib.MpHolisticLandmarkerCreate(  # pyrefly: ignore[missing-attribute]
         ctypes.byref(options_c), ctypes.byref(landmarker)
     )
     return HolisticLandmarker(
@@ -468,7 +577,7 @@ class HolisticLandmarker:
         if image_processing_options
         else None
     )
-    self._lib.MpHolisticLandmarkerDetectImage(
+    self._lib.MpHolisticLandmarkerDetectImage(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         c_image_processing_options,
@@ -477,7 +586,7 @@ class HolisticLandmarker:
     try:
       result = HolisticLandmarkerResult.from_ctypes(result_c)
     finally:
-      self._lib.MpHolisticLandmarkerCloseResult(ctypes.byref(result_c))
+      self._lib.MpHolisticLandmarkerCloseResult(ctypes.byref(result_c))  # pyrefly: ignore[missing-attribute]
     return result
 
   def detect_for_video(
@@ -515,7 +624,7 @@ class HolisticLandmarker:
         if image_processing_options
         else None
     )
-    self._lib.MpHolisticLandmarkerDetectForVideo(
+    self._lib.MpHolisticLandmarkerDetectForVideo(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         c_image_processing_options,
@@ -525,7 +634,7 @@ class HolisticLandmarker:
     try:
       result = HolisticLandmarkerResult.from_ctypes(result_c)
     finally:
-      self._lib.MpHolisticLandmarkerCloseResult(ctypes.byref(result_c))
+      self._lib.MpHolisticLandmarkerCloseResult(ctypes.byref(result_c))  # pyrefly: ignore[missing-attribute]
     return result
 
   def detect_async(
@@ -538,15 +647,14 @@ class HolisticLandmarker:
 
     The results will be available via the "result_callback" provided in the
     HolisticLandmarkerOptions. Only use this method when the HolisticLandmarker
-    is
-    created with the live stream running mode.
+    is created with the livestream running mode.
 
-    Only use this method when the HolisticLandmarker is created with the live
-    stream running mode. The input timestamps should be monotonically increasing
-    for adjacent calls of this method. This method will return immediately after
-    the input image is accepted. The results will be available via the
-    `result_callback` provided in the `HolisticLandmarkerOptions`. The
-    `detect_async` method is designed to process live stream data such as
+    Only use this method when the HolisticLandmarker is created with the
+    livestream running mode. The input timestamps should be monotonically
+    increasing for adjacent calls of this method. This method will return
+    immediately after the input image is accepted. The results will be available
+    via the `result_callback` provided in the `HolisticLandmarkerOptions`. The
+    `detect_async` method is designed to process livestream data such as
     camera input. To lower the overall latency, holistic landmarker may drop the
     input images if needed. In other words, it's not guaranteed to have output
     per input image.
@@ -571,7 +679,7 @@ class HolisticLandmarker:
         if image_processing_options
         else None
     )
-    self._lib.MpHolisticLandmarkerDetectAsync(
+    self._lib.MpHolisticLandmarkerDetectAsync(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         c_image_processing_options,
@@ -582,10 +690,15 @@ class HolisticLandmarker:
     """Closes the HolisticLandmarker."""
     if not self._handle:
       return
-    self._lib.MpHolisticLandmarkerClose(self._handle)
-    self._handle = None
-    self._dispatcher.close()
-    self._lib.close()
+    # The C library frees the task even if it fails to close, so the handle
+    # must not be used again.
+    handle = self._handle
+    self._handle = None  # pyrefly: ignore[bad-assignment]
+    try:
+      self._lib.MpHolisticLandmarkerClose(handle)  # pyrefly: ignore[missing-attribute]
+    finally:
+      self._dispatcher.close()
+      self._lib.close()
 
   def __enter__(self):
     """Returns `self` upon entering the runtime context."""

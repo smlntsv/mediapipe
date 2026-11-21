@@ -28,18 +28,22 @@ cc_library(
     srcs = ["demo_run_graph_main.cc"],
     deps = [
         "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework:output_stream_poller",
         "//mediapipe/framework/formats:image_frame",
         "//mediapipe/framework/formats:image_frame_opencv",
         "//mediapipe/framework/port:file_helpers",
+        "//mediapipe/framework/port:opencv_core",
         "//mediapipe/framework/port:opencv_highgui",
         "//mediapipe/framework/port:opencv_imgproc",
         "//mediapipe/framework/port:opencv_video",
         "//mediapipe/framework/port:parse_text_proto",
-        "//mediapipe/framework/port:status",
+        "//mediapipe/framework/port:ret_check",
         "//third_party/gloop/base:init_google",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/flags:parse",
         "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
     ],
 )
 

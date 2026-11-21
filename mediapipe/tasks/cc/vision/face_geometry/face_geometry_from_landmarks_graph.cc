@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include <optional>
-#include <string>
+#include <utility>
 #include <vector>
 
-#include "absl/status/statusor.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
 #include "mediapipe/calculators/core/split_vector_calculator.pb.h"
 #include "mediapipe/framework/api2/builder.h"
 #include "mediapipe/framework/calculator.pb.h"
@@ -122,7 +124,7 @@ class FaceGeometryFromLandmarksGraph : public Subgraph {
       environment = std::make_optional<>(
           graph.SideIn(kEnvironmentTag).Cast<Environment>());
     }
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto outs, BuildFaceGeometryFromLandmarksGraph(
                        *sc->MutableOptions<proto::FaceGeometryGraphOptions>(),
                        graph.In(kFaceLandmarksTag)

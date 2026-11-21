@@ -14,8 +14,8 @@
 
 #include "mediapipe/java/com/google/mediapipe/framework/jni/register_natives.h"
 
-#include "absl/log/absl_log.h"
-#include "absl/strings/str_format.h"
+#include "absl/log/absl_log.h"        // from @com_google_absl
+#include "absl/strings/str_format.h"  // from @com_google_absl
 #include "mediapipe/java/com/google/mediapipe/framework/jni/class_registry.h"
 
 #if defined(__ANDROID__)
@@ -231,6 +231,9 @@ void RegisterPacketCreatorNatives(JNIEnv* env) {
   AddJNINativeMethod(&packet_creator_methods, packet_creator,
                      "nativeCreateBool", "(JZ)J",
                      (void*)&PACKET_CREATOR_METHOD(nativeCreateBool));
+  AddJNINativeMethod(&packet_creator_methods, packet_creator,
+                     "nativeCreateEmpty", "(J)J",
+                     (void*)&PACKET_CREATOR_METHOD(nativeCreateEmpty));
   AddJNINativeMethod(&packet_creator_methods, packet_creator,
                      "nativeCreateString", "(JLjava/lang/String;)J",
                      (void*)&PACKET_CREATOR_METHOD(nativeCreateString));

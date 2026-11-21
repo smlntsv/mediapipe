@@ -14,11 +14,13 @@
 
 #include "mediapipe/modules/face_geometry/libs/mesh_3d_utils.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 
+#include "absl/status/status.h"    // from @com_google_absl
+#include "absl/status/statusor.h"  // from @com_google_absl
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/statusor.h"
 #include "mediapipe/modules/face_geometry/protos/mesh_3d.pb.h"
 
 namespace mediapipe::face_geometry {

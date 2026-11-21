@@ -14,9 +14,12 @@
 
 #include "mediapipe/gpu/gpu_buffer_format.h"
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/log/absl_check.h"
-#include "mediapipe/framework/deps/no_destructor.h"
+#include <type_traits>
+#include <vector>
+
+#include "absl/base/no_destructor.h"       // from @com_google_absl
+#include "absl/container/flat_hash_map.h"  // from @com_google_absl
+#include "absl/log/absl_check.h"           // from @com_google_absl
 #include "mediapipe/framework/port/logging.h"
 #if !MEDIAPIPE_DISABLE_GPU
 #include "mediapipe/gpu/gl_base.h"
@@ -79,7 +82,7 @@ const GlTextureInfo& GlTextureInfoForGpuBufferFormat(GpuBufferFormat format,
                                                      GlVersion gl_version) {
   // TODO: check/add more cases using info from
   // CVPixelFormatDescriptionCreateWithPixelFormatType.
-  static const mediapipe::NoDestructor<
+  static const absl::NoDestructor<
       absl::flat_hash_map<GpuBufferFormat, std::vector<GlTextureInfo>>>
       gles3_format_info{{
           {GpuBufferFormat::kRGBA32,
@@ -89,7 +92,7 @@ const GlTextureInfo& GlTextureInfoForGpuBufferFormat(GpuBufferFormat format,
           {GpuBufferFormat::kBGRA32,
            {
   // internal_format, format, type, downscale
-#if MEDIAPIPE_GPU_BUFFER_USE_CV_PIXEL_BUFFER
+#if MEDIAPIPE_GPU_BUFFER_POOL_USE_CV_PIXEL_BUFFER
                // On Apple platforms, we have different code paths for iOS
                // (using CVPixelBuffer) and on macOS (using GlTextureBuffer).
                // When using CVPixelBuffer, the preferred transfer format is
@@ -98,7 +101,7 @@ const GlTextureInfo& GlTextureInfoForGpuBufferFormat(GpuBufferFormat format,
                {GL_RGBA, GL_BGRA, GL_UNSIGNED_BYTE, 1},
 #else
                {GL_RGBA, GL_RGBA, GL_UNSIGNED_BYTE, 1},
-#endif  // MEDIAPIPE_GPU_BUFFER_USE_CV_PIXEL_BUFFER
+#endif  // MEDIAPIPE_GPU_BUFFER_POOL_USE_CV_PIXEL_BUFFER
            }},
           {GpuBufferFormat::kOneComponent8,
            {
@@ -291,10 +294,13 @@ ImageFormat::Format ImageFormatForGpuBufferFormat(GpuBufferFormat format) {
     case GpuBufferFormat::kRGBA32:
       return ImageFormat::SRGBA;
     case GpuBufferFormat::kGrayHalf16:
+      return ImageFormat::VEC16F1;
+    case GpuBufferFormat::kTwoComponentHalf16:
+      return ImageFormat::VEC16F2;
+    case GpuBufferFormat::kRGBAHalf64:
+      return ImageFormat::VEC16F4;
     case GpuBufferFormat::kOneComponent8Alpha:
     case GpuBufferFormat::kTwoComponent8:
-    case GpuBufferFormat::kTwoComponentHalf16:
-    case GpuBufferFormat::kRGBAHalf64:
     case GpuBufferFormat::kNV12:
     case GpuBufferFormat::kNV21:
     case GpuBufferFormat::kI420:
@@ -317,6 +323,12 @@ GpuBufferFormat GpuBufferFormatForImageFormat(ImageFormat::Format format) {
       return GpuBufferFormat::kTwoComponentFloat32;
     case ImageFormat::VEC32F4:
       return GpuBufferFormat::kRGBAFloat128;
+    case ImageFormat::VEC16F1:
+      return GpuBufferFormat::kGrayHalf16;
+    case ImageFormat::VEC16F2:
+      return GpuBufferFormat::kTwoComponentHalf16;
+    case ImageFormat::VEC16F4:
+      return GpuBufferFormat::kRGBAHalf64;
     case ImageFormat::GRAY8:
       return GpuBufferFormat::kOneComponent8;
     case ImageFormat::YCBCR420P:

@@ -245,7 +245,7 @@ class TextEmbedder:
     lib = mediapipe_c_bindings.load_shared_library(_CTYPES_SIGNATURES)
     ctypes_options = options.to_ctypes()
     embedder_handle = ctypes.c_void_p()
-    lib.MpTextEmbedderCreate(
+    lib.MpTextEmbedderCreate(  # pyrefly: ignore[missing-attribute]
         ctypes.byref(ctypes_options), ctypes.byref(embedder_handle)
     )
     return TextEmbedder(lib=lib, handle=embedder_handle)
@@ -277,7 +277,7 @@ class TextEmbedder:
         ctypes.byref(format_context_c) if format_context_c else None
     )
 
-    self._lib.MpTextEmbedderEmbed(
+    self._lib.MpTextEmbedderEmbed(  # pyrefly: ignore[missing-attribute]
         self._embedder_handle,
         text.encode('utf-8'),
         ctypes_format_context_ref,
@@ -286,7 +286,7 @@ class TextEmbedder:
     python_result = embedding_result_module.EmbeddingResult.from_ctypes(
         ctypes_result
     )
-    self._lib.MpTextEmbedderCloseResult(ctypes.byref(ctypes_result))
+    self._lib.MpTextEmbedderCloseResult(ctypes.byref(ctypes_result))  # pyrefly: ignore[missing-attribute]
     return python_result
 
   @classmethod
@@ -318,9 +318,14 @@ class TextEmbedder:
   def close(self):
     """Shuts down the MediaPipe task instance."""
     if self._embedder_handle:
-      self._lib.MpTextEmbedderClose(self._embedder_handle)
-      self._embedder_handle = None
-      self._lib.close()
+      # The C library frees the task even if it fails to close, so the handle
+      # must not be used again.
+      handle = self._embedder_handle
+      self._embedder_handle = None  # pyrefly: ignore[bad-assignment]
+      try:
+        self._lib.MpTextEmbedderClose(handle)  # pyrefly: ignore[missing-attribute]
+      finally:
+        self._lib.close()
 
   def __enter__(self):
     """Returns `self` upon entering the runtime context."""

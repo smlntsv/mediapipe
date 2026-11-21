@@ -43,7 +43,9 @@ _AsyncResultDispatcher = async_result_dispatcher.AsyncResultDispatcher
 
 _C_TYPES_RESULT_CALLBACK = ctypes.CFUNCTYPE(
     None,
+    ctypes.c_void_p,  # user_data
     ctypes.c_int32,  # MpStatus
+    ctypes.c_char_p,  # error_msg
     ctypes.POINTER(classification_result_c.MpClassificationResultC),
     ctypes.c_void_p,  # MpImage
     ctypes.c_int64,  # timestamp_ms
@@ -61,6 +63,7 @@ class MpImageClassifierOptionsC(ctypes.Structure):
           classifier_options_c.MpClassifierOptionsC,
       ),
       ("result_callback", _C_TYPES_RESULT_CALLBACK),
+      ("result_callback_user_data", ctypes.c_void_p),
   ]
 
   @classmethod
@@ -144,8 +147,8 @@ class ImageClassifierOptions:
     running_mode: The running mode of the task. Default to the image mode. Image
       classifier task has three running modes: 1) The image mode for classifying
       objects on single image inputs. 2) The video mode for classifying objects
-      on the decoded frames of a video. 3) The live stream mode for classifying
-      objects on a live stream of input data, such as from camera.
+      on the decoded frames of a video. 3) The livestream mode for classifying
+      objects on a livestream of input data, such as from camera.
     display_names_locale: The locale to use for display names specified through
       the TFLite Model Metadata.
     max_results: The maximum number of top-scored classification results to
@@ -160,9 +163,9 @@ class ImageClassifierOptions:
       results whose category name is in this set will be filtered out. Duplicate
       or unknown category names are ignored. Mutually exclusive with
       `category_allowlist`.
-    result_callback: The user-defined result callback for processing live stream
+    result_callback: The user-defined result callback for processing livestream
       data. The result callback should only be specified when the running mode
-      is set to the live stream mode.
+      is set to the livestream mode.
   """
 
   base_options: _BaseOptions
@@ -281,13 +284,13 @@ class ImageClassifier:
       RuntimeError: If other types of error occurred.
     """
     running_mode_module.validate_running_mode(
-        options.running_mode, options.result_callback
+        options.running_mode, options.result_callback  # pyrefly: ignore[bad-argument-type]
     )
 
     lib = mediapipe_c_bindings.load_shared_library(_CTYPES_SIGNATURES)
 
     def convert_result(
-        c_result_ptr: ctypes.POINTER(
+        c_result_ptr: ctypes.POINTER(  # pyrefly: ignore[invalid-annotation]
             classification_result_c.MpClassificationResultC
         ),
         image_ptr: ctypes.c_void_p,
@@ -317,7 +320,7 @@ class ImageClassifier:
         result_callback=c_callback,
     )
     classifier_handle = ctypes.c_void_p()
-    lib.MpImageClassifierCreate(
+    lib.MpImageClassifierCreate(  # pyrefly: ignore[missing-attribute]
         ctypes.byref(options_c), ctypes.byref(classifier_handle)
     )
     return cls(
@@ -355,7 +358,7 @@ class ImageClassifier:
         if image_processing_options
         else None
     )
-    self._lib.MpImageClassifierClassifyImage(
+    self._lib.MpImageClassifierClassifyImage(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         options_c,
@@ -363,7 +366,7 @@ class ImageClassifier:
     )
 
     result = ImageClassifierResult.from_ctypes(c_result)
-    self._lib.MpImageClassifierCloseResult(ctypes.byref(c_result))
+    self._lib.MpImageClassifierCloseResult(ctypes.byref(c_result))  # pyrefly: ignore[missing-attribute]
     return result
 
   def classify_for_video(
@@ -398,7 +401,7 @@ class ImageClassifier:
         if image_processing_options
         else None
     )
-    self._lib.MpImageClassifierClassifyForVideo(
+    self._lib.MpImageClassifierClassifyForVideo(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         options_c,
@@ -407,7 +410,7 @@ class ImageClassifier:
     )
 
     result = ImageClassifierResult.from_ctypes(c_result)
-    self._lib.MpImageClassifierCloseResult(ctypes.byref(c_result))
+    self._lib.MpImageClassifierCloseResult(ctypes.byref(c_result))  # pyrefly: ignore[missing-attribute]
     return result
 
   def classify_async(
@@ -418,12 +421,12 @@ class ImageClassifier:
   ) -> None:
     """Sends live image data (an Image with a unique timestamp) to perform image classification.
 
-    Only use this method when the ImageClassifier is created with the live
-    stream running mode. The input timestamps should be monotonically increasing
+    Only use this method when the ImageClassifier is created with the livestream
+    running mode. The input timestamps should be monotonically increasing
     for adjacent calls of this method. This method will return immediately after
     the input image is accepted. The results will be available via the
     `result_callback` provided in the `ImageClassifierOptions`. The
-    `classify_async` method is designed to process live stream data such as
+    `classify_async` method is designed to process livestream data such as
     camera input. To lower the overall latency, image classifier may drop the
     input images if needed. In other words, it's not guaranteed to have output
     per input image.
@@ -448,7 +451,7 @@ class ImageClassifier:
         if image_processing_options
         else None
     )
-    self._lib.MpImageClassifierClassifyAsync(
+    self._lib.MpImageClassifierClassifyAsync(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         options_c,
@@ -459,10 +462,15 @@ class ImageClassifier:
     """Closes ImageClassifier."""
     if not self._handle:
       return
-    self._lib.MpImageClassifierClose(self._handle)
-    self._handle = None
-    self._dispatcher.close()
-    self._lib.close()
+    # The C library frees the task even if it fails to close, so the handle
+    # must not be used again.
+    handle = self._handle
+    self._handle = None  # pyrefly: ignore[bad-assignment]
+    try:
+      self._lib.MpImageClassifierClose(handle)  # pyrefly: ignore[missing-attribute]
+    finally:
+      self._dispatcher.close()
+      self._lib.close()
 
   def __enter__(self):
     """Returns `self` upon entering the runtime context."""

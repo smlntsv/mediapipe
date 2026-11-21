@@ -16,12 +16,13 @@
 
 #include <memory>
 
-#include "absl/memory/memory.h"
+#include "absl/memory/memory.h"         // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/examples/desktop/autoflip/quality/polynomial_regression_path_solver.h"
 #include "mediapipe/examples/desktop/autoflip/quality/utils.h"
 #include "mediapipe/framework/port/opencv_core_inc.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 
 // TODO: Parameterize FOV based on camera specs.
 constexpr float kWidthFieldOfView = 60;
@@ -63,15 +64,15 @@ absl::Status SceneCropper::ProcessKinematicPathSolver(
       int observed_x = std::round(
           focus_point_frames[keyframe_counter].point(0).norm_point_x() *
           scene_summary.scene_frame_width());
-      MP_RETURN_IF_ERROR(kinematic_path_solver_->AddObservation(
+      ABSL_RETURN_IF_ERROR(kinematic_path_solver_->AddObservation(
           observed_x, scene_timestamps[i]));
       keyframe_counter++;
     } else {
-      MP_RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           kinematic_path_solver_->UpdatePrediction(scene_timestamps[i]));
     }
     int x_path;
-    MP_RETURN_IF_ERROR(kinematic_path_solver_->GetState(&x_path));
+    ABSL_RETURN_IF_ERROR(kinematic_path_solver_->GetState(&x_path));
     cv::Mat transform = cv::Mat::eye(2, 3, CV_32FC1);
     transform.at<float>(0, 2) =
         -(x_path - scene_summary.crop_window_width() / 2);
@@ -135,7 +136,7 @@ absl::Status SceneCropper::CropFrames(
     }
   } else if (camera_motion_options_.has_kinematic_options()) {
     num_prior = 0;
-    MP_RETURN_IF_ERROR(ProcessKinematicPathSolver(
+    ABSL_RETURN_IF_ERROR(ProcessKinematicPathSolver(
         scene_summary, scene_timestamps, is_key_frames, focus_point_frames,
         continue_last_scene, &scene_frame_xforms));
   }

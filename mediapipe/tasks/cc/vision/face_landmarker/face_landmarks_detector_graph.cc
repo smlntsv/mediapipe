@@ -19,6 +19,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/calculators/core/get_vector_item_calculator.h"
 #include "mediapipe/calculators/core/get_vector_item_calculator.pb.h"
 #include "mediapipe/calculators/core/split_vector_calculator.pb.h"
@@ -223,11 +225,11 @@ class SingleFaceLandmarksDetectorGraph : public core::ModelTaskGraph {
  public:
   absl::StatusOr<CalculatorGraphConfig> GetConfig(
       SubgraphContext* sc) override {
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         const auto* model_resources,
         CreateModelResources<proto::FaceLandmarksDetectorGraphOptions>(sc));
     Graph graph;
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto outs,
         BuildSingleFaceLandmarksDetectorGraph(
             *sc->MutableOptions<proto::FaceLandmarksDetectorGraphOptions>(),
@@ -258,17 +260,19 @@ class SingleFaceLandmarksDetectorGraph : public core::ModelTaskGraph {
       proto::FaceLandmarksDetectorGraphOptions& subgraph_options,
       const core::ModelResources& model_resources, Stream<Image> image_in,
       Stream<NormalizedRect> face_rect, Graph& graph) {
-    MP_RETURN_IF_ERROR(SanityCheckOptions(subgraph_options));
+    ABSL_RETURN_IF_ERROR(SanityCheckOptions(subgraph_options));
 
     auto& preprocessing = graph.AddNode(
         "mediapipe.tasks.components.processors.ImagePreprocessingGraph");
     bool use_gpu =
         components::processors::DetermineImagePreprocessingGpuBackend(
             subgraph_options.base_options().acceleration());
-    MP_RETURN_IF_ERROR(components::processors::ConfigureImagePreprocessingGraph(
-        model_resources, use_gpu, subgraph_options.base_options().gpu_origin(),
-        &preprocessing.GetOptions<tasks::components::processors::proto::
-                                      ImagePreprocessingGraphOptions>()));
+    ABSL_RETURN_IF_ERROR(
+        components::processors::ConfigureImagePreprocessingGraph(
+            model_resources, use_gpu,
+            subgraph_options.base_options().gpu_origin(),
+            &preprocessing.GetOptions<tasks::components::processors::proto::
+                                          ImagePreprocessingGraphOptions>()));
     image_in >> preprocessing.In(kImageTag);
     face_rect >> preprocessing.In(kNormRectTag);
     auto image_size = preprocessing.Out(kImageSizeTag);
@@ -291,8 +295,8 @@ class SingleFaceLandmarksDetectorGraph : public core::ModelTaskGraph {
 
     // Decodes the landmark tensors into a list of landmarks, where the landmark
     // coordinates are normalized by the size of the input image to the model.
-    MP_ASSIGN_OR_RETURN(auto image_tensor_specs,
-                        vision::BuildInputImageTensorSpecs(model_resources));
+    ABSL_ASSIGN_OR_RETURN(auto image_tensor_specs,
+                          vision::BuildInputImageTensorSpecs(model_resources));
     auto& tensors_to_face_landmarks = graph.AddNode(
         "mediapipe.tasks.vision.face_landmarker.TensorsToFaceLandmarksGraph");
     ConfigureTensorsToFaceLandmarksGraph(
@@ -498,7 +502,7 @@ class MultiFaceLandmarksDetectorGraph : public core::ModelTaskGraph {
   absl::StatusOr<CalculatorGraphConfig> GetConfig(
       SubgraphContext* sc) override {
     Graph graph;
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto outs,
         BuildFaceLandmarksDetectorGraph(
             *sc->MutableOptions<proto::FaceLandmarksDetectorGraphOptions>(),

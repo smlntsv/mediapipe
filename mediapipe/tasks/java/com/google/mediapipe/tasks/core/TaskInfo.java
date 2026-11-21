@@ -35,7 +35,14 @@ public abstract class TaskInfo<T extends TaskOptions> {
   /** Builder for {@link TaskInfo}. */
   @AutoValue.Builder
   public abstract static class Builder<T extends TaskOptions> {
-    /** Sets the MediaPipe task name. */
+    /**
+     * Sets the MediaPipe task name, e.g. {@code "FaceDetector"}.
+     *
+     * <p>The name identifies the task in usage logging ({@code SolutionName.TASKS_<NAME>}). Pass a
+     * string literal, never a class name obtained through reflection: apps commonly ship with
+     * R8/ProGuard, which renames classes, so {@code getSimpleName()} yields an arbitrary name on the
+     * device and the task is logged as {@code SOLUTION_UNKNOWN}.
+     */
     public abstract Builder<T> setTaskName(String value);
 
     /** Sets the MediaPipe task running mode name. */
@@ -125,7 +132,7 @@ public abstract class TaskInfo<T extends TaskOptions> {
     Any anyOptions = taskOptions().convertToAnyProto();
     if (!(options == null ^ anyOptions == null)) {
       throw new MediaPipeException(
-          MediaPipeException.StatusCode.INVALID_ARGUMENT.ordinal(),
+          MediaPipeException.StatusCode.INVALID_ARGUMENT,
           "Only one of convertTo*Proto() method should be implemented for "
               + taskOptions().getClass());
     }

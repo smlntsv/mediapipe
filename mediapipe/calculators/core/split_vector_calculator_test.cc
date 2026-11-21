@@ -19,7 +19,7 @@
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
+#include "absl/memory/memory.h"  // from @com_google_absl
 #include "mediapipe/calculators/core/split_vector_calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/calculator_runner.h"
@@ -29,7 +29,7 @@
 #include "mediapipe/framework/port/parse_text_proto.h"
 #include "mediapipe/framework/port/status_matchers.h"  // NOLINT
 #include "mediapipe/framework/tool/validate_type.h"
-#include "tensorflow/lite/interpreter.h"
+#include "tflite/interpreter.h"  // from @litert
 
 namespace mediapipe {
 
@@ -41,7 +41,7 @@ const int channels = 1;
 
 class SplitTfLiteTensorVectorCalculatorTest : public ::testing::Test {
  protected:
-  void TearDown() {
+  void TearDown() override {
     // Note: Since the pointers contained in this vector will be cleaned up by
     // the interpreter, only ensure that the vector is cleaned up for the next
     // test.
@@ -59,7 +59,7 @@ class SplitTfLiteTensorVectorCalculatorTest : public ::testing::Test {
     interpreter_->AddTensors(vector_size);
     interpreter_->SetInputs(indices);
 
-    input_vec_ = absl::make_unique<std::vector<TfLiteTensor>>();
+    input_vec_ = std::make_unique<std::vector<TfLiteTensor>>();
     for (int i = 0; i < vector_size; ++i) {
       interpreter_->SetTensorParametersReadWrite(i, kTfLiteFloat32, "", {3},
                                                  TfLiteQuantization());
@@ -146,7 +146,7 @@ class SplitTfLiteTensorVectorCalculatorTest : public ::testing::Test {
     }
   }
 
-  std::unique_ptr<Interpreter> interpreter_ = absl::make_unique<Interpreter>();
+  std::unique_ptr<Interpreter> interpreter_ = std::make_unique<Interpreter>();
   std::unique_ptr<std::vector<TfLiteTensor>> input_vec_ = nullptr;
   std::vector<float*> input_buffers_;
   std::unique_ptr<CalculatorRunner> runner_ = nullptr;
@@ -566,9 +566,9 @@ TEST_F(MovableSplitUniqueIntPtrCalculatorTest, SmokeTest) {
 
   // input_vector : {0, 1, 2, 3, 4, 5}
   std::unique_ptr<std::vector<std::unique_ptr<int>>> input_vector =
-      absl::make_unique<std::vector<std::unique_ptr<int>>>(6);
+      std::make_unique<std::vector<std::unique_ptr<int>>>(6);
   for (int i = 0; i < 6; ++i) {
-    input_vector->at(i) = absl::make_unique<int>(i);
+    input_vector->at(i) = std::make_unique<int>(i);
   }
 
   MP_ASSERT_OK(graph.AddPacketToInputStream(
@@ -623,9 +623,9 @@ TEST_F(MovableSplitUniqueIntPtrCalculatorTest, SmokeTestElementOnly) {
 
   // input_vector : {0, 1, 2, 3, 4, 5}
   std::unique_ptr<std::vector<std::unique_ptr<int>>> input_vector =
-      absl::make_unique<std::vector<std::unique_ptr<int>>>(6);
+      std::make_unique<std::vector<std::unique_ptr<int>>>(6);
   for (int i = 0; i < 6; ++i) {
-    input_vector->at(i) = absl::make_unique<int>(i);
+    input_vector->at(i) = std::make_unique<int>(i);
   }
 
   MP_ASSERT_OK(graph.AddPacketToInputStream(
@@ -671,9 +671,9 @@ TEST_F(MovableSplitUniqueIntPtrCalculatorTest, SmokeTestCombiningOutputs) {
 
   // input_vector : {0, 1, 2, 3, 4, 5}
   std::unique_ptr<std::vector<std::unique_ptr<int>>> input_vector =
-      absl::make_unique<std::vector<std::unique_ptr<int>>>(6);
+      std::make_unique<std::vector<std::unique_ptr<int>>>(6);
   for (int i = 0; i < 6; ++i) {
-    input_vector->at(i) = absl::make_unique<int>(i);
+    input_vector->at(i) = std::make_unique<int>(i);
   }
 
   MP_ASSERT_OK(graph.AddPacketToInputStream(

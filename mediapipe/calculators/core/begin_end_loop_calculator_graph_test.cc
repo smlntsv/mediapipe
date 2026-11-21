@@ -18,9 +18,10 @@
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
-#include "absl/status/status.h"
-#include "absl/types/span.h"
+#include "absl/memory/memory.h"         // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/types/span.h"            // from @com_google_absl
 #include "mediapipe/calculators/core/begin_loop_calculator.h"
 #include "mediapipe/calculators/core/end_loop_calculator.h"
 #include "mediapipe/framework/calculator_contract.h"
@@ -60,7 +61,7 @@ class IncrementCalculator : public CalculatorBase {
 
   absl::Status Process(CalculatorContext* cc) override {
     const int& input_int = cc->Inputs().Index(0).Get<int>();
-    auto output_int = absl::make_unique<int>(input_int + 1);
+    auto output_int = std::make_unique<int>(input_int + 1);
     cc->Outputs().Index(0).Add(output_int.release(), cc->InputTimestamp());
     return absl::OkStatus();
   }
@@ -400,7 +401,7 @@ class MultiplierCalculator : public CalculatorBase {
   absl::Status Process(CalculatorContext* cc) override {
     const int& input_int = cc->Inputs().Index(0).Get<int>();
     const int& multiplier_int = cc->Inputs().Index(1).Get<int>();
-    auto output_int = absl::make_unique<int>(input_int * multiplier_int);
+    auto output_int = std::make_unique<int>(input_int * multiplier_int);
     cc->Outputs().Index(0).Add(output_int.release(), cc->InputTimestamp());
     return absl::OkStatus();
   }
@@ -574,7 +575,7 @@ absl::Status InitBeginEndTensorLoopTestGraph(
         }
       )pb");
   tool::AddVectorSink("output_tensors", &graph_config, &output_packets);
-  MP_RETURN_IF_ERROR(graph.Initialize(graph_config));
+  ABSL_RETURN_IF_ERROR(graph.Initialize(graph_config));
   return graph.StartRun({});
 }
 

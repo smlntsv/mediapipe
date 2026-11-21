@@ -18,8 +18,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/log/absl_check.h"
-#include "absl/status/status.h"
+#include "absl/log/absl_check.h"  // from @com_google_absl
+#include "absl/status/status.h"   // from @com_google_absl
 #include "mediapipe/tasks/c/components/containers/classification_result_converter.h"
 #include "mediapipe/tasks/c/components/processors/classifier_options_converter.h"
 #include "mediapipe/tasks/c/core/base_options_converter.h"
@@ -90,12 +90,11 @@ void CppTextClassifierCloseResult(MpTextClassifierResult* result) {
 
 absl::Status CppTextClassifierClose(MpTextClassifierPtr classifier) {
   auto* cpp_classifier = GetCppClassifier(classifier);
-  auto result = cpp_classifier->Close();
-  if (!result.ok()) {
-    return result;
-  }
+  absl::Status status = cpp_classifier->Close();
+  // The classifier is freed even if it fails to close. It cannot be closed a
+  // second time, so it would be leaked otherwise.
   delete classifier;
-  return absl::OkStatus();
+  return status;
 }
 
 }  // namespace mediapipe::tasks::c::text::text_classifier

@@ -12,29 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "absl/log/absl_check.h"
-#include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/strings/str_cat.h"       // from @com_google_absl
+#include "absl/strings/substitute.h"    // from @com_google_absl
 #include "mediapipe/calculators/tensor/image_to_tensor_utils.h"
 #include "mediapipe/framework/api2/node.h"
-#include "mediapipe/framework/api2/packet.h"
 #include "mediapipe/framework/api2/port.h"
 #include "mediapipe/framework/calculator_framework.h"
-#include "mediapipe/framework/calculator_options.pb.h"
 #include "mediapipe/framework/formats/image.h"
+#include "mediapipe/framework/formats/image_format.pb.h"
+#include "mediapipe/framework/formats/image_frame.h"
 #include "mediapipe/framework/formats/image_frame_opencv.h"
 #include "mediapipe/framework/formats/tensor.h"
 #include "mediapipe/framework/port/logging.h"
 #include "mediapipe/framework/port/opencv_core_inc.h"
-#include "mediapipe/framework/port/opencv_imgproc_inc.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/gpu/gpu_origin.pb.h"
 #include "mediapipe/gpu/gpu_service.h"
 #include "mediapipe/tasks/cc/vision/face_stylizer/calculators/tensors_to_image_calculator.pb.h"
@@ -53,12 +52,12 @@
 #include "mediapipe/gpu/gl_quad_renderer.h"
 #include "mediapipe/gpu/gl_simple_shaders.h"
 #if MEDIAPIPE_OPENGL_ES_VERSION >= MEDIAPIPE_OPENGL_ES_31
-#include "tensorflow/lite/delegates/gpu/common/util.h"
-#include "tensorflow/lite/delegates/gpu/gl/converters/util.h"
-#include "tensorflow/lite/delegates/gpu/gl/gl_program.h"
-#include "tensorflow/lite/delegates/gpu/gl/gl_shader.h"
-#include "tensorflow/lite/delegates/gpu/gl/gl_texture.h"
-#include "tensorflow/lite/delegates/gpu/gl_delegate.h"
+#include "tflite/delegates/gpu/common/util.h"         // from @litert
+#include "tflite/delegates/gpu/gl/converters/util.h"  // from @litert
+#include "tflite/delegates/gpu/gl/gl_program.h"       // from @litert
+#include "tflite/delegates/gpu/gl/gl_shader.h"        // from @litert
+#include "tflite/delegates/gpu/gl/gl_texture.h"       // from @litert
+#include "tflite/delegates/gpu/gl_delegate.h"         // from @litert
 #endif  // MEDIAPIPE_OPENGL_ES_VERSION >= MEDIAPIPE_OPENGL_ES_31
 #endif  // MEDIAPIPE_METAL_ENABLED
 #endif  // !MEDIAPIPE_DISABLE_GPU
@@ -161,7 +160,7 @@ absl::Status TensorsToImageCalculator::UpdateContract(CalculatorContract* cc) {
       << "Either TENSORS or TENSOR must be specified";
 #if !MEDIAPIPE_DISABLE_GPU
 #if MEDIAPIPE_METAL_ENABLED
-  MP_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       [MPPMetalHelper updateContract:cc requestGpuAsOptional:true]);
 #else
   return GlCalculatorHelper::UpdateContract(cc,
@@ -239,7 +238,7 @@ TensorsToImageCalculator::GetInputTensor(CalculatorContext* cc) {
 
 absl::Status TensorsToImageCalculator::CpuProcess(CalculatorContext* cc) {
   if (IsInputTensorEmpty(cc)) return absl::OkStatus();
-  MP_ASSIGN_OR_RETURN(const Tensor& input_tensor, GetInputTensor(cc));
+  ABSL_ASSIGN_OR_RETURN(const Tensor& input_tensor, GetInputTensor(cc));
 
   const int tensor_in_height = input_tensor.shape().dims[1];
   const int tensor_in_width = input_tensor.shape().dims[2];
@@ -263,10 +262,10 @@ absl::Status TensorsToImageCalculator::CpuProcess(CalculatorContext* cc) {
         CV_MAKETYPE(CV_32F, tensor_in_channels),
         const_cast<float*>(input_tensor.GetCpuReadView().buffer<float>()));
     auto input_range = options_.input_tensor_float_range();
-    MP_ASSIGN_OR_RETURN(auto transform,
-                        GetValueRangeTransformation(
-                            input_range.min(), input_range.max(),
-                            kOutputImageRangeMin, kOutputImageRangeMax));
+    ABSL_ASSIGN_OR_RETURN(auto transform,
+                          GetValueRangeTransformation(
+                              input_range.min(), input_range.max(),
+                              kOutputImageRangeMin, kOutputImageRangeMax));
     tensor_matview.convertTo(output_matview,
                              CV_MAKETYPE(CV_8U, tensor_in_channels),
                              transform.scale, transform.offset);
@@ -276,10 +275,10 @@ absl::Status TensorsToImageCalculator::CpuProcess(CalculatorContext* cc) {
         CV_MAKETYPE(CV_8U, tensor_in_channels),
         const_cast<uint8_t*>(input_tensor.GetCpuReadView().buffer<uint8_t>()));
     auto input_range = options_.input_tensor_uint_range();
-    MP_ASSIGN_OR_RETURN(auto transform,
-                        GetValueRangeTransformation(
-                            input_range.min(), input_range.max(),
-                            kOutputImageRangeMin, kOutputImageRangeMax));
+    ABSL_ASSIGN_OR_RETURN(auto transform,
+                          GetValueRangeTransformation(
+                              input_range.min(), input_range.max(),
+                              kOutputImageRangeMin, kOutputImageRangeMax));
     tensor_matview.convertTo(output_matview,
                              CV_MAKETYPE(CV_8U, tensor_in_channels),
                              transform.scale, transform.offset);
@@ -298,12 +297,12 @@ absl::Status TensorsToImageCalculator::CpuProcess(CalculatorContext* cc) {
 
 absl::Status TensorsToImageCalculator::MetalProcess(CalculatorContext* cc) {
   if (!metal_initialized_) {
-    MP_RETURN_IF_ERROR(MetalSetup(cc));
+    ABSL_RETURN_IF_ERROR(MetalSetup(cc));
     metal_initialized_ = true;
   }
 
   if (IsInputTensorEmpty(cc)) return absl::OkStatus();
-  MP_ASSIGN_OR_RETURN(const Tensor& input_tensor, GetInputTensor(cc));
+  ABSL_ASSIGN_OR_RETURN(const Tensor& input_tensor, GetInputTensor(cc));
 
   const int tensor_width = input_tensor.shape().dims[2];
   const int tensor_height = input_tensor.shape().dims[1];
@@ -377,7 +376,7 @@ absl::Status TensorsToImageCalculator::MetalSetup(CalculatorContext* cc) {
   RET_CHECK(to_buffer_program_ != nil) << "Couldn't create pipeline state " <<
       [[error localizedDescription] UTF8String];
 
-  return mediapipe::OkStatus();
+  return absl::OkStatus();
 }
 
 #endif  // MEDIAPIPE_METAL_ENABLED
@@ -438,10 +437,10 @@ absl::Status TensorsToImageCalculator::GlSetup(CalculatorContext* cc) {
       absl::StrCat(shader_header, maybe_flip_y_define, shader_body);
 
   GlShader shader;
-  MP_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       GlShader::CompileShader(GL_COMPUTE_SHADER, shader_full, &shader));
   gl_compute_program_ = std::make_unique<GlProgram>();
-  MP_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       GlProgram::CreateWithShader(shader, gl_compute_program_.get()));
 
 #else
@@ -472,26 +471,26 @@ absl::Status TensorsToImageCalculator::GlSetup(CalculatorContext* cc) {
       absl::StrCat(mediapipe::kMediaPipeFragmentShaderPreamble,
                    kFragColorOutputDeclaration, maybe_flip_y_define, kBody);
   gl_renderer_ = std::make_unique<mediapipe::QuadRenderer>();
-  MP_RETURN_IF_ERROR(gl_renderer_->GlSetup(src.c_str(), {"tensor"}));
+  ABSL_RETURN_IF_ERROR(gl_renderer_->GlSetup(src.c_str(), {"tensor"}));
 
 #endif  // MEDIAPIPE_OPENGL_ES_VERSION >= MEDIAPIPE_OPENGL_ES_31
 
-  return mediapipe::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status TensorsToImageCalculator::GlProcess(CalculatorContext* cc) {
   if (!gl_initialized_) {
-    MP_RETURN_IF_ERROR(gl_helper_.Open(cc));
+    ABSL_RETURN_IF_ERROR(gl_helper_.Open(cc));
   }
 
   return gl_helper_.RunInGlContext([this, cc]() -> absl::Status {
     if (!gl_initialized_) {
-      MP_RETURN_IF_ERROR(GlSetup(cc));
+      ABSL_RETURN_IF_ERROR(GlSetup(cc));
       gl_initialized_ = true;
     }
 
     if (IsInputTensorEmpty(cc)) return absl::OkStatus();
-    MP_ASSIGN_OR_RETURN(const Tensor& input_tensor, GetInputTensor(cc));
+    ABSL_ASSIGN_OR_RETURN(const Tensor& input_tensor, GetInputTensor(cc));
 
     const int tensor_width = input_tensor.shape().dims[2];
     const int tensor_height = input_tensor.shape().dims[1];
@@ -501,7 +500,7 @@ absl::Status TensorsToImageCalculator::GlProcess(CalculatorContext* cc) {
 #if MEDIAPIPE_OPENGL_ES_VERSION >= MEDIAPIPE_OPENGL_ES_31
 
     auto out_texture = std::make_unique<tflite::gpu::gl::GlTexture>();
-    MP_RETURN_IF_ERROR(CreateReadWriteRgbaImageTexture(
+    ABSL_RETURN_IF_ERROR(CreateReadWriteRgbaImageTexture(
         tflite::gpu::DataType::UINT8,  // GL_RGBA8
         {tensor_width, tensor_height}, out_texture.get()));
 
@@ -520,7 +519,7 @@ absl::Status TensorsToImageCalculator::GlProcess(CalculatorContext* cc) {
     glUniform3i(glGetUniformLocation(gl_compute_program_->id(), "out_size"),
                 tensor_width, tensor_height, tensor_in_channels);
 
-    MP_RETURN_IF_ERROR(gl_compute_program_->Dispatch(workgroups));
+    ABSL_RETURN_IF_ERROR(gl_compute_program_->Dispatch(workgroups));
 
     auto texture_buffer = mediapipe::GlTextureBuffer::Wrap(
         out_texture->target(), out_texture->id(), tensor_width, tensor_height,
@@ -547,7 +546,7 @@ absl::Status TensorsToImageCalculator::GlProcess(CalculatorContext* cc) {
     glBindTexture(GL_TEXTURE_2D,
                   input_tensor.GetOpenGlTexture2dReadView().name());
 
-    MP_RETURN_IF_ERROR(gl_renderer_->GlRender(
+    ABSL_RETURN_IF_ERROR(gl_renderer_->GlRender(
         tensor_width, tensor_height, output_texture.width(),
         output_texture.height(), mediapipe::FrameScaleMode::kStretch,
         mediapipe::FrameRotation::kNone,
@@ -562,7 +561,7 @@ absl::Status TensorsToImageCalculator::GlProcess(CalculatorContext* cc) {
 
 #endif  // MEDIAPIPE_OPENGL_ES_VERSION >= MEDIAPIPE_OPENGL_ES_31
 
-    return mediapipe::OkStatus();
+    return absl::OkStatus();
   });
 }
 

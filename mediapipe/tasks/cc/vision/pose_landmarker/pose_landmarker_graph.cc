@@ -15,7 +15,8 @@ limitations under the License.
 
 #include <vector>
 
-#include "absl/status/status.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/calculators/core/clip_vector_size_calculator.pb.h"
 #include "mediapipe/calculators/core/gate_calculator.pb.h"
 #include "mediapipe/calculators/util/association_calculator.pb.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "mediapipe/framework/formats/image.h"
 #include "mediapipe/framework/formats/landmark.pb.h"
 #include "mediapipe/framework/formats/rect.pb.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/tasks/cc/components/utils/gate.h"
 #include "mediapipe/tasks/cc/core/model_asset_bundle_resources.h"
 #include "mediapipe/tasks/cc/core/model_resources_cache.h"
@@ -96,8 +96,8 @@ absl::Status SetSubTaskBaseOptions(const ModelAssetBundleResources& resources,
   auto* pose_detector_graph_options =
       options->mutable_pose_detector_graph_options();
   if (!pose_detector_graph_options->base_options().has_model_asset()) {
-    MP_ASSIGN_OR_RETURN(const auto pose_detector_file,
-                        resources.GetFile(kPoseDetectorTFLiteName));
+    ABSL_ASSIGN_OR_RETURN(const auto pose_detector_file,
+                          resources.GetFile(kPoseDetectorTFLiteName));
     SetExternalFile(pose_detector_file,
                     pose_detector_graph_options->mutable_base_options()
                         ->mutable_model_asset(),
@@ -114,6 +114,21 @@ absl::Status SetSubTaskBaseOptions(const ModelAssetBundleResources& resources,
     pose_detector_graph_options->mutable_base_options()
         ->mutable_acceleration()
         ->CopyFrom(options->base_options().acceleration());
+    if (options->base_options().acceleration().has_litert() &&
+        options->base_options().acceleration().litert().has_gpu()) {
+      // PoseDetector model contains sparse tensors (DENSIFY ops) which are not
+      // supported by the LiteRT GPU (ML Drift) accelerator. Fall back to
+      // LiteRT CPU (XNNPACK) for PoseDetectorGraph while keeping
+      // PoseLandmarksDetectorGraph on LiteRT GPU.
+      pose_detector_graph_options->mutable_base_options()
+          ->mutable_acceleration()
+          ->mutable_litert()
+          ->clear_gpu();
+      pose_detector_graph_options->mutable_base_options()
+          ->mutable_acceleration()
+          ->mutable_litert()
+          ->mutable_cpu();
+    }
   }
   pose_detector_graph_options->mutable_base_options()->set_use_stream_mode(
       options->base_options().use_stream_mode());
@@ -121,8 +136,8 @@ absl::Status SetSubTaskBaseOptions(const ModelAssetBundleResources& resources,
       options->mutable_pose_landmarks_detector_graph_options();
   if (!pose_landmarks_detector_graph_options->base_options()
            .has_model_asset()) {
-    MP_ASSIGN_OR_RETURN(const auto pose_landmarks_detector_file,
-                        resources.GetFile(kPoseLandmarksDetectorTFLiteName));
+    ABSL_ASSIGN_OR_RETURN(const auto pose_landmarks_detector_file,
+                          resources.GetFile(kPoseLandmarksDetectorTFLiteName));
     SetExternalFile(
         pose_landmarks_detector_file,
         pose_landmarks_detector_graph_options->mutable_base_options()
@@ -226,18 +241,18 @@ class PoseLandmarkerGraph : public core::ModelTaskGraph {
     if (sc->Options<PoseLandmarkerGraphOptions>()
             .base_options()
             .has_model_asset()) {
-      MP_ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           const auto* model_asset_bundle_resources,
           CreateModelAssetBundleResources<PoseLandmarkerGraphOptions>(sc));
       // Copies the file content instead of passing the pointer of file in
       // memory if the subgraph model resource service is not available.
-      MP_RETURN_IF_ERROR(SetSubTaskBaseOptions(
+      ABSL_RETURN_IF_ERROR(SetSubTaskBaseOptions(
           *model_asset_bundle_resources,
           sc->MutableOptions<PoseLandmarkerGraphOptions>(),
           !sc->Service(::mediapipe::tasks::core::kModelResourcesCacheService)
                .IsAvailable()));
     }
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto outs, BuildPoseLandmarkerGraph(
                        *sc->MutableOptions<PoseLandmarkerGraphOptions>(),
                        graph[Input<Image>(kImageTag)],

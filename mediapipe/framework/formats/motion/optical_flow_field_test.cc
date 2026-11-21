@@ -19,14 +19,14 @@
 #include <memory>
 #include <string>
 
-#include "absl/flags/flag.h"
-#include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
+#include "absl/flags/flag.h"      // from @com_google_absl
+#include "absl/log/absl_check.h"  // from @com_google_absl
+#include "absl/log/absl_log.h"    // from @com_google_absl
 #include "mediapipe/framework/deps/file_path.h"
 #include "mediapipe/framework/formats/location_opencv.h"
 #include "mediapipe/framework/port/file_helpers.h"
 #include "mediapipe/framework/port/gtest.h"
-#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.h"  // from @org_tensorflow
 
 namespace mediapipe {
 

@@ -16,9 +16,9 @@
 
 #include <vector>
 
-#include "absl/log/absl_log.h"
-#include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
+#include "absl/log/absl_log.h"           // from @com_google_absl
+#include "absl/strings/string_view.h"    // from @com_google_absl
+#include "absl/synchronization/mutex.h"  // from @com_google_absl
 
 namespace mediapipe {
 namespace {
@@ -52,7 +52,7 @@ class BasicCounter : public Counter {
 
 }  // namespace
 
-CounterSet::CounterSet() {}
+CounterSet::CounterSet() = default;
 
 CounterSet::~CounterSet() ABSL_LOCKS_EXCLUDED(mu_) { PublishCounters(); }
 

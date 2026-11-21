@@ -20,10 +20,12 @@
 #include <optional>
 #include <ostream>
 #include <utility>
+#include <vector>
 
-#include "absl/base/attributes.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "absl/base/attributes.h"           // from @com_google_absl
+#include "absl/functional/any_invocable.h"  // from @com_google_absl
+#include "absl/status/status.h"             // from @com_google_absl
+#include "absl/status/statusor.h"           // from @com_google_absl
 
 typedef struct AHardwareBuffer AHardwareBuffer;
 
@@ -153,6 +155,12 @@ class HardwareBuffer {
   // Called by ReusablePool when reusing this buffer.
   void Reuse() {}
 
+  // Registers a callback to be invoked when the underlying AHardwareBuffer is
+  // released (on destruction or Reset()).
+  void AddReleaseCallback(absl::AnyInvocable<void() &&> callback) {
+    release_callbacks_.push_back(std::move(callback));
+  }
+
  private:
   // Allocates an AHardwareBuffer instance;
   static absl::StatusOr<AHardwareBuffer*> AllocateAHardwareBuffer(
@@ -183,6 +191,9 @@ class HardwareBuffer {
 
   // Indicates if AHardwareBuffer is locked for reading or writing.
   bool is_locked_ = false;
+
+  // Callbacks invoked before ahw_buffer_ is released.
+  std::vector<absl::AnyInvocable<void() &&>> release_callbacks_;
 };
 
 }  // namespace mediapipe

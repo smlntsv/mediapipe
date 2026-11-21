@@ -40,13 +40,6 @@ android_library(
     ],
 )
 
-# Expose the java source files for building mediapipe tasks vision per task AAR.
-filegroup(
-    name = "core_java_src",
-    srcs = glob(["core/**/*.java"]),
-    visibility = ["//mediapipe/tasks/java/com/google/mediapipe/tasks/vision:__subpackages__"],
-)
-
 android_library(
     name = "objectdetector",
     manifest = "objectdetector/AndroidManifest.xml",
@@ -221,13 +214,6 @@ android_library(
     ],
 )
 
-# Expose the java source files for building mediapipe tasks vision per task AAR.
-filegroup(
-    name = "image_segmenter_java_src",
-    srcs = glob(["imagesegmenter/**/*.java"]),
-    visibility = ["//mediapipe/tasks/java/com/google/mediapipe/tasks/vision:__subpackages__"],
-)
-
 android_library(
     name = "interactivesegmenterlegacy",
     srcs = [
@@ -253,7 +239,7 @@ android_library(
 )
 
 android_library(
-    name = "interactivesegmenter",
+    name = "interactivesegmenter_no_native",
     srcs = [
         "interactivesegmenter/InteractiveSegmenter.java",
         "interactivesegmenter/InteractiveSegmenterOptions.java",
@@ -261,26 +247,40 @@ android_library(
     ],
     manifest = "interactivesegmenter/AndroidManifest.xml",
     deps = [
-        ":core",
         "//mediapipe/java/com/google/mediapipe/framework:android_framework",
         "//mediapipe/java/com/google/mediapipe/framework/image",
         "//mediapipe/tasks/cc/core/proto:base_options_java_proto_lite",
         "//mediapipe/tasks/cc/vision/interactive_segmenter/proto:stroke_java_proto_lite",
         "//mediapipe/tasks/java/com/google/mediapipe/tasks/components/containers:normalizedkeypoint",
+        "//mediapipe/tasks/java/com/google/mediapipe/tasks/core:core_java",
+        "//mediapipe/tasks/java/com/google/mediapipe/tasks/core:jni_config_stub",
         "//third_party:autovalue",
         "@maven//:com_google_guava_guava",
     ],
 )
 
 android_library(
+    name = "interactivesegmenter",
+    exports = [
+        ":core",
+        ":interactivesegmenter_no_native",
+    ],
+    deps = ["@maven//:com_google_guava_guava"],
+)
+
+android_library(
     name = "imageembedder",
     srcs = [
         "imageembedder/ImageEmbedder.java",
+        "imageembedder/ImageEmbedderExecutor.java",
+        "imageembedder/ImageEmbedderGraphExecutorImpl.java",
+        "imageembedder/ImageEmbedderLiteRtLmExecutorImpl.java",
         "imageembedder/ImageEmbedderResult.java",
     ],
     manifest = "imageembedder/AndroidManifest.xml",
     deps = [
         ":core",
+        "//mediapipe/calculators/tensor:inference_calculator_java_proto_lite",
         "//mediapipe/framework:calculator_options_java_proto_lite",
         "//mediapipe/java/com/google/mediapipe/framework:android_framework",
         "//mediapipe/java/com/google/mediapipe/framework/image",
@@ -292,7 +292,9 @@ android_library(
         "//mediapipe/tasks/java/com/google/mediapipe/tasks/components/containers:embeddingresult",
         "//mediapipe/tasks/java/com/google/mediapipe/tasks/components/utils:cosinesimilarity",
         "//mediapipe/tasks/java/com/google/mediapipe/tasks/core:core_java",
+        "//mediapipe/tasks/java/com/google/mediapipe/tasks/core:logging",
         "//third_party:autovalue",
+        "@litert_lm//kotlin/java/com/google/ai/edge/litertlm:litertlm-android",
         "@maven//:androidx_annotation_annotation",
         "@maven//:com_google_guava_guava",
     ],
@@ -348,13 +350,6 @@ android_library(
     ],
 )
 
-# Expose the java source files for building mediapipe tasks vision per task AAR.
-filegroup(
-    name = "face_landmarker_java_src",
-    srcs = glob(["facelandmarker/**/*.java"]),
-    visibility = ["//mediapipe/tasks/java/com/google/mediapipe/tasks/vision:__subpackages__"],
-)
-
 android_library(
     name = "holisticlandmarker",
     srcs = [
@@ -378,8 +373,8 @@ android_library(
         "//mediapipe/tasks/java/com/google/mediapipe/tasks/components/containers:category",
         "//mediapipe/tasks/java/com/google/mediapipe/tasks/components/containers:landmark",
         "//mediapipe/tasks/java/com/google/mediapipe/tasks/components/containers:normalized_landmark",
-        "//third_party:any_java_proto",
         "//third_party:autovalue",
+        "@com_google_protobuf//java/lite",  # buildcleaner: keep
         "@maven//:com_google_guava_guava",
     ],
 )
@@ -394,12 +389,10 @@ android_library(
     name = "tasks_vision_aar_library",
     srcs = glob(
         ["**/*.java"],
-        exclude = [
-            "imagegenerator/**",
-        ],
     ),
     manifest = "AndroidManifest.xml",
     deps = [
+        "//mediapipe/calculators/tensor:inference_calculator_java_proto_lite",
         "//mediapipe/framework:calculator_java_proto_lite",
         "//mediapipe/framework:calculator_options_java_proto_lite",
         "//mediapipe/framework/formats:classification_java_proto_lite",
@@ -448,9 +441,12 @@ android_library(
         "//mediapipe/tasks/java/com/google/mediapipe/tasks/components/processors:classifieroptions",
         "//mediapipe/tasks/java/com/google/mediapipe/tasks/components/utils:cosinesimilarity",
         "//mediapipe/tasks/java/com/google/mediapipe/tasks/core:core_java",
+        "//mediapipe/tasks/java/com/google/mediapipe/tasks/core:jni_config_stub",
+        "//mediapipe/tasks/java/com/google/mediapipe/tasks/core:logging",
         "//mediapipe/util:color_java_proto_lite",
-        "//third_party:any_java_proto",
         "//third_party:autovalue",
+        "@com_google_protobuf//java/lite",  # buildcleaner: keep
+        "@litert_lm//kotlin/java/com/google/ai/edge/litertlm:litertlm-android",
         "@maven//:androidx_annotation_annotation",
         "@maven//:com_google_guava_guava",
     ] + OPENCV_DEPS,

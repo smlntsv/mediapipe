@@ -15,6 +15,8 @@
 #include <algorithm>
 #include <memory>
 
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/examples/desktop/autoflip/autoflip_messages.pb.h"
 #include "mediapipe/examples/desktop/autoflip/calculators/face_to_region_calculator.pb.h"
 #include "mediapipe/examples/desktop/autoflip/quality/visual_scorer.h"
@@ -26,7 +28,6 @@
 #include "mediapipe/framework/port/opencv_core_inc.h"
 #include "mediapipe/framework/port/opencv_imgproc_inc.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 #include "mediapipe/framework/port/status_builder.h"
 
 namespace mediapipe {
@@ -105,7 +106,7 @@ absl::Status FaceToRegionCalculator::Open(mediapipe::CalculatorContext* cc) {
            "is set true.";
   }
 
-  scorer_ = absl::make_unique<VisualScorer>(options_.scorer_options());
+  scorer_ = std::make_unique<VisualScorer>(options_.scorer_options());
   frame_width_ = -1;
   frame_height_ = -1;
   return absl::OkStatus();
@@ -164,7 +165,7 @@ absl::Status FaceToRegionCalculator::Process(mediapipe::CalculatorContext* cc) {
     frame_height_ = frame.rows;
   }
 
-  auto region_set = ::absl::make_unique<DetectionSet>();
+  auto region_set = std::make_unique<DetectionSet>();
   if (!cc->Inputs().Tag(kFacesTag).Value().IsEmpty()) {
     const auto& input_faces =
         cc->Inputs().Tag(kFacesTag).Get<std::vector<mediapipe::Detection>>();
@@ -202,7 +203,7 @@ absl::Status FaceToRegionCalculator::Process(mediapipe::CalculatorContext* cc) {
         // Score the face based on image cues.
         float visual_score = 1.0f;
         if (options_.use_visual_scorer()) {
-          MP_RETURN_IF_ERROR(
+          ABSL_RETURN_IF_ERROR(
               scorer_->CalculateScore(frame, *region, &visual_score));
         }
         region->set_score(visual_score);
@@ -258,7 +259,7 @@ absl::Status FaceToRegionCalculator::Process(mediapipe::CalculatorContext* cc) {
           core_landmark_region.has_location_normalized()) {  // Not empty.
         float visual_score = 1.0f;
         if (options_.use_visual_scorer()) {
-          MP_RETURN_IF_ERROR(scorer_->CalculateScore(
+          ABSL_RETURN_IF_ERROR(scorer_->CalculateScore(
               frame, core_landmark_region, &visual_score));
         }
         core_landmark_region.set_score(visual_score);
@@ -270,8 +271,8 @@ absl::Status FaceToRegionCalculator::Process(mediapipe::CalculatorContext* cc) {
           all_landmark_region.has_location_normalized()) {  // Not empty.
         float visual_score = 1.0f;
         if (options_.use_visual_scorer()) {
-          MP_RETURN_IF_ERROR(scorer_->CalculateScore(frame, all_landmark_region,
-                                                     &visual_score));
+          ABSL_RETURN_IF_ERROR(scorer_->CalculateScore(
+              frame, all_landmark_region, &visual_score));
         }
         all_landmark_region.set_score(visual_score);
         all_landmark_region.mutable_signal_type()->set_standard(

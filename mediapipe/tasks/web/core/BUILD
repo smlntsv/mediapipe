@@ -1,16 +1,34 @@
 # This package contains options shared by all MediaPipe Tasks for Web.
 
 load("//mediapipe/framework/port:build_config.bzl", "ts_declaration", "ts_library")
-load("//mediapipe/tasks/web:build_defs.bzl", "jasmine_node_test")
+load("//mediapipe/tasks/web:build_defs.bzl", "jasmine_node_test", "mediapipe_ts_template")
 
 package(default_visibility = ["//mediapipe/tasks:internal"])
 
 ts_declaration(
     name = "core",
     srcs = [
+        "embedding_provider.d.ts",
         "task_runner_options.d.ts",
         "wasm_fileset.d.ts",
     ],
+)
+
+ts_library(
+    name = "async_mutex",
+    srcs = ["async_mutex.ts"],
+)
+
+ts_library(
+    name = "async_mutex_test_lib",
+    testonly = True,
+    srcs = ["async_mutex_test.ts"],
+    deps = [":async_mutex"],
+)
+
+jasmine_node_test(
+    name = "async_mutex_test",
+    srcs = [":async_mutex_test_lib"],
 )
 
 ts_library(
@@ -60,11 +78,10 @@ ts_library(
     ],
 )
 
-genrule(
-    name = "run_script_genrule",
-    srcs = ["fileset_resolver.ts.template"],
-    outs = ["fileset_resolver.ts"],
-    cmd = "cp $< $@",
+mediapipe_ts_template(
+    name = "fileset_resolver_genrule",
+    src = "fileset_resolver.ts.template",
+    out = "fileset_resolver.ts",
 )
 
 ts_library(

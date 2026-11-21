@@ -92,7 +92,7 @@ public final class LanguageDetector implements AutoCloseable {
    *
    * @param context an Android {@link Context}.
    * @param modelPath path to the text model with metadata in the assets.
-   * @throws MediaPipeException if there is is an error during {@link LanguageDetector} creation.
+   * @throws MediaPipeException if there is an error during {@link LanguageDetector} creation.
    */
   public static LanguageDetector createFromFile(Context context, String modelPath) {
     BaseOptions baseOptions = BaseOptions.builder().setModelAssetPath(modelPath).build();
@@ -154,10 +154,10 @@ public final class LanguageDetector implements AutoCloseable {
                   packets.get(CLASSIFICATIONS_OUT_STREAM_INDEX).getTimestamp());
             } catch (IOException e) {
               throw new MediaPipeException(
-                  MediaPipeException.StatusCode.IO_EXCEPTION.ordinal(), e.getMessage());
+                  MediaPipeException.StatusCode.IO_EXCEPTION, e.getMessage(), e);
             } catch (IllegalArgumentException e) {
               throw new MediaPipeException(
-                  MediaPipeException.StatusCode.INVALID_ARGUMENT.ordinal(), e.getMessage());
+                  MediaPipeException.StatusCode.INVALID_ARGUMENT, e.getMessage(), e);
             }
           }
 
@@ -170,7 +170,7 @@ public final class LanguageDetector implements AutoCloseable {
         TaskRunner.create(
             context,
             TaskInfo.<LanguageDetectorOptions>builder()
-                .setTaskName(LanguageDetector.class.getSimpleName())
+                .setTaskName("LanguageDetector")
                 .setTaskGraphName(TASK_GRAPH_NAME)
                 .setInputStreams(inputStreams)
                 .setOutputStreams(outputStreams)
@@ -305,7 +305,7 @@ public final class LanguageDetector implements AutoCloseable {
     public CalculatorOptions convertToCalculatorOptionsProto() {
       BaseOptionsProto.BaseOptions.Builder baseOptionsBuilder =
           BaseOptionsProto.BaseOptions.newBuilder();
-      baseOptionsBuilder.mergeFrom(convertBaseOptionsToProto(baseOptions()));
+      baseOptionsBuilder.mergeFrom(convertBaseOptionsToProto(baseOptions(), /* useLiteRt= */ true));
       ClassifierOptionsProto.ClassifierOptions.Builder classifierOptionsBuilder =
           ClassifierOptionsProto.ClassifierOptions.newBuilder();
       displayNamesLocale().ifPresent(classifierOptionsBuilder::setDisplayNamesLocale);

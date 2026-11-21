@@ -15,14 +15,16 @@ limitations under the License.
 
 #include "mediapipe/tasks/c/vision/interactive_segmenter_legacy/interactive_segmenter_legacy.h"
 
+#include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
 
-#include "absl/log/absl_check.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "absl/log/absl_check.h"   // from @com_google_absl
+#include "absl/status/status.h"    // from @com_google_absl
+#include "absl/status/statusor.h"  // from @com_google_absl
 #include "mediapipe/framework/formats/image.h"
 #include "mediapipe/tasks/c/core/base_options_converter.h"
 #include "mediapipe/tasks/c/core/common.h"
@@ -92,7 +94,7 @@ void CppConvertToRegionOfInterest(
 
   // Convert keypoint
   if (in->format == MP_REGION_OF_INTEREST_FORMAT_KEYPOINT) {
-    out->keypoint = CppNormalizedKeypoint{in->keypoint->x, in->keypoint->y};
+    out->keypoint = CppNormalizedKeypoint{in->keypoint.x, in->keypoint.y};
   }
 
   // Convert scribble
@@ -109,6 +111,9 @@ void CppConvertToInteractiveSegmenterLegacyOptions(
     const MpInteractiveSegmenterLegacyOptions& in,
     mediapipe::tasks::vision::interactive_segmenter_legacy::
         InteractiveSegmenterLegacyOptions* out) {
+  if (in.display_names_locale) {
+    out->display_names_locale = in.display_names_locale;
+  }
   out->output_confidence_masks = in.output_confidence_masks;
   out->output_category_mask = in.output_category_mask;
 }
@@ -164,11 +169,31 @@ void CppImageSegmenterCloseResult(MpImageSegmenterResult* result) {
 absl::Status CppInteractiveSegmenterLegacyClose(
     MpInteractiveSegmenterLegacyPtr segmenter) {
   auto cpp_segmenter = GetCppSegmenter(segmenter);
-  auto result = cpp_segmenter->Close();
-  if (!result.ok()) {
-    return result;
-  }
+  absl::Status status = cpp_segmenter->Close();
+  // The segmenter is freed even if it fails to close. It cannot be closed a
+  // second time, so it would be leaked otherwise.
   delete segmenter;
+  return status;
+}
+
+absl::Status CppInteractiveSegmenterLegacyGetLabels(
+    MpInteractiveSegmenterLegacyPtr segmenter, MpStringList* label_list) {
+  if (!label_list) {
+    return absl::InvalidArgumentError("label_list cannot be null.");
+  }
+  const auto& cpp_labels = GetCppSegmenter(segmenter)->GetLabels();
+  if (cpp_labels.empty()) {
+    label_list->strings = nullptr;
+    label_list->num_strings = 0;
+    return absl::OkStatus();
+  }
+
+  label_list->num_strings = cpp_labels.size();
+  label_list->strings =
+      static_cast<char**>(malloc(sizeof(char*) * label_list->num_strings));
+  for (int i = 0; i < label_list->num_strings; ++i) {
+    label_list->strings[i] = strdup(cpp_labels[i].c_str());
+  }
   return absl::OkStatus();
 }
 
@@ -207,6 +232,15 @@ MP_EXPORT MpStatus MpInteractiveSegmenterLegacyClose(
   absl::Status status =
       mediapipe::tasks::c::vision::interactive_segmenter_legacy::
           CppInteractiveSegmenterLegacyClose(segmenter);
+  return mediapipe::tasks::c::core::HandleStatus(status, error_msg);
+}
+
+MP_EXPORT MpStatus MpInteractiveSegmenterLegacyGetLabels(
+    MpInteractiveSegmenterLegacyPtr segmenter, MpStringList* label_list,
+    char** error_msg) {
+  absl::Status status =
+      mediapipe::tasks::c::vision::interactive_segmenter_legacy::
+          CppInteractiveSegmenterLegacyGetLabels(segmenter, label_list);
   return mediapipe::tasks::c::core::HandleStatus(status, error_msg);
 }
 

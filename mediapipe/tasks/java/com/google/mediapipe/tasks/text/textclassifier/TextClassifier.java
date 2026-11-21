@@ -107,7 +107,7 @@ public final class TextClassifier implements AutoCloseable {
    *
    * @param context an Android {@link Context}.
    * @param modelPath path to the text model with metadata in the assets.
-   * @throws MediaPipeException if there is is an error during {@link TextClassifier} creation.
+   * @throws MediaPipeException if there is an error during {@link TextClassifier} creation.
    */
   public static TextClassifier createFromFile(Context context, String modelPath) {
     BaseOptions baseOptions = BaseOptions.builder().setModelAssetPath(modelPath).build();
@@ -156,7 +156,7 @@ public final class TextClassifier implements AutoCloseable {
                   packets.get(CLASSIFICATIONS_OUT_STREAM_INDEX).getTimestamp());
             } catch (IOException e) {
               throw new MediaPipeException(
-                  MediaPipeException.StatusCode.INTERNAL.ordinal(), e.getMessage());
+                  MediaPipeException.StatusCode.INTERNAL, e.getMessage(), e);
             }
           }
 
@@ -169,7 +169,7 @@ public final class TextClassifier implements AutoCloseable {
         TaskRunner.create(
             context,
             TaskInfo.<TextClassifierOptions>builder()
-                .setTaskName(TextClassifier.class.getSimpleName())
+                .setTaskName("TextClassifier")
                 .setTaskGraphName(TASK_GRAPH_NAME)
                 .setInputStreams(INPUT_STREAMS)
                 .setOutputStreams(OUTPUT_STREAMS)

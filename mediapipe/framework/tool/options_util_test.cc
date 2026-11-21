@@ -16,8 +16,10 @@
 #include <sstream>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/strings/str_cat.h"       // from @com_google_absl
+#include "absl/strings/string_view.h"   // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
@@ -338,9 +340,9 @@ absl::Status Equals(std::vector<FieldData> b1, std::vector<FieldData> b2) {
   using tool::options_field_util::AsPacket;
   RET_CHECK_EQ(b1.size(), b2.size());
   for (int i = 0; i < b1.size(); ++i) {
-    MP_ASSIGN_OR_RETURN(Packet p1, AsPacket(b1.at(i)));
-    MP_ASSIGN_OR_RETURN(Packet p2, AsPacket(b2.at(i)));
-    MP_RETURN_IF_ERROR(Equals(p1.Get<FieldType>(), p2.Get<FieldType>()));
+    ABSL_ASSIGN_OR_RETURN(Packet p1, AsPacket(b1.at(i)));
+    ABSL_ASSIGN_OR_RETURN(Packet p2, AsPacket(b2.at(i)));
+    ABSL_RETURN_IF_ERROR(Equals(p1.Get<FieldType>(), p2.Get<FieldType>()));
   }
   return absl::OkStatus();
 }

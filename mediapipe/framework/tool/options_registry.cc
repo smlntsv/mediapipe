@@ -3,7 +3,9 @@
 #include <string>
 #include <vector>
 
-#include "absl/synchronization/mutex.h"
+#include "absl/status/status.h"          // from @com_google_absl
+#include "absl/status/status_macros.h"   // from @com_google_absl
+#include "absl/synchronization/mutex.h"  // from @com_google_absl
 #include "mediapipe/framework/port/ret_check.h"
 #include "mediapipe/framework/tool/proto_util_lite.h"
 
@@ -32,18 +34,18 @@ absl::StatusOr<std::vector<FieldData>> GetFieldValues(
   ProtoUtilLite::ProtoPath proto_path = {{field->number(), 0}};
   ProtoUtilLite::FieldValue mesage_bytes = message_data.message_value().value();
   int count;
-  MP_RETURN_IF_ERROR(ProtoUtilLite::GetFieldCount(mesage_bytes, proto_path,
-                                                  field->type(), &count));
+  ABSL_RETURN_IF_ERROR(ProtoUtilLite::GetFieldCount(mesage_bytes, proto_path,
+                                                    field->type(), &count));
   std::vector<std::string> field_values;
-  MP_RETURN_IF_ERROR(ProtoUtilLite::GetFieldRange(
+  ABSL_RETURN_IF_ERROR(ProtoUtilLite::GetFieldRange(
       mesage_bytes, proto_path, count, field->type(), &field_values));
   std::vector<FieldData> result;
   for (int i = 0; i < field_values.size(); ++i) {
     FieldData r;
     std::string message_type =
         field->message_type() ? field->message_type()->full_name() : "";
-    MP_RETURN_IF_ERROR(ProtoUtilLite::ReadValue(field_values[i], field->type(),
-                                                message_type, &r));
+    ABSL_RETURN_IF_ERROR(ProtoUtilLite::ReadValue(
+        field_values[i], field->type(), message_type, &r));
     result.push_back(std::move(r));
   }
   return result;

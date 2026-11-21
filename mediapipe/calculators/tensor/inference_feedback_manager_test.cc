@@ -21,8 +21,8 @@
 #include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
-#include "absl/strings/str_replace.h"
+#include "absl/status/status.h"        // from @com_google_absl
+#include "absl/strings/str_replace.h"  // from @com_google_absl
 #include "mediapipe/calculators/tensor/inference_calculator.pb.h"
 #include "mediapipe/calculators/tensor/inference_io_mapper.h"
 #include "mediapipe/framework/api2/packet.h"
@@ -34,12 +34,12 @@
 #include "mediapipe/framework/port/status_matchers.h"
 #include "mediapipe/framework/resources.h"
 #include "mediapipe/util/tflite/tflite_model_loader.h"
-#include "tensorflow/lite/core/api/op_resolver.h"
-#include "tensorflow/lite/core/interpreter_builder.h"
-#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/util.h"
+#include "tflite/core/api/op_resolver.h"                // from @litert
+#include "tflite/core/interpreter_builder.h"            // from @litert
+#include "tflite/delegates/xnnpack/xnnpack_delegate.h"  // from @litert
+#include "tflite/interpreter.h"                         // from @litert
+#include "tflite/kernels/register.h"                    // from @litert
+#include "tflite/util.h"                                // from @litert
 
 namespace mediapipe {
 namespace api2 {
@@ -111,6 +111,8 @@ constexpr char kFeedbackTestWithStateCopyModelPath[] =
 constexpr char kFeedbackTestNoPassthroughModelPath[] =
     "mediapipe/calculators/tensor/testdata/"
     "feedback_tensor_without_passthrough_model.tflite";
+
+using ::absl_testing::StatusIs;
 
 using ::mediapipe::Packet;
 using ::mediapipe::tool::AddVectorSink;

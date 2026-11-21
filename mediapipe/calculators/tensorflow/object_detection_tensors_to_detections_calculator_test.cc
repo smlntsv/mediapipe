@@ -23,8 +23,8 @@
 #include "mediapipe/framework/port/gtest.h"
 #include "mediapipe/framework/port/parse_text_proto.h"
 #include "mediapipe/framework/port/status_matchers.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/tensor.h"           // from @org_tensorflow
+#include "tensorflow/core/framework/tensor_testutil.h"  // from @org_tensorflow
 
 namespace mediapipe {
 
@@ -106,19 +106,19 @@ class ObjectDetectionTensorsToDetectionsCalculatorTest
   void SetUpCalculatorRunner() {
     CalculatorGraphConfig::Node node_config;
     CreateNodeConfig(&node_config);
-    runner_ = absl::make_unique<CalculatorRunner>(node_config);
+    runner_ = std::make_unique<CalculatorRunner>(node_config);
   }
 
   void SetUpCalculatorRunnerRawTensors() {
     CalculatorGraphConfig::Node node_config;
     CreateNodeConfigRawTensors(&node_config);
-    runner_ = absl::make_unique<CalculatorRunner>(node_config);
+    runner_ = std::make_unique<CalculatorRunner>(node_config);
   }
 
   void SetUpCalculatorRunnerWithKeypoints() {
     CalculatorGraphConfig::Node node_config;
     CreateNodeConfigWithKeypoints(&node_config);
-    runner_ = absl::make_unique<CalculatorRunner>(node_config);
+    runner_ = std::make_unique<CalculatorRunner>(node_config);
   }
 
   void RunCalculator() {
@@ -189,7 +189,7 @@ class ObjectDetectionTensorsToDetectionsCalculatorTest
                  .ext]: { tensor_dim_to_squeeze: 0 }
           }
         )pb");
-    runner_ = absl::make_unique<CalculatorRunner>(node_config);
+    runner_ = std::make_unique<CalculatorRunner>(node_config);
     runner_->MutableInputs()
         ->Tag(kNumDetections)
         .packets.push_back(

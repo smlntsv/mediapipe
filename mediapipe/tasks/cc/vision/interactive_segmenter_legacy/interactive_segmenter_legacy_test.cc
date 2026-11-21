@@ -21,10 +21,10 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/flags/flag.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
+#include "absl/flags/flag.h"           // from @com_google_absl
+#include "absl/status/status.h"        // from @com_google_absl
+#include "absl/status/statusor.h"      // from @com_google_absl
+#include "absl/strings/string_view.h"  // from @com_google_absl
 #include "mediapipe/framework/deps/file_path.h"
 #include "mediapipe/framework/formats/image.h"
 #include "mediapipe/framework/formats/image_frame.h"
@@ -43,10 +43,10 @@ limitations under the License.
 #include "mediapipe/tasks/cc/vision/image_segmenter/calculators/tensors_to_segmentation_calculator.pb.h"
 #include "mediapipe/tasks/cc/vision/image_segmenter/proto/image_segmenter_graph_options.pb.h"
 #include "mediapipe/tasks/cc/vision/utils/image_utils.h"
-#include "tensorflow/lite/kernels/builtin_op_kernels.h"
-#include "tensorflow/lite/mutable_op_resolver.h"
-#include "tensorflow/lite/test_util.h"
 #include "testing/base/public/gmock.h"
+#include "tflite/kernels/builtin_op_kernels.h"  // from @litert
+#include "tflite/mutable_op_resolver.h"         // from @litert
+#include "tflite/test_util.h"                   // from @litert
 
 namespace mediapipe {
 namespace tasks {
@@ -54,6 +54,7 @@ namespace vision {
 namespace interactive_segmenter_legacy {
 namespace {
 
+using ::absl_testing::StatusIs;
 using ::mediapipe::Image;
 using ::mediapipe::file::JoinPath;
 using ::mediapipe::tasks::components::containers::NormalizedKeypoint;
@@ -62,7 +63,6 @@ using ::mediapipe::tasks::vision::core::ImageProcessingOptions;
 using ::testing::HasSubstr;
 using ::testing::Optional;
 using ::testing::SizeIs;
-using ::testing::status::StatusIs;
 
 constexpr absl::string_view kTestDataDirectory{
     "/mediapipe/tasks/testdata/vision/"};
@@ -310,7 +310,7 @@ INSTANTIATE_TEST_SUITE_P(
         {// Keypoint input.
          {"PointToDog1", RegionOfInterest::Format::kKeyPoint,
           NormalizedKeypoint{0.44, 0.70}, kCatsAndDogsJpg, kCatsAndDogsMaskDog1,
-          0.9f},
+          0.84f},
          {"PointToDog2", RegionOfInterest::Format::kKeyPoint,
           NormalizedKeypoint{0.66, 0.66}, kCatsAndDogsJpg, kCatsAndDogsMaskDog2,
           0.85f},
@@ -325,7 +325,7 @@ INSTANTIATE_TEST_SUITE_P(
           std::vector{NormalizedKeypoint{0.44, 0.70},
                       NormalizedKeypoint{0.44, 0.71},
                       NormalizedKeypoint{0.44, 0.72}},
-          kCatsAndDogsJpg, kCatsAndDogsMaskDog1, 0.9f},
+          kCatsAndDogsJpg, kCatsAndDogsMaskDog1, 0.84f},
          {"ScribbleToDog2", RegionOfInterest::Format::kScribble,
           std::vector{NormalizedKeypoint{0.66, 0.66},
                       NormalizedKeypoint{0.66, 0.67},

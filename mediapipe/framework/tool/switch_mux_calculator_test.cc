@@ -15,7 +15,8 @@
 #include <string>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
+#include "absl/status/status.h"    // from @com_google_absl
+#include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/port/gmock.h"
@@ -53,8 +54,8 @@ Packet pack(int data, int timestamp) {
 // Tests showing packet channel synchronization through SwitchMuxCalculator.
 class SwitchMuxCalculatorTest : public ::testing::Test {
  protected:
-  SwitchMuxCalculatorTest() {}
-  ~SwitchMuxCalculatorTest() override {}
+  SwitchMuxCalculatorTest() = default;
+  ~SwitchMuxCalculatorTest() override = default;
   void SetUp() override {}
   void TearDown() override {}
 

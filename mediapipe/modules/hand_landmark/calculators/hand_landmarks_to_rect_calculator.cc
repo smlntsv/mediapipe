@@ -11,14 +11,18 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#include <algorithm>
 #include <cmath>
+#include <limits>
+#include <memory>
+#include <utility>
 
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
-#include "mediapipe/framework/calculator_options.pb.h"
 #include "mediapipe/framework/formats/landmark.pb.h"
 #include "mediapipe/framework/formats/rect.pb.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 
 namespace mediapipe {
 
@@ -161,8 +165,8 @@ class HandLandmarksToRectCalculator : public CalculatorBase {
     std::pair<int, int> image_size =
         cc->Inputs().Tag(kImageSizeTag).Get<std::pair<int, int>>();
     const auto landmarks = GetPartialLandmarks(cc);
-    auto output_rect = absl::make_unique<NormalizedRect>();
-    MP_RETURN_IF_ERROR(
+    auto output_rect = std::make_unique<NormalizedRect>();
+    ABSL_RETURN_IF_ERROR(
         NormalizedLandmarkListToRect(landmarks, image_size, output_rect.get()));
     cc->Outputs()
         .Tag(kNormRectTag)

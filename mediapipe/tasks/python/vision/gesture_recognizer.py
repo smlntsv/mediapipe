@@ -45,7 +45,9 @@ GestureRecognizerResult = (
 
 _C_TYPES_RESULT_CALLBACK = ctypes.CFUNCTYPE(
     None,
+    ctypes.c_void_p,  # user_data
     ctypes.c_int32,  # MpStatus
+    ctypes.c_char_p,  # error_msg
     ctypes.POINTER(gesture_recognizer_result_c.MpGestureRecognizerResultC),
     ctypes.c_void_p,  # MpImage
     ctypes.c_int64,  # timestamp_ms
@@ -71,6 +73,7 @@ class MpGestureRecognizerOptionsC(ctypes.Structure):
           classifier_options_c.MpClassifierOptionsC,
       ),
       ('result_callback', _C_TYPES_RESULT_CALLBACK),
+      ('result_callback_user_data', ctypes.c_void_p),
   ]
 
   @classmethod
@@ -163,7 +166,7 @@ _CTYPES_SIGNATURES = (
 )
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(init=False)
 class GestureRecognizerOptions:
   """Options for the gesture recognizer task.
 
@@ -172,9 +175,9 @@ class GestureRecognizerOptions:
     running_mode: The running mode of the task. Default to the image mode.
       Gesture recognizer task has three running modes: 1) The image mode for
       recognizing hand gestures on single image inputs. 2) The video mode for
-      recognizing hand gestures on the decoded frames of a video. 3) The live
-      stream mode for recognizing hand gestures on a live stream of input data,
-      such as from camera.
+      recognizing hand gestures on the decoded frames of a video. 3) The
+      livestream mode for recognizing hand gestures on a livestream of input
+      data, such as from camera.
     num_hands: The maximum number of hands can be detected by the recognizer.
     min_hand_detection_confidence: The minimum confidence score for the hand
       detection to be considered successful.
@@ -182,17 +185,17 @@ class GestureRecognizerOptions:
       score in the hand landmark detection.
     min_tracking_confidence: The minimum confidence score for the hand tracking
       to be considered successful.
-    canned_gesture_classifier_options: Options for configuring the canned
+    canned_gestures_classifier_options: Options for configuring the canned
       gestures classifier, such as score threshold, allow list and deny list of
       gestures. The categories for canned gesture classifiers are: ["None",
       "Closed_Fist", "Open_Palm", "Pointing_Up", "Thumb_Down", "Thumb_Up",
       "Victory", "ILoveYou"]. Note this option is subject to change.
-    custom_gesture_classifier_options: Options for configuring the custom
+    custom_gestures_classifier_options: Options for configuring the custom
       gestures classifier, such as score threshold, allow list and deny list of
       gestures. Note this option is subject to change.
-    result_callback: The user-defined result callback for processing live stream
+    result_callback: The user-defined result callback for processing livestream
       data. The result callback should only be specified when the running mode
-      is set to the live stream mode.
+      is set to the livestream mode.
   """
 
   base_options: _BaseOptions
@@ -201,15 +204,95 @@ class GestureRecognizerOptions:
   min_hand_detection_confidence: float = 0.5
   min_hand_presence_confidence: float = 0.5
   min_tracking_confidence: float = 0.5
-  canned_gesture_classifier_options: _ClassifierOptions = dataclasses.field(
+  canned_gestures_classifier_options: _ClassifierOptions = dataclasses.field(
       default_factory=_ClassifierOptions
   )
-  custom_gesture_classifier_options: _ClassifierOptions = dataclasses.field(
+  custom_gestures_classifier_options: _ClassifierOptions = dataclasses.field(
       default_factory=_ClassifierOptions
   )
   result_callback: Optional[
       Callable[[GestureRecognizerResult, image_lib.Image, int], None]
   ] = None
+
+  def __init__(
+      self,
+      base_options: _BaseOptions,
+      running_mode: _RunningMode = _RunningMode.IMAGE,
+      num_hands: int = 1,
+      min_hand_detection_confidence: float = 0.5,
+      min_hand_presence_confidence: float = 0.5,
+      min_tracking_confidence: float = 0.5,
+      canned_gestures_classifier_options: Optional[_ClassifierOptions] = None,
+      custom_gestures_classifier_options: Optional[_ClassifierOptions] = None,
+      result_callback: Optional[
+          Callable[[GestureRecognizerResult, image_lib.Image, int], None]
+      ] = None,
+      *,
+      canned_gesture_classifier_options: Optional[_ClassifierOptions] = None,
+      custom_gesture_classifier_options: Optional[_ClassifierOptions] = None,
+  ):
+    """Initializes a `GestureRecognizerOptions` instance."""
+    if (
+        canned_gestures_classifier_options is not None
+        and canned_gesture_classifier_options is not None
+    ):
+      raise ValueError(
+          'Specify either `canned_gestures_classifier_options` or deprecated'
+          ' `canned_gesture_classifier_options`, not both.'
+      )
+    if (
+        custom_gestures_classifier_options is not None
+        and custom_gesture_classifier_options is not None
+    ):
+      raise ValueError(
+          'Specify either `custom_gestures_classifier_options` or deprecated'
+          ' `custom_gesture_classifier_options`, not both.'
+      )
+    self.base_options = base_options
+    self.running_mode = running_mode
+    self.num_hands = num_hands
+    self.min_hand_detection_confidence = min_hand_detection_confidence
+    self.min_hand_presence_confidence = min_hand_presence_confidence
+    self.min_tracking_confidence = min_tracking_confidence
+    resolved_canned = (
+        canned_gestures_classifier_options
+        if canned_gestures_classifier_options is not None
+        else canned_gesture_classifier_options
+    )
+    self.canned_gestures_classifier_options = (
+        resolved_canned if resolved_canned is not None else _ClassifierOptions()
+    )
+    resolved_custom = (
+        custom_gestures_classifier_options
+        if custom_gestures_classifier_options is not None
+        else custom_gesture_classifier_options
+    )
+    self.custom_gestures_classifier_options = (
+        resolved_custom if resolved_custom is not None else _ClassifierOptions()
+    )
+    self.result_callback = result_callback
+
+  @property
+  def canned_gesture_classifier_options(self) -> _ClassifierOptions:
+    """Deprecated alias for `canned_gestures_classifier_options`."""
+    return self.canned_gestures_classifier_options
+
+  @canned_gesture_classifier_options.setter
+  def canned_gesture_classifier_options(
+      self, value: _ClassifierOptions
+  ) -> None:
+    self.canned_gestures_classifier_options = value
+
+  @property
+  def custom_gesture_classifier_options(self) -> _ClassifierOptions:
+    """Deprecated alias for `custom_gestures_classifier_options`."""
+    return self.custom_gestures_classifier_options
+
+  @custom_gesture_classifier_options.setter
+  def custom_gesture_classifier_options(
+      self, value: _ClassifierOptions
+  ) -> None:
+    self.custom_gestures_classifier_options = value
 
 
 class GestureRecognizer:
@@ -283,13 +366,13 @@ class GestureRecognizer:
       RuntimeError: If other types of error occurred.
     """
     running_mode_module.validate_running_mode(
-        options.running_mode, options.result_callback
+        options.running_mode, options.result_callback  # pyrefly: ignore[bad-argument-type]
     )
 
     lib = mediapipe_c_bindings.load_shared_library(_CTYPES_SIGNATURES)
 
     def convert_result(
-        c_result_ptr: ctypes.POINTER(
+        c_result_ptr: ctypes.POINTER(  # pyrefly: ignore[invalid-annotation]
             gesture_recognizer_result_c.MpGestureRecognizerResultC
         ),
         image_ptr: ctypes.c_void_p,
@@ -314,15 +397,15 @@ class GestureRecognizer:
         min_hand_presence_confidence=options.min_hand_presence_confidence,
         min_tracking_confidence=options.min_tracking_confidence,
         canned_gestures_classifier_options=classifier_options_c.convert_to_classifier_options_c(
-            options.canned_gesture_classifier_options
+            options.canned_gestures_classifier_options
         ),
         custom_gestures_classifier_options=classifier_options_c.convert_to_classifier_options_c(
-            options.custom_gesture_classifier_options
+            options.custom_gestures_classifier_options
         ),
         result_callback=c_callback,
     )
     recognizer_handle = ctypes.c_void_p()
-    lib.MpGestureRecognizerCreate(
+    lib.MpGestureRecognizerCreate(  # pyrefly: ignore[missing-attribute]
         ctypes.byref(options_c),
         ctypes.byref(recognizer_handle)
     )
@@ -365,7 +448,7 @@ class GestureRecognizer:
         if image_processing_options
         else None
     )
-    self._lib.MpGestureRecognizerRecognizeImage(
+    self._lib.MpGestureRecognizerRecognizeImage(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         options_c,
@@ -373,7 +456,7 @@ class GestureRecognizer:
     )
 
     result = GestureRecognizerResult.from_ctypes(c_result)
-    self._lib.MpGestureRecognizerCloseResult(ctypes.byref(c_result))
+    self._lib.MpGestureRecognizerCloseResult(ctypes.byref(c_result))  # pyrefly: ignore[missing-attribute]
     return result
 
   def recognize_for_video(
@@ -411,7 +494,7 @@ class GestureRecognizer:
         if image_processing_options
         else None
     )
-    self._lib.MpGestureRecognizerRecognizeForVideo(
+    self._lib.MpGestureRecognizerRecognizeForVideo(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         options_c,
@@ -420,7 +503,7 @@ class GestureRecognizer:
     )
 
     result = GestureRecognizerResult.from_ctypes(c_result)
-    self._lib.MpGestureRecognizerCloseResult(ctypes.byref(c_result))
+    self._lib.MpGestureRecognizerCloseResult(ctypes.byref(c_result))  # pyrefly: ignore[missing-attribute]
     return result
 
   def recognize_async(
@@ -433,14 +516,14 @@ class GestureRecognizer:
 
     The results will be available via the "result_callback" provided in the
     GestureRecognizerOptions. Only use this method when the GestureRecognizer
-    is created with the live stream running mode.
+    is created with the livestream running mode.
 
-    Only use this method when the GestureRecognizer is created with the live
-    stream running mode. The input timestamps should be monotonically increasing
-    for adjacent calls of this method. This method will return immediately after
-    the input image is accepted. The results will be available via the
-    `result_callback` provided in the `GestureRecognizerOptions`. The
-    `recognize_async` method is designed to process live stream data such as
+    Only use this method when the GestureRecognizer is created with the
+    livestream running mode. The input timestamps should be monotonically
+    increasing for adjacent calls of this method. This method will return
+    immediately after the input image is accepted. The results will be available
+    via the `result_callback` provided in the `GestureRecognizerOptions`. The
+    `recognize_async` method is designed to process livestream data such as
     camera input. To lower the overall latency, gesture recognizer may drop the
     input images if needed. In other words, it's not guaranteed to have output
     per input image.
@@ -465,7 +548,7 @@ class GestureRecognizer:
         if image_processing_options
         else None
     )
-    self._lib.MpGestureRecognizerRecognizeAsync(
+    self._lib.MpGestureRecognizerRecognizeAsync(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         options_c,
@@ -476,10 +559,15 @@ class GestureRecognizer:
     """Closes GestureRecognizer."""
     if not self._handle:
       return
-    self._lib.MpGestureRecognizerClose(self._handle)
-    self._handle = None
-    self._dispatcher.close()
-    self._lib.close()
+    # The C library frees the task even if it fails to close, so the handle
+    # must not be used again.
+    handle = self._handle
+    self._handle = None  # pyrefly: ignore[bad-assignment]
+    try:
+      self._lib.MpGestureRecognizerClose(handle)  # pyrefly: ignore[missing-attribute]
+    finally:
+      self._dispatcher.close()
+      self._lib.close()
 
   def __enter__(self):
     """Returns `self` upon entering the runtime context."""

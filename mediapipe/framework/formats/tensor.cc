@@ -17,20 +17,21 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <utility>
 
-#include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
-#include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
+#include "absl/log/absl_check.h"         // from @com_google_absl
+#include "absl/log/absl_log.h"           // from @com_google_absl
+#include "absl/status/status.h"          // from @com_google_absl
+#include "absl/status/status_macros.h"   // from @com_google_absl
+#include "absl/strings/str_cat.h"        // from @com_google_absl
+#include "absl/strings/string_view.h"    // from @com_google_absl
+#include "absl/synchronization/mutex.h"  // from @com_google_absl
 #include "mediapipe/framework/memory_manager.h"
 #include "mediapipe/framework/port.h"
 #include "mediapipe/framework/port/aligned_malloc_and_free.h"  // IWYU pragma: keep
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status_macros.h"
 #if MEDIAPIPE_OPENGL_ES_VERSION >= MEDIAPIPE_OPENGL_ES_30
 #include "mediapipe/gpu/gl_base.h"
 #endif  // MEDIAPIPE_OPENGL_ES_VERSION >= MEDIAPIPE_OPENGL_ES_30
@@ -367,7 +368,8 @@ Tensor::OpenGlBufferView Tensor::GetOpenGlBufferReadView() const {
           glMapBufferRange(GL_SHADER_STORAGE_BUFFER, 0, bytes(),
                            GL_MAP_INVALIDATE_BUFFER_BIT | GL_MAP_WRITE_BIT);
       ABSL_CHECK(ptr) << "glMapBufferRange failed: " << glGetError();
-      std::memcpy(ptr, cpu_buffer_, bytes());
+      CpuBufferHandle<const void> cpu_buffer_handle = AcquireCpuBufferHandle();
+      std::memcpy(ptr, cpu_buffer_handle.buffer<const void>(), bytes());
       glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 
       if (prefer_ahwb_) {
@@ -386,7 +388,7 @@ Tensor::OpenGlBufferView Tensor::GetOpenGlBufferReadView() const {
           //
           // Not passing for the case when AHWB is not in use to avoid creation
           // of unnecessary sync object and memory leak.
-          use_ahwb_ ? &ssbo_read_ : nullptr,
+          ready_as_ahwb() ? &ssbo_read_ : nullptr,
 #else
           nullptr,
 #endif  // MEDIAPIPE_TENSOR_USE_AHWB
@@ -413,10 +415,25 @@ Tensor::OpenGlBufferView Tensor::GetOpenGlBufferWriteView(
            "behavior due to lack of synchronization.";
   }
   valid_ = kValidOpenGlBuffer;
-  return {/*is_write_view=*/true, opengl_buffer_,
-          std::move(lock),
-          /*ssbo_read=*/nullptr,  gl_context_.get(),
-          &gl_write_read_sync_};
+  absl::AnyInvocable<void()> on_write_completed = nullptr;
+#ifdef MEDIAPIPE_TENSOR_USE_AHWB
+  // When the OpenGL buffer (`opengl_buffer_`) is backed by an external Android
+  // AHardwareBuffer (`ready_as_ahwb()` == true) mapped via
+  // glBufferStorageExternalEXT, compute shader writes on native mobile GPU
+  // drivers (e.g., Qualcomm Adreno) reside in GPU caches (GMEM/L2). Create a
+  // native EGL fence (`EGL_SYNC_NATIVE_FENCE_ANDROID`) as soon as the write
+  // view closes so these writes are flushed to external system memory before
+  // subsequent CPU, GPU, or AHWB reads, without capturing commands queued by
+  // later frames on a shared GL context.
+  if (ready_as_ahwb()) {
+    on_write_completed = [this]() { CreateEglSyncAndFd(); };
+  }
+#endif  // MEDIAPIPE_TENSOR_USE_AHWB
+  return {
+      /*is_write_view=*/true, opengl_buffer_,
+      std::move(lock),
+      /*ssbo_read=*/nullptr,  gl_context_.get(),
+      &gl_write_read_sync_,   std::move(on_write_completed)};
 }
 
 void Tensor::AllocateOpenGlBuffer() const {
@@ -425,12 +442,12 @@ void Tensor::AllocateOpenGlBuffer() const {
       gl_context_ = mediapipe::GlContext::GetCurrent();
     }
     ABSL_LOG_IF(FATAL, !gl_context_) << "GlContext is not bound to the thread.";
-    glGenBuffers(1, &opengl_buffer_);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, opengl_buffer_);
     if (!use_ahwb_ || !AllocateAhwbMapToSsbo()) {
+      glGenBuffers(1, &opengl_buffer_);
+      glBindBuffer(GL_SHADER_STORAGE_BUFFER, opengl_buffer_);
       glBufferData(GL_SHADER_STORAGE_BUFFER, bytes(), NULL, GL_STREAM_COPY);
+      glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
     }
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
   }
 }
 #endif  // MEDIAPIPE_OPENGL_ES_VERSION >= MEDIAPIPE_OPENGL_ES_31
@@ -561,7 +578,7 @@ absl::Status Tensor::Invalidate() {
 #endif  // MEDIAPIPE_OPENGL_ES_VERSION >= MEDIAPIPE_OPENGL_ES_30
   {
     absl::MutexLock lock(view_mutex_);
-    MP_RETURN_IF_ERROR(ReleaseAhwbStuff());
+    ABSL_RETURN_IF_ERROR(ReleaseAhwbStuff());
 
     // Don't need to wait for the resource to be deleted because if will be
     // released on last reference deletion inside the OpenGL driver.
@@ -674,7 +691,7 @@ absl::Status Tensor::ReadBackGpuToCpu() const {
     const int height = BhwcHeightFromShape(shape_);
     const int depth = BhwcDepthFromShape(shape_);
     // CPU data layout may not match texture data layout.
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         const int padded_depth,
         WebGpuTextureFormatDepth(webgpu_texture2d_.GetFormat()));
 

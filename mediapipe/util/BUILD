@@ -72,21 +72,21 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":audio_decoder_cc_proto",
+        ":endian",
         "//mediapipe/framework:packet",
         "//mediapipe/framework:timestamp",
-        "//mediapipe/framework/deps:cleanup",
         "//mediapipe/framework/formats:matrix",
         "//mediapipe/framework/formats:time_series_header_cc_proto",
-        "//mediapipe/framework/port:integral_types",
         "//mediapipe/framework/port:map_util",
         "//mediapipe/framework/port:ret_check",
-        "//mediapipe/framework/port:status",
         "//mediapipe/framework/tool:status_util",
-        "//mediapipe/util:endian",
         "//third_party:libffmpeg",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@eigen//:eigen3",
@@ -99,11 +99,10 @@ cc_library(
     hdrs = ["cpu_util.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//mediapipe/framework/port:integral_types",
-        "//mediapipe/framework/port:status",
-        "//mediapipe/framework/port:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ] + select({
         "//conditions:default": [],
@@ -128,8 +127,8 @@ cc_library(
     deps = [
         "//mediapipe/framework:calculator_framework",
         "//mediapipe/framework:packet_set",
-        "//mediapipe/framework/port:status",
         "//mediapipe/framework/tool:status_util",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -147,12 +146,13 @@ cc_library(
         "//mediapipe/framework/port",
         "//mediapipe/framework/port:aligned_malloc_and_free",
         "//mediapipe/framework/port:integral_types",
+        "//mediapipe/framework/port:libyuv_port",
         "//mediapipe/framework/port:opencv_imgproc",
-        "//mediapipe/framework/port:status",
         "//mediapipe/framework/tool:status_util",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@libyuv",
     ],
 )
@@ -162,9 +162,15 @@ cc_test(
     srcs = ["image_frame_util_test.cc"],
     deps = [
         ":image_frame_util",
+        "//mediapipe/framework/formats:image_format_cc_proto",
+        "//mediapipe/framework/formats:image_frame",
+        "//mediapipe/framework/formats:image_frame_opencv",
+        "//mediapipe/framework/formats:yuv_image",
         "//mediapipe/framework/port:benchmark",
         "//mediapipe/framework/port:gtest_main",
         "//mediapipe/framework/port:opencv_core",
+        "@com_google_absl//absl/types:span",
+        "@libyuv",
     ],
 )
 
@@ -238,7 +244,6 @@ cc_library(
         "//mediapipe/framework/formats:shared_fd",
         "//mediapipe/framework/formats:unique_fd",
         "//mediapipe/framework/port:ret_check",
-        "//mediapipe/framework/port:status",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -270,7 +275,7 @@ cc_library(
     hdrs = ["resource_util_custom.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//mediapipe/framework/port:status",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -308,10 +313,10 @@ cc_library(
         "//mediapipe/framework/port:logging",
         "//mediapipe/framework/port:ret_check",
         "//mediapipe/framework/port:singleton",
-        "//mediapipe/framework/port:status",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -387,7 +392,8 @@ cc_library(
         "//mediapipe/framework/formats:location",
         "//mediapipe/framework/formats:location_opencv",
         "//mediapipe/framework/port:map_util",
-        "//mediapipe/framework/port:status",
+        "//mediapipe/framework/port:opencv_core",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:variant",
     ] + select({
@@ -410,9 +416,9 @@ cc_library(
         "//mediapipe/framework/formats:matrix",
         "//mediapipe/framework/formats:time_series_header_cc_proto",
         "//mediapipe/framework/port:integral_types",
-        "//mediapipe/framework/port:status",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -432,9 +438,9 @@ cc_library(
         "//mediapipe/framework/port:integral_types",
         "//mediapipe/framework/port:logging",
         "//mediapipe/framework/port:parse_text_proto",
-        "//mediapipe/framework/port:status",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@eigen//:eigen3",
     ],
@@ -444,8 +450,16 @@ cc_library(
     name = "endian",
     hdrs = ["endian.h"],
     visibility = ["//mediapipe:__subpackages__"],
+    deps = ["@com_google_absl//absl/numeric:bits"],
+)
+
+cc_test(
+    name = "endian_test",
+    srcs = ["endian_test.cc"],
     deps = [
-        "//mediapipe/framework/deps:endian",
+        ":endian",
+        "//mediapipe/framework/port:gtest_main",
+        "@com_google_absl//absl/numeric:bits",
     ],
 )
 
@@ -459,6 +473,7 @@ cc_test(
         "//mediapipe/framework:calculator_framework",
         "//mediapipe/framework/formats:time_series_header_cc_proto",
         "//mediapipe/framework/port:gtest_main",
+        "@com_google_absl//absl/status",
         "@eigen//:eigen3",
     ],
 )
@@ -497,8 +512,8 @@ cc_library(
     deps = [
         "//mediapipe/framework/formats:rect_cc_proto",
         "//mediapipe/framework/port:rectangle",
-        "//mediapipe/framework/port:ret_check",
-        "//mediapipe/framework/port:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
     ],

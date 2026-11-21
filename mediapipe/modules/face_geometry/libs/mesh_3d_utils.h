@@ -15,10 +15,12 @@
 #ifndef MEDIAPIPE_FACE_GEOMETRY_LIBS_MESH_3D_UTILS_H_
 #define MEDIAPIPE_FACE_GEOMETRY_LIBS_MESH_3D_UTILS_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 
-#include "mediapipe/framework/port/statusor.h"
+#include "absl/status/status.h"    // from @com_google_absl
+#include "absl/status/statusor.h"  // from @com_google_absl
 #include "mediapipe/modules/face_geometry/protos/mesh_3d.pb.h"
 
 namespace mediapipe::face_geometry {

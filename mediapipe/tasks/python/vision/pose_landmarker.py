@@ -54,7 +54,9 @@ class MpPoseLandmarkerResultC(ctypes.Structure):
 
 _C_TYPES_RESULT_CALLBACK = ctypes.CFUNCTYPE(
     None,
+    ctypes.c_void_p,  # user_data
     ctypes.c_int32,  # MpStatus
+    ctypes.c_char_p,  # error_msg
     ctypes.POINTER(MpPoseLandmarkerResultC),
     ctypes.c_void_p,  # MpImage
     ctypes.c_int64,  # timestamp_ms
@@ -210,6 +212,7 @@ class MpPoseLandmarkerOptionsC(ctypes.Structure):
           'result_callback',
           _C_TYPES_RESULT_CALLBACK,
       ),
+      ('result_callback_user_data', ctypes.c_void_p),
   ]
 
   @classmethod
@@ -247,8 +250,8 @@ class PoseLandmarkerOptions:
     running_mode: The running mode of the task. Default to the image mode.
       PoseLandmarker has three running modes: 1) The image mode for detecting
       pose landmarks on single image inputs. 2) The video mode for detecting
-      pose landmarks on the decoded frames of a video. 3) The live stream mode
-      for detecting pose landmarks on the live stream of input data, such as
+      pose landmarks on the decoded frames of a video. 3) The livestream mode
+      for detecting pose landmarks on the livestream of input data, such as
       from camera. In this mode, the "result_callback" below must be specified
       to receive the detection results asynchronously.
     num_poses: The maximum number of poses can be detected by the
@@ -260,9 +263,9 @@ class PoseLandmarkerOptions:
     min_tracking_confidence: The minimum confidence score for the pose tracking
       to be considered successful.
     output_segmentation_masks: whether to output segmentation masks.
-    result_callback: The user-defined result callback for processing live stream
+    result_callback: The user-defined result callback for processing livestream
       data. The result callback should only be specified when the running mode
-      is set to the live stream mode.
+      is set to the livestream mode.
   """
 
   base_options: _BaseOptions
@@ -402,13 +405,13 @@ class PoseLandmarker:
       RuntimeError: If other types of error occurred.
     """
     running_mode_lib.validate_running_mode(
-        options.running_mode, options.result_callback
+        options.running_mode, options.result_callback  # pyrefly: ignore[bad-argument-type]
     )
 
     lib = mediapipe_c_bindings_lib.load_shared_library(_CTYPES_SIGNATURES)
 
     def convert_result(
-        c_result_ptr: ctypes.POINTER(MpPoseLandmarkerResultC),
+        c_result_ptr: ctypes.POINTER(MpPoseLandmarkerResultC),  # pyrefly: ignore[invalid-annotation]
         image_ptr: ctypes.c_void_p,
         timestamp_ms: int,
     ) -> Tuple[PoseLandmarkerResult, image_lib.Image, int]:
@@ -433,7 +436,7 @@ class PoseLandmarker:
         result_callback=c_callback,
     )
     landmarker = ctypes.c_void_p()
-    lib.MpPoseLandmarkerCreate(
+    lib.MpPoseLandmarkerCreate(  # pyrefly: ignore[missing-attribute]
         ctypes.byref(ctypes_options), ctypes.byref(landmarker)
     )
 
@@ -470,7 +473,7 @@ class PoseLandmarker:
         if image_processing_options
         else None
     )
-    self._lib.MpPoseLandmarkerDetectImage(
+    self._lib.MpPoseLandmarkerDetectImage(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         c_image_processing_options,
@@ -478,7 +481,7 @@ class PoseLandmarker:
     )
 
     result = PoseLandmarkerResult.from_ctypes(result_c)
-    self._lib.MpPoseLandmarkerCloseResult(ctypes.byref(result_c))
+    self._lib.MpPoseLandmarkerCloseResult(ctypes.byref(result_c))  # pyrefly: ignore[missing-attribute]
     return result
 
   def detect_for_video(
@@ -517,7 +520,7 @@ class PoseLandmarker:
         if image_processing_options
         else None
     )
-    self._lib.MpPoseLandmarkerDetectForVideo(
+    self._lib.MpPoseLandmarkerDetectForVideo(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         c_image_processing_options,
@@ -526,7 +529,7 @@ class PoseLandmarker:
     )
 
     result = PoseLandmarkerResult.from_ctypes(result_c)
-    self._lib.MpPoseLandmarkerCloseResult(ctypes.byref(result_c))
+    self._lib.MpPoseLandmarkerCloseResult(ctypes.byref(result_c))  # pyrefly: ignore[missing-attribute]
     return result
 
   def detect_async(
@@ -539,14 +542,14 @@ class PoseLandmarker:
 
     The results will be available via the "result_callback" provided in the
     PoseLandmarkerOptions. Only use this method when the PoseLandmarker is
-    created with the live stream running mode.
+    created with the livestream running mode.
 
-    Only use this method when the PoseLandmarker is created with the live
-    stream running mode. The input timestamps should be monotonically increasing
+    Only use this method when the PoseLandmarker is created with the livestream
+    running mode. The input timestamps should be monotonically increasing
     for adjacent calls of this method. This method will return immediately after
     the input image is accepted. The results will be available via the
     `result_callback` provided in the `PoseLandmarkerOptions`. The
-    `detect_async` method is designed to process live stream data such as
+    `detect_async` method is designed to process livestream data such as
     camera input. To lower the overall latency, pose landmarker may drop the
     input images if needed. In other words, it's not guaranteed to have output
     per input image.
@@ -572,7 +575,7 @@ class PoseLandmarker:
         if image_processing_options
         else None
     )
-    self._lib.MpPoseLandmarkerDetectAsync(
+    self._lib.MpPoseLandmarkerDetectAsync(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         c_image_processing_options,
@@ -583,10 +586,15 @@ class PoseLandmarker:
     """Closes the PoseLandmarker."""
     if not self._handle:
       return
-    self._lib.MpPoseLandmarkerClose(self._handle)
-    self._handle = None
-    self._dispatcher.close()
-    self._lib.close()
+    # The C library frees the task even if it fails to close, so the handle
+    # must not be used again.
+    handle = self._handle
+    self._handle = None  # pyrefly: ignore[bad-assignment]
+    try:
+      self._lib.MpPoseLandmarkerClose(handle)  # pyrefly: ignore[missing-attribute]
+    finally:
+      self._dispatcher.close()
+      self._lib.close()
 
   def __enter__(self):
     """Returns `self` upon entering the runtime context."""

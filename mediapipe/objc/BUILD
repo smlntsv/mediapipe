@@ -47,6 +47,8 @@ cc_library(
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
     ],
 )
 
@@ -88,7 +90,6 @@ cc_library(
         "//mediapipe/framework/port:ret_check",
         "//mediapipe/framework/port:source_location",
         "//mediapipe/framework/port:status",
-        "//mediapipe/framework/port:statusor",
         "//mediapipe/framework/port:threadpool",
         "//mediapipe/gpu:gl_base",
         "//mediapipe/gpu:gpu_buffer",
@@ -102,6 +103,7 @@ cc_library(
         "//third_party/apple_frameworks:CoreMedia",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@google_toolbox_for_mac//:GTM_Defines",
@@ -193,6 +195,7 @@ objc_library(
         ":mediapipe_framework_ios",
         "//third_party/apple_frameworks:CoreVideo",
         "//third_party/apple_frameworks:Foundation",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -204,10 +207,10 @@ objc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//mediapipe/framework/formats:matrix",
-        "//mediapipe/framework/port:statusor",
         "//third_party/apple_frameworks:AVFoundation",
         "//third_party/apple_frameworks:CoreAudio",
         "//third_party/apple_frameworks:CoreMedia",
+        "@com_google_absl//absl/status:statusor",
         "@eigen//:eigen3",
     ],
 )
@@ -247,10 +250,12 @@ objc_library(
         "CFHolderTests.mm",
         "MPPDisplayLinkWeakTargetTests.mm",
         "MPPGraphTests.mm",
+        "MPPPlayerInputSourceTests.mm",
         "MediaPipeAudioUtilTests.mm",
     ],
     data = [
         "testdata/googlelogo_color_272x92dp.png",
+        "//mediapipe/calculators/video:test_videos",
     ],
     visibility = ["//mediapipe/framework:mediapipe_internal"],
     deps = [

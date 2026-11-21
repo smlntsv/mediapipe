@@ -14,7 +14,7 @@
 
 #include "mediapipe/framework/profiler/circular_buffer.h"
 
-#include "absl/time/time.h"
+#include "absl/time/time.h"  // from @com_google_absl
 #include "mediapipe/framework/port/gtest.h"
 #include "mediapipe/framework/port/threadpool.h"
 
@@ -23,7 +23,7 @@ namespace {
 class CircularBufferTest : public ::testing::Test {
  protected:
   // Called before every TEST_F using this fixture.
-  CircularBufferTest() {}
+  CircularBufferTest() = default;
 };
 
 TEST_F(CircularBufferTest, SequentialWriteAndRead) {

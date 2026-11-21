@@ -19,8 +19,8 @@
 #include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
-#include "absl/strings/substitute.h"
+#include "absl/status/status.h"       // from @com_google_absl
+#include "absl/strings/substitute.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/calculator_runner.h"
 #include "mediapipe/framework/formats/image_format.pb.h"
@@ -39,6 +39,7 @@
 
 namespace mediapipe {
 using RandomEngine = std::mt19937_64;
+using ::absl_testing::StatusIs;
 using ::testing::HasSubstr;
 const uint32_t kSeed = 1234;
 const int kNumSizes = 8;

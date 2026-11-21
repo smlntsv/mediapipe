@@ -48,7 +48,7 @@ class MpRegionOfInterestC(ctypes.Structure):
 
   _fields_ = [
       ('format', ctypes.c_int),
-      ('keypoint', ctypes.POINTER(keypoint_c_module.MpNormalizedKeypointC)),
+      ('keypoint', keypoint_c_module.MpNormalizedKeypointC),
       ('scribble', ctypes.POINTER(keypoint_c_module.MpNormalizedKeypointC)),
       ('scribble_count', ctypes.c_uint32),
   ]
@@ -59,6 +59,7 @@ class MpInteractiveSegmenterLegacyOptionsC(ctypes.Structure):
 
   _fields_ = [
       ('base_options', base_options_c_module.MpBaseOptionsC),
+      ('display_names_locale', ctypes.c_char_p),
       ('output_confidence_masks', ctypes.c_bool),
       ('output_category_mask', ctypes.c_bool),
   ]
@@ -129,11 +130,8 @@ class InteractiveSegmenterLegacyOptions:
 
   Attributes:
     base_options: Base options for the interactive segmenter task.
-    running_mode: The running mode of the task.
     output_confidence_masks: Whether to output confidence masks.
     output_category_mask: Whether to output category mask.
-    result_callback: The callback function that is invoked synchronously when
-      the current thread is idle.
   """
 
   base_options: _BaseOptions
@@ -145,6 +143,7 @@ class InteractiveSegmenterLegacyOptions:
     """Generates an MpInteractiveSegmenterLegacyOptionsC ctypes struct."""
     return MpInteractiveSegmenterLegacyOptionsC(
         base_options=self.base_options.to_ctypes(),
+        display_names_locale=None,
         output_confidence_masks=self.output_confidence_masks,
         output_category_mask=self.output_category_mask,
     )
@@ -168,12 +167,12 @@ class RegionOfInterest:
       if self.format == RegionOfInterest.Format.UNSPECIFIED:
         raise ValueError('RegionOfInterest format not specified.')
       elif self.format == RegionOfInterest.Format.KEYPOINT:
-        c_roi = MpRegionOfInterestC(format=self.format.value)
         c_keypoint = keypoint_c_module.MpNormalizedKeypointC(
             x=self.keypoint.x, y=self.keypoint.y
         )
-        c_roi.keypoint = ctypes.pointer(c_keypoint)
-        return c_roi
+        return MpRegionOfInterestC(
+            format=self.format.value, keypoint=c_keypoint
+        )
       else:
         raise ValueError(
             'Please specify the Region-of-interest for segmentation.'
@@ -277,7 +276,7 @@ class InteractiveSegmenterLegacy:
     ctypes_options = options.to_ctypes()
 
     segmenter_handle = ctypes.c_void_p()
-    lib.MpInteractiveSegmenterLegacyCreate(
+    lib.MpInteractiveSegmenterLegacyCreate(  # pyrefly: ignore[missing-attribute]
         ctypes.byref(ctypes_options), ctypes.byref(segmenter_handle)
     )
     return cls(lib, segmenter_handle, dispatcher)
@@ -316,7 +315,7 @@ class InteractiveSegmenterLegacy:
         if image_processing_options
         else None
     )
-    self._lib.MpInteractiveSegmenterLegacySegmentImage(
+    self._lib.MpInteractiveSegmenterLegacySegmentImage(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         ctypes.byref(c_roi),
@@ -325,17 +324,22 @@ class InteractiveSegmenterLegacy:
     )
 
     py_result = InteractiveSegmenterLegacyResult.from_ctypes(c_result)
-    self._lib.MpInteractiveSegmenterLegacyCloseResult(ctypes.byref(c_result))
+    self._lib.MpInteractiveSegmenterLegacyCloseResult(ctypes.byref(c_result))  # pyrefly: ignore[missing-attribute]
     return py_result
 
   def close(self):
     """Closes the InteractiveSegmenterLegacy."""
     if not self._handle:
       return
-    self._lib.MpInteractiveSegmenterLegacyClose(self._handle)
-    self._handle = None
-    self._dispatcher.close()
-    self._lib.close()
+    # The C library frees the task even if it fails to close, so the handle
+    # must not be used again.
+    handle = self._handle
+    self._handle = None  # pyrefly: ignore[bad-assignment]
+    try:
+      self._lib.MpInteractiveSegmenterLegacyClose(handle)  # pyrefly: ignore[missing-attribute]
+    finally:
+      self._dispatcher.close()
+      self._lib.close()
 
   def __enter__(self):
     """Returns `self` upon entering the runtime context."""

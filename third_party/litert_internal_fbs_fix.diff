@@ -1,0 +1,39 @@
+diff --git a/tflite/delegates/gpu/cl/BUILD b/tflite/delegates/gpu/cl/BUILD
+index c396f13..86b75e1 100644
+--- a/tflite/delegates/gpu/cl/BUILD
++++ b/tflite/delegates/gpu/cl/BUILD
+@@ -609,7 +609,7 @@ flatbuffer_cc_library(
+     srcs = ["serialization.fbs"],
+     flatc_args = [
+         "--scoped-enums",
+-        "-I " + workspace_root,
++        "-I external/litert",
+     ],
+     includes = [
+         "//tflite/delegates/gpu/common:gpu_model_cc_fbs_includes",
+diff --git a/tflite/delegates/gpu/common/BUILD b/tflite/delegates/gpu/common/BUILD
+index 63a52dc..d83ed5a 100644
+--- a/tflite/delegates/gpu/common/BUILD
++++ b/tflite/delegates/gpu/common/BUILD
+@@ -96,7 +96,7 @@ flatbuffer_cc_library(
+     srcs = ["gpu_model.fbs"],
+     flatc_args = [
+         "--scoped-enums",
+-        "-I " + workspace_root,
++        "-I external/litert",
+     ],
+     includes = [
+         "//tflite/delegates/gpu/common/task:serialization_base_cc_fbs_includes",
+diff --git a/tflite/delegates/gpu/metal/BUILD b/tflite/delegates/gpu/metal/BUILD
+index a0ed0c8..b47a811 100644
+--- a/tflite/delegates/gpu/metal/BUILD
++++ b/tflite/delegates/gpu/metal/BUILD
+@@ -186,7 +186,7 @@ flatbuffer_cc_library(
+     srcs = ["inference_context.fbs"],
+     flatc_args = [
+         "--scoped-enums",
+-        "-I " + workspace_root,
++        "-I external/litert",
+     ],
+     includes = [
+         "//tflite/delegates/gpu/common:gpu_model_cc_fbs_includes",

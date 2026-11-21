@@ -19,15 +19,15 @@
 #include <cstdint>
 #include <string>
 
-#include "absl/flags/declare.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "absl/flags/declare.h"    // from @com_google_absl
+#include "absl/status/status.h"    // from @com_google_absl
+#include "absl/status/statusor.h"  // from @com_google_absl
 #include "mediapipe/calculators/tensor/inference_calculator.pb.h"
 #include "mediapipe/framework/formats/tensor.h"
 #include "mediapipe/framework/memory_manager.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/util.h"
+#include "tflite/interpreter.h"  // from @litert
+#include "tflite/util.h"         // from @litert
 
 ABSL_DECLARE_FLAG(int, xnnpack_default_num_threads);
 

@@ -189,7 +189,7 @@ public final class HandLandmarker extends BaseVisionTaskApi {
         TaskRunner.create(
             context,
             TaskInfo.<HandLandmarkerOptions>builder()
-                .setTaskName(HandLandmarker.class.getSimpleName())
+                .setTaskName("HandLandmarker")
                 .setTaskRunningModeName(landmarkerOptions.runningMode().name())
                 .setTaskGraphName(TASK_GRAPH_NAME)
                 .setInputStreams(INPUT_STREAMS)
@@ -404,7 +404,7 @@ public final class HandLandmarker extends BaseVisionTaskApi {
        * <ul>
        *   <li>IMAGE: The mode for detecting hand landmarks on single image inputs.
        *   <li>VIDEO: The mode for detecting hand landmarks on the decoded frames of a video.
-       *   <li>LIVE_STREAM: The mode for for detecting hand landmarks on a live stream of input
+       *   <li>LIVE_STREAM: The mode for detecting hand landmarks on a livestream of input
        *       data, such as from camera. In this mode, {@code setResultListener} must be called to
        *       set up a listener to receive the detection results asynchronously.
        * </ul>
@@ -425,7 +425,7 @@ public final class HandLandmarker extends BaseVisionTaskApi {
 
       /**
        * Sets the result listener to receive the detection results asynchronously when the hand
-       * landmarker is in the live stream mode.
+       * landmarker is in the livestream mode.
        */
       public abstract Builder setResultListener(
           ResultListener<HandLandmarkerResult, MPImage> value);
@@ -440,7 +440,7 @@ public final class HandLandmarker extends BaseVisionTaskApi {
        *
        * @throws IllegalArgumentException if the result listener and the running mode are not
        *     properly configured. The result listener should only be set when the hand landmarker is
-       *     in the live stream mode.
+       *     in the livestream mode.
        */
       public final HandLandmarkerOptions build() {
         HandLandmarkerOptions options = autoBuild();
@@ -492,7 +492,7 @@ public final class HandLandmarker extends BaseVisionTaskApi {
               .setBaseOptions(
                   BaseOptionsProto.BaseOptions.newBuilder()
                       .setUseStreamMode(runningMode() != RunningMode.IMAGE)
-                      .mergeFrom(convertBaseOptionsToProto(baseOptions()))
+                      .mergeFrom(convertBaseOptionsToProto(baseOptions(), /* useLiteRt= */ true))
                       .build());
 
       // Setup HandDetectorGraphOptions.

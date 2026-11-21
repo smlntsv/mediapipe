@@ -15,26 +15,40 @@ limitations under the License.
 
 #include "mediapipe/tasks/cc/vision/image_embedder/image_embedder.h"
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
+#include <variant>
+#include <vector>
 
-#include "absl/status/statusor.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
+#include "absl/strings/match.h"         // from @com_google_absl
+#include "absl/strings/str_cat.h"       // from @com_google_absl
 #include "mediapipe/framework/api2/builder.h"
+#include "mediapipe/framework/formats/image.h"
+#include "mediapipe/framework/formats/image_frame.h"
 #include "mediapipe/framework/formats/rect.pb.h"
 #include "mediapipe/framework/tool/options_map.h"
+#include "mediapipe/tasks/cc/common.h"
 #include "mediapipe/tasks/cc/components/containers/embedding_result.h"
 #include "mediapipe/tasks/cc/components/containers/proto/embeddings.pb.h"
 #include "mediapipe/tasks/cc/components/processors/embedder_options.h"
 #include "mediapipe/tasks/cc/components/processors/proto/embedder_options.pb.h"
 #include "mediapipe/tasks/cc/components/utils/cosine_similarity.h"
 #include "mediapipe/tasks/cc/core/base_options.h"
+#include "mediapipe/tasks/cc/core/embedding_provider.h"
 #include "mediapipe/tasks/cc/core/proto/base_options.pb.h"
-#include "mediapipe/tasks/cc/core/task_runner.h"
 #include "mediapipe/tasks/cc/core/utils.h"
 #include "mediapipe/tasks/cc/vision/core/image_processing_options.h"
 #include "mediapipe/tasks/cc/vision/core/running_mode.h"
 #include "mediapipe/tasks/cc/vision/core/vision_task_api_factory.h"
+#include "mediapipe/tasks/cc/vision/image_embedder/graph_image_embedder_executor.h"
+#include "mediapipe/tasks/cc/vision/image_embedder/litert_lm_image_embedder_executor.h"
 #include "mediapipe/tasks/cc/vision/image_embedder/proto/image_embedder_graph_options.pb.h"
+#include "stb_image.h"  // from @stblib
 
 namespace mediapipe {
 namespace tasks {
@@ -60,6 +74,8 @@ using ::mediapipe::NormalizedRect;
 using ::mediapipe::tasks::components::containers::ConvertToEmbeddingResult;
 using ::mediapipe::tasks::components::containers::proto::EmbeddingResult;
 using ::mediapipe::tasks::core::PacketMap;
+using ::mediapipe::tasks::vision::core::GetRunningModeName;
+using ::mediapipe::tasks::vision::core::RunningMode;
 using ::mediapipe::tasks::vision::image_embedder::proto::
     ImageEmbedderGraphOptions;
 
@@ -93,8 +109,11 @@ CalculatorGraphConfig CreateGraphConfig(
 std::unique_ptr<ImageEmbedderGraphOptions> ConvertImageEmbedderOptionsToProto(
     ImageEmbedderOptions* options) {
   auto options_proto = std::make_unique<ImageEmbedderGraphOptions>();
+  // Runs inference through LiteRT (InferenceCalculatorLiteRt) rather than the
+  // legacy TFLite delegates.
   auto base_options_proto = std::make_unique<tasks::core::proto::BaseOptions>(
-      tasks::core::ConvertBaseOptionsToProto(&(options->base_options)));
+      tasks::core::ConvertBaseOptionsToProto(&(options->base_options),
+                                             /*use_litert=*/true));
   options_proto->mutable_base_options()->Swap(base_options_proto.get());
   options_proto->mutable_base_options()->set_use_stream_mode(
       options->running_mode != core::RunningMode::IMAGE);
@@ -110,6 +129,18 @@ std::unique_ptr<ImageEmbedderGraphOptions> ConvertImageEmbedderOptionsToProto(
 
 absl::StatusOr<std::unique_ptr<ImageEmbedder>> ImageEmbedder::Create(
     std::unique_ptr<ImageEmbedderOptions> options) {
+  if (tasks::core::IsLiteRtLmModel(options->base_options)) {
+    ABSL_ASSIGN_OR_RETURN(auto executor,
+                          LiteRtLmImageEmbedderExecutor::Create(
+                              options->base_options, options->embedder_options,
+                              options->result_callback));
+    auto image_embedder =
+        std::make_unique<ImageEmbedder>(nullptr, options->running_mode);
+    image_embedder->running_mode_ = options->running_mode;
+    image_embedder->executor_ = std::move(executor);
+    return image_embedder;
+  }
+
   auto options_proto = ConvertImageEmbedderOptionsToProto(options.get());
   tasks::core::PacketsCallback packets_callback = nullptr;
   if (options->result_callback) {
@@ -120,6 +151,7 @@ absl::StatusOr<std::unique_ptr<ImageEmbedder>> ImageEmbedder::Create(
             Image image;
             result_callback(status_or_packets.status(), image,
                             Timestamp::Unset().Value());
+            return;
           }
           if (status_or_packets.value()[kImageOutStreamName].IsEmpty()) {
             return;
@@ -134,8 +166,9 @@ absl::StatusOr<std::unique_ptr<ImageEmbedder>> ImageEmbedder::Create(
                               kMicroSecondsPerMilliSecond);
         };
   }
-  return core::VisionTaskApiFactory::Create<ImageEmbedder,
-                                            ImageEmbedderGraphOptions>(
+
+  auto image_embedder_or = core::VisionTaskApiFactory::Create<
+      ImageEmbedder, ImageEmbedderGraphOptions>(
       {.config = CreateGraphConfig(
            std::move(options_proto),
            options->running_mode == core::RunningMode::LIVE_STREAM),
@@ -147,72 +180,157 @@ absl::StatusOr<std::unique_ptr<ImageEmbedder>> ImageEmbedder::Create(
        .host_environment = options->base_options.host_environment,
        .host_system = options->base_options.host_system,
        .host_version = options->base_options.host_version,
+       .app_id = options->base_options.app_id,
+       .app_version = options->base_options.app_version,
        .ca_bundle_path = options->base_options.ca_bundle_path});
+
+  if (!image_embedder_or.ok()) {
+    return image_embedder_or.status();
+  }
+
+  auto image_embedder = std::move(*image_embedder_or);
+  image_embedder->running_mode_ = options->running_mode;
+  auto runner = std::move(image_embedder->runner_);
+  ABSL_ASSIGN_OR_RETURN(auto executor,
+                        GraphImageEmbedderExecutor::Create(std::move(runner)));
+  image_embedder->executor_ = std::move(executor);
+  return image_embedder;
 }
+
+ImageEmbedder::~ImageEmbedder() = default;
 
 absl::StatusOr<ImageEmbedderResult> ImageEmbedder::Embed(
     Image image,
     std::optional<core::ImageProcessingOptions> image_processing_options) {
+  if (running_mode_ != RunningMode::IMAGE) {
+    return CreateStatusWithPayload(
+        absl::StatusCode::kInvalidArgument,
+        absl::StrCat("Task is not initialized with the image mode. Current "
+                     "running mode:",
+                     GetRunningModeName(running_mode_)),
+        MediaPipeTasksStatus::kRunnerApiCalledInWrongModeError);
+  }
   if (image.UsesGpu()) {
     return CreateStatusWithPayload(
         absl::StatusCode::kInvalidArgument,
         "GPU input images are currently not supported.",
         MediaPipeTasksStatus::kRunnerUnexpectedInputError);
   }
-  MP_ASSIGN_OR_RETURN(NormalizedRect norm_rect,
-                      ConvertToNormalizedRect(image_processing_options, image));
-  MP_ASSIGN_OR_RETURN(
-      auto output_packets,
-      ProcessImageData(
-          {{kImageInStreamName, MakePacket<Image>(std::move(image))},
-           {kNormRectStreamName,
-            MakePacket<NormalizedRect>(std::move(norm_rect))}}));
-  return ConvertToEmbeddingResult(
-      output_packets[kEmbeddingsStreamName].Get<EmbeddingResult>());
+  ABSL_ASSIGN_OR_RETURN(
+      NormalizedRect norm_rect,
+      ConvertToNormalizedRect(image_processing_options, image));
+  return executor_->Embed(std::move(image), norm_rect);
 }
 
 absl::StatusOr<ImageEmbedderResult> ImageEmbedder::EmbedForVideo(
     Image image, int64_t timestamp_ms,
     std::optional<core::ImageProcessingOptions> image_processing_options) {
+  if (running_mode_ != RunningMode::VIDEO) {
+    return CreateStatusWithPayload(
+        absl::StatusCode::kInvalidArgument,
+        absl::StrCat("Task is not initialized with the video mode. Current "
+                     "running mode:",
+                     GetRunningModeName(running_mode_)),
+        MediaPipeTasksStatus::kRunnerApiCalledInWrongModeError);
+  }
   if (image.UsesGpu()) {
     return CreateStatusWithPayload(
         absl::StatusCode::kInvalidArgument,
         "GPU input images are currently not supported.",
         MediaPipeTasksStatus::kRunnerUnexpectedInputError);
   }
-  MP_ASSIGN_OR_RETURN(NormalizedRect norm_rect,
-                      ConvertToNormalizedRect(image_processing_options, image));
-  MP_ASSIGN_OR_RETURN(
-      auto output_packets,
-      ProcessVideoData(
-          {{kImageInStreamName,
-            MakePacket<Image>(std::move(image))
-                .At(Timestamp(timestamp_ms * kMicroSecondsPerMilliSecond))},
-           {kNormRectStreamName,
-            MakePacket<NormalizedRect>(std::move(norm_rect))
-                .At(Timestamp(timestamp_ms * kMicroSecondsPerMilliSecond))}}));
-  return ConvertToEmbeddingResult(
-      output_packets[kEmbeddingsStreamName].Get<EmbeddingResult>());
+  ABSL_ASSIGN_OR_RETURN(
+      NormalizedRect norm_rect,
+      ConvertToNormalizedRect(image_processing_options, image));
+  return executor_->EmbedForVideo(std::move(image), norm_rect, timestamp_ms);
 }
 
 absl::Status ImageEmbedder::EmbedAsync(
     Image image, int64_t timestamp_ms,
     std::optional<core::ImageProcessingOptions> image_processing_options) {
+  if (running_mode_ != RunningMode::LIVE_STREAM) {
+    return CreateStatusWithPayload(
+        absl::StatusCode::kInvalidArgument,
+        absl::StrCat("Task is not initialized with the live stream mode. "
+                     "Current running mode:",
+                     GetRunningModeName(running_mode_)),
+        MediaPipeTasksStatus::kRunnerApiCalledInWrongModeError);
+  }
   if (image.UsesGpu()) {
     return CreateStatusWithPayload(
         absl::StatusCode::kInvalidArgument,
         "GPU input images are currently not supported.",
         MediaPipeTasksStatus::kRunnerUnexpectedInputError);
   }
-  MP_ASSIGN_OR_RETURN(NormalizedRect norm_rect,
-                      ConvertToNormalizedRect(image_processing_options, image));
-  return SendLiveStreamData(
-      {{kImageInStreamName,
-        MakePacket<Image>(std::move(image))
-            .At(Timestamp(timestamp_ms * kMicroSecondsPerMilliSecond))},
-       {kNormRectStreamName,
-        MakePacket<NormalizedRect>(std::move(norm_rect))
-            .At(Timestamp(timestamp_ms * kMicroSecondsPerMilliSecond))}});
+  ABSL_ASSIGN_OR_RETURN(
+      NormalizedRect norm_rect,
+      ConvertToNormalizedRect(image_processing_options, image));
+  return executor_->EmbedAsync(std::move(image), norm_rect, timestamp_ms);
+}
+
+absl::Status ImageEmbedder::Close() { return executor_->Close(); }
+
+std::unique_ptr<::mediapipe::tasks::core::EmbeddingProvider>
+ImageEmbedder::GetProvider() {
+  class ImageEmbedderProvider
+      : public ::mediapipe::tasks::core::EmbeddingProvider {
+   public:
+    explicit ImageEmbedderProvider(ImageEmbedder* embedder)
+        : embedder_(embedder) {}
+    absl::StatusOr<std::optional<std::vector<float>>> EmbedContent(
+        const std::vector<::mediapipe::tasks::core::TaskPart>& content)
+        override {
+      for (const auto& part : content) {
+        if (std::holds_alternative<::mediapipe::tasks::core::ImagePart>(part)) {
+          const auto& image_part =
+              std::get<::mediapipe::tasks::core::ImagePart>(part);
+          int width, height, channels;
+          auto* image_data = stbi_load_from_memory(
+              reinterpret_cast<const unsigned char*>(
+                  image_part.image_bytes.data()),
+              image_part.image_bytes.size(), &width, &height, &channels,
+              /*desired_channels=*/0);
+          if (image_data == nullptr) {
+            return absl::InternalError("Failed to decode image from memory.");
+          }
+          ImageFrameSharedPtr image_frame;
+          switch (channels) {
+            case 1:
+              image_frame = std::make_shared<ImageFrame>(
+                  ImageFormat::GRAY8, width, height, width, image_data,
+                  stbi_image_free);
+              break;
+            case 3:
+              image_frame = std::make_shared<ImageFrame>(
+                  ImageFormat::SRGB, width, height, 3 * width, image_data,
+                  stbi_image_free);
+              break;
+            case 4:
+              image_frame = std::make_shared<ImageFrame>(
+                  ImageFormat::SRGBA, width, height, 4 * width, image_data,
+                  stbi_image_free);
+              break;
+            default:
+              stbi_image_free(image_data);
+              return absl::InvalidArgumentError("Unsupported channel count.");
+          }
+          auto result_or = embedder_->Embed(Image(std::move(image_frame)));
+          if (!result_or.ok()) {
+            return result_or.status();
+          }
+          if (result_or->embeddings.empty()) {
+            return std::nullopt;
+          }
+          return result_or->embeddings[0].float_embedding;
+        }
+      }
+      return std::nullopt;
+    }
+
+   private:
+    ImageEmbedder* embedder_;
+  };
+  return std::make_unique<ImageEmbedderProvider>(this);
 }
 
 absl::StatusOr<double> ImageEmbedder::CosineSimilarity(

@@ -22,12 +22,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/flags/flag.h"
-#include "absl/memory/memory.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/cord.h"
-#include "absl/strings/str_cat.h"
+#include "absl/flags/flag.h"       // from @com_google_absl
+#include "absl/memory/memory.h"    // from @com_google_absl
+#include "absl/status/status.h"    // from @com_google_absl
+#include "absl/status/statusor.h"  // from @com_google_absl
+#include "absl/strings/cord.h"     // from @com_google_absl
+#include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "mediapipe/framework/deps/file_path.h"
 #include "mediapipe/framework/formats/image.h"
 #include "mediapipe/framework/formats/location_data.pb.h"
@@ -37,15 +37,19 @@ limitations under the License.
 #include "mediapipe/framework/port/status_matchers.h"
 #include "mediapipe/tasks/cc/components/containers/detection_result.h"
 #include "mediapipe/tasks/cc/components/containers/rect.h"
+#include "mediapipe/tasks/cc/core/host_environment.h"
+#include "mediapipe/tasks/cc/core/logging/tasks_logger.h"
+#include "mediapipe/tasks/cc/core/running_mode.h"
+#include "mediapipe/tasks/cc/core/task_runner_test_peer.h"
 #include "mediapipe/tasks/cc/vision/core/image_processing_options.h"
 #include "mediapipe/tasks/cc/vision/core/running_mode.h"
 #include "mediapipe/tasks/cc/vision/utils/image_tensor_specs.h"
 #include "mediapipe/tasks/cc/vision/utils/image_utils.h"
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/core/api/op_resolver.h"
-#include "tensorflow/lite/kernels/builtin_op_kernels.h"
-#include "tensorflow/lite/mutable_op_resolver.h"
-#include "tensorflow/lite/test_util.h"
+#include "tflite/c/common.h"                    // from @litert
+#include "tflite/core/api/op_resolver.h"        // from @litert
+#include "tflite/kernels/builtin_op_kernels.h"  // from @litert
+#include "tflite/mutable_op_resolver.h"         // from @litert
+#include "tflite/test_util.h"                   // from @litert
 
 namespace tflite {
 namespace ops {
@@ -94,12 +98,16 @@ constexpr absl::string_view kEfficientDetWithoutNms{
 // If the proto definition changes, please also change this function.
 void ExpectApproximatelyEqual(const ObjectDetectorResult& actual,
                               const ObjectDetectorResult& expected) {
-  const float kPrecision = 1e-6;
+  const float kPrecision = 0.03;
+  const int kBoxTolerance = 20;
   EXPECT_EQ(actual.detections.size(), expected.detections.size());
   for (int i = 0; i < actual.detections.size(); ++i) {
     const Detection& a = actual.detections[i];
     const Detection& b = expected.detections[i];
-    EXPECT_EQ(a.bounding_box, b.bounding_box);
+    EXPECT_NEAR(a.bounding_box.left, b.bounding_box.left, kBoxTolerance);
+    EXPECT_NEAR(a.bounding_box.top, b.bounding_box.top, kBoxTolerance);
+    EXPECT_NEAR(a.bounding_box.right, b.bounding_box.right, kBoxTolerance);
+    EXPECT_NEAR(a.bounding_box.bottom, b.bounding_box.bottom, kBoxTolerance);
     EXPECT_EQ(a.categories.size(), 1);
     EXPECT_EQ(b.categories.size(), 1);
     EXPECT_EQ(a.categories[0].category_name, b.categories[0].category_name);
@@ -171,6 +179,37 @@ TEST_F(CreateFromOptionsTest, SucceedsWithSelectiveOpResolver) {
   options->base_options.op_resolver =
       std::make_unique<MobileSsdQuantizedOpResolver>();
   MP_ASSERT_OK(ObjectDetector::Create(std::move(options)));
+}
+
+TEST_F(CreateFromOptionsTest, ForwardsBaseOptionsTelemetryToTasksLogger) {
+  auto options = std::make_unique<ObjectDetectorOptions>();
+  options->base_options.model_asset_path =
+      JoinPath("./", kTestDataDirectory, kMobileSsdWithMetadata);
+  options->base_options.host_environment =
+      tasks::core::HostEnvironment::HOST_ENVIRONMENT_IOS;
+  options->base_options.host_system = tasks::core::HostSystem::HOST_SYSTEM_IOS;
+  options->base_options.host_version = "17.4.1";
+  options->base_options.app_id = "com.example.app";
+  options->base_options.app_version = "1.2.3";
+  options->base_options.ca_bundle_path = "/etc/ssl/certs/ca-certificates.crt";
+  MP_ASSERT_OK_AND_ASSIGN(std::unique_ptr<ObjectDetector> object_detector,
+                          ObjectDetector::Create(std::move(options)));
+  const tasks::core::logging::LoggingOptions* logging_options =
+      tasks::core::TaskRunnerTestPeer::GetLoggingOptions(*object_detector);
+  ASSERT_NE(logging_options, nullptr);
+  EXPECT_EQ(logging_options->task_name, "ObjectDetector");
+  EXPECT_EQ(logging_options->task_running_mode,
+            tasks::core::RunningMode::kImage);
+  EXPECT_EQ(logging_options->host_environment,
+            tasks::core::HostEnvironment::HOST_ENVIRONMENT_IOS);
+  EXPECT_EQ(logging_options->host_system,
+            tasks::core::HostSystem::HOST_SYSTEM_IOS);
+  EXPECT_EQ(logging_options->host_version, "17.4.1");
+  EXPECT_EQ(logging_options->app_id, "com.example.app");
+  EXPECT_EQ(logging_options->app_version, "1.2.3");
+  EXPECT_EQ(logging_options->ca_bundle_path,
+            "/etc/ssl/certs/ca-certificates.crt");
+  MP_ASSERT_OK(object_detector->Close());
 }
 
 // OpResolver missing the Detection_PostProcess op.

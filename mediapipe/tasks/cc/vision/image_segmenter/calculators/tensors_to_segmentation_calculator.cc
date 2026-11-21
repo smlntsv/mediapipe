@@ -24,19 +24,20 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
-#include "absl/types/span.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/strings/str_cat.h"       // from @com_google_absl
+#include "absl/types/span.h"            // from @com_google_absl
 #include "mediapipe/framework/api3/calculator.h"
 #include "mediapipe/framework/api3/calculator_context.h"
 #include "mediapipe/framework/api3/calculator_contract.h"
+#include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/image.h"
 #include "mediapipe/framework/formats/image_frame.h"
 #include "mediapipe/framework/formats/image_frame_opencv.h"
 #include "mediapipe/framework/formats/tensor.h"
 #include "mediapipe/framework/port/opencv_imgproc_inc.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/tasks/cc/vision/image_segmenter/calculators/tensors_to_segmentation_calculator.pb.h"
 #include "mediapipe/tasks/cc/vision/image_segmenter/proto/segmenter_options.pb.h"
 #include "mediapipe/tasks/cc/vision/utils/image_utils.h"
@@ -363,7 +364,7 @@ absl::Status TensorsToSegmentationNodeImpl::Open(
   }
 #ifdef TASK_SEGMENTATION_USE_GL_POSTPROCESSING
   if (options_.use_gpu_postprocessing()) {
-    MP_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         postprocessor_.Initialize(&cc.GetGenericContext(), options_));
   }
 #endif  // TASK_SEGMENTATION_USE_GL_POSTPROCESSING
@@ -381,8 +382,8 @@ absl::Status TensorsToSegmentationNodeImpl::Process(
   }
   const auto& input_tensor =
       input_tensors.size() == 1 ? input_tensors[0] : input_tensors[1];
-  MP_ASSIGN_OR_RETURN(const Shape input_shape,
-                      GetImageLikeTensorShape(input_tensor));
+  ABSL_ASSIGN_OR_RETURN(const Shape input_shape,
+                        GetImageLikeTensorShape(input_tensor));
 
   // Validate confidence mask output channels.
   for (int n = 0; n < options_.confidence_mask_options().output_channels_size();

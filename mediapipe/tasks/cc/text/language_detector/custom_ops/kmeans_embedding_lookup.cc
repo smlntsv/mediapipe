@@ -17,11 +17,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <iostream>
 #include <vector>
 
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
+#include "tflite/c/c_api_types.h"                   // from @litert
+#include "tflite/c/common.h"                        // from @litert
+#include "tflite/kernels/internal/tensor_ctypes.h"  // from @litert
+#include "tflite/kernels/kernel_util.h"             // from @litert
 
 namespace mediapipe::tflite_operations {
 namespace kmeans_embedding_lookup_op {

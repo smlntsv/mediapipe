@@ -18,13 +18,13 @@
 #include <type_traits>
 #include <utility>
 
-#include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
-#include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
-#include "absl/synchronization/mutex.h"
+#include "absl/log/absl_check.h"         // from @com_google_absl
+#include "absl/log/absl_log.h"           // from @com_google_absl
+#include "absl/status/status.h"          // from @com_google_absl
+#include "absl/strings/str_cat.h"        // from @com_google_absl
+#include "absl/strings/str_format.h"     // from @com_google_absl
+#include "absl/strings/str_join.h"       // from @com_google_absl
+#include "absl/synchronization/mutex.h"  // from @com_google_absl
 #include "mediapipe/framework/packet.h"
 #include "mediapipe/framework/port/logging.h"
 #include "mediapipe/framework/port/source_location.h"
@@ -175,8 +175,7 @@ absl::Status InputStreamManager::AddOrMovePacketsInternal(Container container,
       ++num_packets_added_;
       VLOG(3) << "Input stream:" << name_
               << " has added packet at time: " << packet.Timestamp();
-      if (std::is_const<
-              typename std::remove_reference<Container>::type>::value) {
+      if (std::is_const_v<std::remove_reference_t<Container>>) {
         queue_.emplace_back(packet);
       } else {
         queue_.emplace_back(std::move(packet));

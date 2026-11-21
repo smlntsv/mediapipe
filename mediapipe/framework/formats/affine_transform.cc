@@ -14,20 +14,10 @@
 
 #include "mediapipe/framework/formats/affine_transform.h"
 
-#include <algorithm>
 #include <cmath>
-#include <memory>
 #include <vector>
 
-#include "absl/memory/memory.h"
-#include "absl/strings/substitute.h"
-#include "mediapipe/framework/port/canonical_errors.h"
-#include "mediapipe/framework/port/logging.h"
 #include "mediapipe/framework/port/point2.h"
-#include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
-#include "mediapipe/framework/port/statusor.h"
-#include "mediapipe/framework/tool/status_util.h"
 #include "mediapipe/framework/type_map.h"
 
 namespace mediapipe {

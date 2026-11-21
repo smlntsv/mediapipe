@@ -21,18 +21,18 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/flags/flag.h"
-#include "absl/status/status.h"
-#include "absl/strings/cord.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
-#include "absl/strings/substitute.h"
+#include "absl/flags/flag.h"           // from @com_google_absl
+#include "absl/status/status.h"        // from @com_google_absl
+#include "absl/strings/cord.h"         // from @com_google_absl
+#include "absl/strings/str_cat.h"      // from @com_google_absl
+#include "absl/strings/string_view.h"  // from @com_google_absl
+#include "absl/strings/substitute.h"   // from @com_google_absl
 #include "mediapipe/framework/deps/file_path.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
 #include "mediapipe/framework/port/status_matchers.h"
 #include "mediapipe/tasks/cc/common.h"
-#include "tensorflow/lite/test_util.h"
+#include "tflite/test_util.h"  // from @litert
 
 namespace mediapipe::tasks::text::language_detector {
 namespace {

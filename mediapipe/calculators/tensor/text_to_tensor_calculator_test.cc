@@ -15,10 +15,11 @@
 #include <cstring>
 #include <vector>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "absl/strings/substitute.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
+#include "absl/strings/string_view.h"   // from @com_google_absl
+#include "absl/strings/substitute.h"    // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/calculator_graph.h"
 #include "mediapipe/framework/formats/tensor.h"
@@ -50,11 +51,11 @@ absl::StatusOr<std::string> RunTextToTensorCalculator(absl::string_view text) {
 
   // Run the graph.
   CalculatorGraph graph;
-  MP_RETURN_IF_ERROR(graph.Initialize(graph_config));
-  MP_RETURN_IF_ERROR(graph.StartRun({}));
-  MP_RETURN_IF_ERROR(graph.AddPacketToInputStream(
+  ABSL_RETURN_IF_ERROR(graph.Initialize(graph_config));
+  ABSL_RETURN_IF_ERROR(graph.StartRun({}));
+  ABSL_RETURN_IF_ERROR(graph.AddPacketToInputStream(
       "text", MakePacket<std::string>(text).At(Timestamp(0))));
-  MP_RETURN_IF_ERROR(graph.WaitUntilIdle());
+  ABSL_RETURN_IF_ERROR(graph.WaitUntilIdle());
 
   if (output_packets.size() != 1) {
     return absl::InvalidArgumentError(absl::Substitute(

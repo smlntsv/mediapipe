@@ -15,7 +15,8 @@
 #include "mediapipe/framework/calculator_base.h"
 
 // TODO: Move protos in another CL after the C++ code migration.
-#include "absl/container/flat_hash_set.h"
+#include "absl/container/flat_hash_set.h"  // from @com_google_absl
+#include "absl/status/status.h"            // from @com_google_absl
 #include "mediapipe/framework/calculator.pb.h"
 #include "mediapipe/framework/calculator_context.h"
 #include "mediapipe/framework/calculator_context_manager.h"
@@ -26,7 +27,6 @@
 #include "mediapipe/framework/output_stream_shard.h"
 #include "mediapipe/framework/packet_set.h"
 #include "mediapipe/framework/packet_type.h"
-#include "mediapipe/framework/port/canonical_errors.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
 #include "mediapipe/framework/port/status_matchers.h"
@@ -184,7 +184,7 @@ TEST(CalculatorTest, CreateByNameWhitelisted) {
   // Register a whitelisted calculator.
   CalculatorBaseRegistry::Register(
       "::mediapipe::test_ns::whitelisted_ns::DeadCalculator",
-      absl::make_unique<internal::CalculatorBaseFactoryFor<
+      std::make_unique<internal::CalculatorBaseFactoryFor<
           mediapipe::test_ns::whitelisted_ns::DeadCalculator>>);
 
   // A whitelisted calculator can be found in its own namespace.

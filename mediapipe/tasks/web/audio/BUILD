@@ -11,6 +11,8 @@ package(default_visibility = ["//mediapipe/tasks:internal"])
 
 AUDIO_LIBS = [
     "//mediapipe/tasks/web/audio/audio_classifier",
+    "//mediapipe/tasks/web/audio/audio_transcriber",
+    "//mediapipe/tasks/web/audio/text_to_speech",
     "//mediapipe/tasks/web/core:fileset_resolver",
 ]
 
@@ -33,8 +35,6 @@ mediapipe_files(srcs = [
     "wasm/audio_wasm_internal.wasm",
     "wasm/audio_wasm_module_internal.js",
     "wasm/audio_wasm_module_internal.wasm",
-    "wasm/audio_wasm_nosimd_internal.js",
-    "wasm/audio_wasm_nosimd_internal.wasm",
 ])
 
 rollup_bundle(
@@ -129,8 +129,6 @@ pkg_npm(
         "wasm/audio_wasm_internal.wasm",
         "wasm/audio_wasm_module_internal.js",
         "wasm/audio_wasm_module_internal.wasm",
-        "wasm/audio_wasm_nosimd_internal.js",
-        "wasm/audio_wasm_nosimd_internal.wasm",
         ":audio_sources",
     ],
 )

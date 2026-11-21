@@ -22,19 +22,18 @@
 #include <utility>
 #include <vector>
 
-#include "absl/log/absl_log.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
-#include "absl/strings/string_view.h"
-#include "exif.h"
+#include "absl/status/status.h"        // from @com_google_absl
+#include "absl/status/statusor.h"      // from @com_google_absl
+#include "absl/strings/str_format.h"   // from @com_google_absl
+#include "absl/strings/string_view.h"  // from @com_google_absl
+#include "exif.h"                      // from @easyexif
 #include "mediapipe/framework/deps/file_helpers.h"
 #include "mediapipe/framework/formats/image.h"
 #include "mediapipe/framework/formats/image_frame.h"
 #include "mediapipe/tasks/c/core/mp_status.h"
 #include "mediapipe/tasks/c/core/mp_status_converter.h"
 #include "mediapipe/tasks/c/vision/core/image_frame_util.h"
-#include "stb_image.h"
+#include "stb_image.h"  // from @stblib
 
 namespace {
 
@@ -397,26 +396,10 @@ MP_EXPORT MpStatus MpImageCreateFromFile(const char* file_name, MpImagePtr* out,
   int height = 0;
   int channels = 0;
 
-#if TARGET_OS_OSX && !MEDIAPIPE_DISABLE_GPU
-  // On MacOS, stbi_load does not support 3-channel images, so we read the
-  // number of channels first and request RGBA if needed.
-  if (stbi_info_from_memory(
-          reinterpret_cast<const unsigned char*>(file_contents.data()),
-          file_contents.size(), &width, &height, &channels)) {
-    if (channels == 3) {
-      channels = 4;
-    }
-    int unused;
-    image_data = stbi_load_from_memory(
-        reinterpret_cast<const unsigned char*>(file_contents.data()),
-        file_contents.size(), &width, &height, &unused, channels);
-  }
-#else
   image_data = stbi_load_from_memory(
       reinterpret_cast<const unsigned char*>(file_contents.data()),
       file_contents.size(), &width, &height, &channels,
       /*desired_channels=*/0);
-#endif  // TARGET_OS_OSX && !MEDIAPIPE_DISABLE_GPU
   if (image_data == nullptr) {
     return HandleStatus(absl::InternalError("Failed to load image from file"),
                         error_msg);

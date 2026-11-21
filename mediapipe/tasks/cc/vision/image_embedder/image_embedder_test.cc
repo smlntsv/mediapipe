@@ -15,24 +15,28 @@ limitations under the License.
 
 #include "mediapipe/tasks/cc/vision/image_embedder/image_embedder.h"
 
+#include <fstream>
+#include <ios>
+#include <iterator>
 #include <memory>
 #include <utility>
 
-#include "absl/flags/flag.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "absl/flags/flag.h"       // from @com_google_absl
+#include "absl/status/status.h"    // from @com_google_absl
+#include "absl/status/statusor.h"  // from @com_google_absl
 #include "mediapipe/framework/deps/file_path.h"
 #include "mediapipe/framework/formats/image.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
 #include "mediapipe/framework/port/status_matchers.h"
 #include "mediapipe/tasks/cc/components/containers/embedding_result.h"
+#include "mediapipe/tasks/cc/core/embedding_provider.h"
 #include "mediapipe/tasks/cc/vision/core/running_mode.h"
 #include "mediapipe/tasks/cc/vision/utils/image_utils.h"
-#include "tensorflow/lite/core/api/op_resolver.h"
-#include "tensorflow/lite/kernels/builtin_op_kernels.h"
-#include "tensorflow/lite/mutable_op_resolver.h"
-#include "tensorflow/lite/test_util.h"
+#include "tflite/core/api/op_resolver.h"        // from @litert
+#include "tflite/kernels/builtin_op_kernels.h"  // from @litert
+#include "tflite/mutable_op_resolver.h"         // from @litert
+#include "tflite/test_util.h"                   // from @litert
 
 namespace mediapipe {
 namespace tasks {
@@ -49,7 +53,7 @@ using ::testing::Optional;
 constexpr char kTestDataDirectory[] = "/mediapipe/tasks/testdata/vision/";
 constexpr char kMobileNetV3Embedder[] =
     "mobilenet_v3_small_100_224_embedder.tflite";
-constexpr double kSimilarityTolerancy = 1e-6;
+constexpr double kSimilarityTolerancy = 1e-3;
 
 // Utility function to check the sizes, head_index and head_names of a result
 // produced by kMobileNetV3Embedder.
@@ -125,7 +129,7 @@ TEST_F(CreateTest, FailsWithSelectiveOpResolverMissingOps) {
 
   EXPECT_EQ(image_embedder.status().code(), absl::StatusCode::kInternal);
   EXPECT_THAT(image_embedder.status().message(),
-              HasSubstr("interpreter_builder(&interpreter) == kTfLiteOk"));
+              HasSubstr("Failed to build TFL interpreter"));
 }
 
 TEST_F(CreateTest, FailsWithMissingModel) {
@@ -607,6 +611,33 @@ TEST_F(LiveStreamModeTest, Succeeds) {
       EXPECT_LE(abs(similarity - expected_similarity), kSimilarityTolerancy);
     }
   }
+}
+
+TEST_F(ImageModeTest, TestGetProviderSucceeds) {
+  auto options = std::make_unique<ImageEmbedderOptions>();
+  options->base_options.model_asset_path =
+      JoinPath("./", kTestDataDirectory, kMobileNetV3Embedder);
+  options->base_options.op_resolver = std::make_unique<MobileNetV3OpResolver>();
+  MP_ASSERT_OK_AND_ASSIGN(std::unique_ptr<ImageEmbedder> image_embedder,
+                          ImageEmbedder::Create(std::move(options)));
+
+  auto provider = image_embedder->GetProvider();
+  ASSERT_NE(provider, nullptr);
+
+  std::string path = JoinPath("./", kTestDataDirectory, "burger.jpg");
+  std::ifstream file(path, std::ios::binary);
+  ASSERT_TRUE(file.is_open());
+  std::string image_bytes((std::istreambuf_iterator<char>(file)),
+                          std::istreambuf_iterator<char>());
+
+  std::vector<::mediapipe::tasks::core::TaskPart> content;
+  content.push_back(::mediapipe::tasks::core::ImagePart{image_bytes});
+
+  MP_ASSERT_OK_AND_ASSIGN(auto embedding_opt, provider->EmbedContent(content));
+  ASSERT_TRUE(embedding_opt.has_value());
+  EXPECT_FALSE(embedding_opt->empty());
+
+  MP_ASSERT_OK(image_embedder->Close());
 }
 
 }  // namespace

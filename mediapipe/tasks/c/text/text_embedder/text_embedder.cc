@@ -18,24 +18,20 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/log/absl_check.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "mediapipe/framework/port/status_macros.h"
+#include "absl/log/absl_check.h"        // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
+#include "absl/strings/str_cat.h"       // from @com_google_absl
 #include "mediapipe/tasks/c/components/containers/embedding_result.h"
 #include "mediapipe/tasks/c/components/containers/embedding_result_converter.h"
 #include "mediapipe/tasks/c/components/processors/embedder_options_converter.h"
 #include "mediapipe/tasks/c/core/base_options_converter.h"
 #include "mediapipe/tasks/c/core/mp_status.h"
 #include "mediapipe/tasks/c/core/mp_status_converter.h"
+#include "mediapipe/tasks/c/text/text_embedder/text_embedder_internal.h"
 #include "mediapipe/tasks/cc/components/containers/embedding_result.h"
 #include "mediapipe/tasks/cc/text/text_embedder/text_embedder.h"
-
-struct MpTextEmbedderInternal {
-  std::unique_ptr<::mediapipe::tasks::text::text_embedder::TextEmbedder>
-      instance;
-};
 
 namespace mediapipe::tasks::c::text::text_embedder {
 
@@ -99,10 +95,10 @@ absl::StatusOr<TextRole> CppConvertToTextRole(MpTextEmbedderRole text_role) {
 absl::StatusOr<TextFormatContext> CppConvertToTextFormatContext(
     const struct MpTextEmbedderFormatContext* c_format_context) {
   TextFormatContext cpp_format_context;
-  MP_ASSIGN_OR_RETURN(cpp_format_context.task_type,
-                      CppConvertToEmbeddingType(c_format_context->task_type));
-  MP_ASSIGN_OR_RETURN(cpp_format_context.role,
-                      CppConvertToTextRole(c_format_context->role));
+  ABSL_ASSIGN_OR_RETURN(cpp_format_context.task_type,
+                        CppConvertToEmbeddingType(c_format_context->task_type));
+  ABSL_ASSIGN_OR_RETURN(cpp_format_context.role,
+                        CppConvertToTextRole(c_format_context->role));
   if (c_format_context->title) {
     cpp_format_context.title = c_format_context->title;
   }
@@ -135,12 +131,12 @@ absl::Status CppTextEmbedderEmbed(
   auto cpp_embedder = GetCppEmbedder(embedder);
   EmbeddingResult cpp_result;
   if (format_context) {
-    MP_ASSIGN_OR_RETURN(auto cpp_format_context,
-                        CppConvertToTextFormatContext(format_context));
-    MP_ASSIGN_OR_RETURN(cpp_result,
-                        cpp_embedder->Embed(utf8_str, cpp_format_context));
+    ABSL_ASSIGN_OR_RETURN(auto cpp_format_context,
+                          CppConvertToTextFormatContext(format_context));
+    ABSL_ASSIGN_OR_RETURN(cpp_result,
+                          cpp_embedder->Embed(utf8_str, cpp_format_context));
   } else {
-    MP_ASSIGN_OR_RETURN(cpp_result, cpp_embedder->Embed(utf8_str));
+    ABSL_ASSIGN_OR_RETURN(cpp_result, cpp_embedder->Embed(utf8_str));
   }
 
   CppConvertToEmbeddingResult(cpp_result, result);
@@ -153,12 +149,11 @@ void CppTextEmbedderCloseResult(MpTextEmbedderResult* result) {
 
 absl::Status CppTextEmbedderClose(MpTextEmbedderPtr embedder) {
   auto cpp_embedder = GetCppEmbedder(embedder);
-  auto result = cpp_embedder->Close();
-  if (!result.ok()) {
-    return result;
-  }
+  absl::Status status = cpp_embedder->Close();
+  // The embedder is freed even if it fails to close. It cannot be closed a
+  // second time, so it would be leaked otherwise.
   delete embedder;
-  return absl::OkStatus();
+  return status;
 }
 
 absl::Status CppTextEmbedderCosSimilarity(const MpEmbedding* u,
@@ -168,7 +163,7 @@ absl::Status CppTextEmbedderCosSimilarity(const MpEmbedding* u,
   CppConvertToCppEmbedding(*u, &cpp_u);
   CppEmbedding cpp_v;
   CppConvertToCppEmbedding(*v, &cpp_v);
-  MP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       *similarity,
       mediapipe::tasks::text::text_embedder::TextEmbedder::CosineSimilarity(
           cpp_u, cpp_v));

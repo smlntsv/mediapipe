@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "mediapipe/tasks/c/core/base_options_converter.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <string>
+#include <variant>
 
 #include "mediapipe/framework/port/gtest.h"
 #include "mediapipe/tasks/c/core/base_options.h"
@@ -69,6 +72,75 @@ TEST(BaseOptionsConverterTest, ConvertsBaseOptionsDelegate) {
   CppConvertToBaseOptions(c_base_options, &cpp_base_options);
   EXPECT_EQ(cpp_base_options.delegate,
             mediapipe::tasks::core::BaseOptions::GPU);
+  EXPECT_FALSE(cpp_base_options.disable_default_service);
+}
+
+TEST(BaseOptionsConverterTest, ConvertsNpuDispatchLibraryDir) {
+  MpBaseOptions c_base_options = {};
+  c_base_options.delegate = MP_DELEGATE_NPU;
+  c_base_options.npu_dispatch_library_dir = "/data/app/lib/arm64";
+
+  mediapipe::tasks::core::BaseOptions cpp_base_options = {};
+
+  CppConvertToBaseOptions(c_base_options, &cpp_base_options);
+  EXPECT_EQ(cpp_base_options.delegate,
+            mediapipe::tasks::core::BaseOptions::NPU);
+  ASSERT_TRUE(cpp_base_options.delegate_options.has_value());
+  ASSERT_TRUE(
+      std::holds_alternative<mediapipe::tasks::core::BaseOptions::NpuOptions>(
+          *cpp_base_options.delegate_options));
+  EXPECT_EQ(std::get<mediapipe::tasks::core::BaseOptions::NpuOptions>(
+                *cpp_base_options.delegate_options)
+                .dispatch_library_directory,
+            "/data/app/lib/arm64");
+}
+
+TEST(BaseOptionsConverterTest, LeavesNpuDelegateOptionsUnsetWithoutDir) {
+  MpBaseOptions c_base_options = {};
+  c_base_options.delegate = MP_DELEGATE_NPU;
+
+  mediapipe::tasks::core::BaseOptions cpp_base_options = {};
+
+  CppConvertToBaseOptions(c_base_options, &cpp_base_options);
+  EXPECT_EQ(cpp_base_options.delegate,
+            mediapipe::tasks::core::BaseOptions::NPU);
+  EXPECT_FALSE(cpp_base_options.delegate_options.has_value());
+}
+
+TEST(BaseOptionsConverterTest, IgnoresNpuDispatchLibraryDirForNonNpuDelegate) {
+  MpBaseOptions c_base_options = {};
+  c_base_options.delegate = MP_DELEGATE_GPU;
+  c_base_options.npu_dispatch_library_dir = "/data/app/lib/arm64";
+
+  mediapipe::tasks::core::BaseOptions cpp_base_options = {};
+
+  CppConvertToBaseOptions(c_base_options, &cpp_base_options);
+  EXPECT_FALSE(cpp_base_options.delegate_options.has_value());
+}
+
+TEST(BaseOptionsConverterTest, ConvertsGpuDelegateOptions) {
+  MpBaseOptions c_base_options = {};
+  c_base_options.delegate = MP_DELEGATE_GPU;
+  c_base_options.gpu_cached_kernel_path = "/cache/kernels";
+  c_base_options.gpu_serialized_model_dir = "/cache/models";
+  c_base_options.gpu_model_token = "token_1";
+  c_base_options.gpu_backend = MP_GPU_BACKEND_OPENCL;
+
+  mediapipe::tasks::core::BaseOptions cpp_base_options = {};
+
+  CppConvertToBaseOptions(c_base_options, &cpp_base_options);
+  ASSERT_TRUE(cpp_base_options.delegate_options.has_value());
+  ASSERT_TRUE(
+      std::holds_alternative<mediapipe::tasks::core::BaseOptions::GpuOptions>(
+          *cpp_base_options.delegate_options));
+  const auto& gpu_options =
+      std::get<mediapipe::tasks::core::BaseOptions::GpuOptions>(
+          *cpp_base_options.delegate_options);
+  EXPECT_EQ(gpu_options.cached_kernel_path, "/cache/kernels");
+  EXPECT_EQ(gpu_options.serialized_model_dir, "/cache/models");
+  EXPECT_EQ(gpu_options.model_token, "token_1");
+  EXPECT_EQ(gpu_options.backend,
+            mediapipe::tasks::core::BaseOptions::GpuOptions::Backend::OPENCL);
 }
 
 TEST(BaseOptionsConverterTest, ConvertsBaseOptionsAppId) {
@@ -97,6 +169,8 @@ TEST(BaseOptionsConverterTest, ToMpHostEnvironmentConvertsValues) {
   EXPECT_EQ(ToMpHostEnvironment(2), MP_HOST_ENVIRONMENT_IOS);
   EXPECT_EQ(ToMpHostEnvironment(3), MP_HOST_ENVIRONMENT_PYTHON);
   EXPECT_EQ(ToMpHostEnvironment(4), MP_HOST_ENVIRONMENT_WEB);
+  EXPECT_EQ(ToMpHostEnvironment(5), MP_HOST_ENVIRONMENT_FLUTTER);
+  EXPECT_EQ(ToMpHostEnvironment(6), MP_HOST_ENVIRONMENT_FLUTTER_WEB);
 }
 
 TEST(BaseOptionsConverterTest, ToMpHostSystemConvertsValues) {
@@ -126,6 +200,70 @@ TEST(BaseOptionsConverterTest, ConvertsBaseOptionsFileDescriptorZero) {
 
   CppConvertToBaseOptions(c_base_options, &cpp_base_options);
   EXPECT_EQ(cpp_base_options.model_asset_descriptor_meta.fd, -1);
+}
+
+TEST(BaseOptionsConverterTest, FreesAndResetsBaseOptions) {
+  int dummy_context = 1;
+  MpBaseOptions c_base_options = {
+      /* model_asset_buffer= */ strdup("buffer"),
+      /* model_asset_buffer_count= */ 6,
+      /* model_asset_path= */ strdup("model.tflite"),
+      /* file_descriptor= */ 42,
+      /* delegate= */ MP_DELEGATE_GPU,
+      /* host_environment= */ MP_HOST_ENVIRONMENT_IOS,
+      /* host_system= */ MP_HOST_SYSTEM_IOS,
+      /* host_version= */ strdup("17.0"),
+      /* ca_bundle_path= */ strdup("/etc/ssl/cert.pem"),
+      /* app_id= */ strdup("com.example.app"),
+      /* app_version= */ strdup("1.2.3"),
+      /* npu_dispatch_library_dir= */ strdup("/data/app/lib/arm64"),
+      /* cpu_num_threads= */ 4,
+      /* cpu_use_xnnpack= */ true,
+      /* gpu_cached_kernel_path= */ strdup("/cache/kernels"),
+      /* gpu_serialized_model_dir= */ strdup("/cache/models"),
+      /* gpu_model_token= */ strdup("token"),
+      /* gpu_backend= */ MP_GPU_BACKEND_OPENCL,
+      /* litert_runtime_handle= */ 11,
+      /* litert_gpu_accelerator_handle= */ 22,
+      /* litert_runtime_context= */ &dummy_context,
+  };
+
+  MpBaseOptionsFree(&c_base_options);
+
+  EXPECT_EQ(c_base_options.model_asset_buffer, nullptr);
+  EXPECT_EQ(c_base_options.model_asset_buffer_count, 0u);
+  EXPECT_EQ(c_base_options.model_asset_path, nullptr);
+  EXPECT_EQ(c_base_options.file_descriptor, -1);
+  EXPECT_EQ(c_base_options.delegate, MP_DELEGATE_DEFAULT);
+  EXPECT_EQ(c_base_options.host_environment, MP_HOST_ENVIRONMENT_UNKNOWN);
+  EXPECT_EQ(c_base_options.host_system, MP_HOST_SYSTEM_UNKNOWN);
+  EXPECT_EQ(c_base_options.host_version, nullptr);
+  EXPECT_EQ(c_base_options.ca_bundle_path, nullptr);
+  EXPECT_EQ(c_base_options.app_id, nullptr);
+  EXPECT_EQ(c_base_options.app_version, nullptr);
+  EXPECT_EQ(c_base_options.npu_dispatch_library_dir, nullptr);
+  EXPECT_EQ(c_base_options.cpu_num_threads, 0);
+  EXPECT_FALSE(c_base_options.cpu_use_xnnpack);
+  EXPECT_EQ(c_base_options.gpu_cached_kernel_path, nullptr);
+  EXPECT_EQ(c_base_options.gpu_serialized_model_dir, nullptr);
+  EXPECT_EQ(c_base_options.gpu_model_token, nullptr);
+  EXPECT_EQ(c_base_options.gpu_backend, MP_GPU_BACKEND_DEFAULT);
+  EXPECT_EQ(c_base_options.litert_runtime_handle, 0u);
+  EXPECT_EQ(c_base_options.litert_gpu_accelerator_handle, 0u);
+  EXPECT_EQ(c_base_options.litert_runtime_context, nullptr);
+}
+
+TEST(BaseOptionsConverterTest, IncludesTrailingSlotsInStructLayout) {
+  EXPECT_GE(sizeof(MpBaseOptions),
+            offsetof(MpBaseOptions, gpu_backend) + sizeof(MpGpuBackend) +
+                2 * sizeof(std::uintptr_t) + sizeof(const void*));
+  if constexpr (sizeof(void*) == 8) {
+    EXPECT_EQ(sizeof(MpBaseOptions), 144u);
+  }
+}
+
+TEST(BaseOptionsConverterTest, FreeHandlesNullptr) {
+  MpBaseOptionsFree(nullptr);
 }
 
 }  // namespace mediapipe::tasks::c::core

@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "absl/status/status.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
-#include "mediapipe/framework/port/status_macros.h"
-#include "tensorflow/core/example/example.pb.h"
+#include "tensorflow/core/example/example.pb.h"  // from @org_tensorflow
 
 // A calculator to serialize/deserialize tensorflow::SequenceExample protos
 // to and from strings.
@@ -68,7 +67,7 @@ absl::Status StringToSequenceExampleCalculator::GetContract(
 absl::Status StringToSequenceExampleCalculator::Open(CalculatorContext* cc) {
   if (cc->InputSidePackets().HasTag(kString)) {
     auto string_value = cc->InputSidePackets().Tag(kString).Get<std::string>();
-    auto example = absl::make_unique<tf::SequenceExample>();
+    auto example = std::make_unique<tf::SequenceExample>();
     example->ParseFromString(string_value);
     cc->OutputSidePackets()
         .Tag(kSequenceExample)
@@ -85,7 +84,7 @@ absl::Status StringToSequenceExampleCalculator::Close(CalculatorContext* cc) {
   if (cc->InputSidePackets().HasTag(kSequenceExample)) {
     const auto& example =
         cc->InputSidePackets().Tag(kSequenceExample).Get<tf::SequenceExample>();
-    auto string_value = absl::make_unique<std::string>();
+    auto string_value = std::make_unique<std::string>();
     example.SerializeToString(string_value.get());
     cc->OutputSidePackets().Tag(kString).Set(
         mediapipe::Adopt(string_value.release()));

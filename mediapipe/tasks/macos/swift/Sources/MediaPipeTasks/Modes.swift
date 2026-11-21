@@ -29,9 +29,9 @@ public enum MediaPipeDelegate: String, Sendable, Codable {
     /// The MediaPipe C `MpDelegate` integer value.
     var cValue: Int32 {
         switch self {
-        case .cpu: return 0     // MP_DELEGATE_CPU
-        case .gpu: return 1     // MP_DELEGATE_GPU
-        case .coreML: return 3  // MP_DELEGATE_COREML
+        case .cpu: return 1       // MP_DELEGATE_CPU
+        case .gpu: return 2       // MP_DELEGATE_GPU
+        case .coreML: return 100  // MP_DELEGATE_COREML
         }
     }
 }

@@ -14,7 +14,7 @@
 
 #include <vector>
 
-#include "absl/memory/memory.h"
+#include "absl/memory/memory.h"  // from @com_google_absl
 #include "mediapipe/calculators/tflite/tflite_tensors_to_classification_calculator.pb.h"
 #include "mediapipe/framework/calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
@@ -23,7 +23,7 @@
 #include "mediapipe/framework/port/gtest.h"
 #include "mediapipe/framework/port/parse_text_proto.h"
 #include "mediapipe/framework/port/status_matchers.h"
-#include "tensorflow/lite/interpreter.h"
+#include "tflite/interpreter.h"  // from @litert
 
 namespace mediapipe {
 
@@ -35,7 +35,7 @@ class TfLiteTensorsToClassificationCalculatorTest : public ::testing::Test {
  protected:
   void BuildGraph(mediapipe::CalculatorRunner* runner,
                   const std::vector<float>& scores) {
-    interpreter_ = absl::make_unique<Interpreter>();
+    interpreter_ = std::make_unique<Interpreter>();
 
     std::vector<int> dims(2);
     dims[0] = 1;
@@ -57,7 +57,7 @@ class TfLiteTensorsToClassificationCalculatorTest : public ::testing::Test {
       tensor_buffer[i] = scores[i];
     }
 
-    auto tensors = absl::make_unique<std::vector<TfLiteTensor>>();
+    auto tensors = std::make_unique<std::vector<TfLiteTensor>>();
     tensors->emplace_back(*tensor);
 
     int64_t stream_timestamp = 0;

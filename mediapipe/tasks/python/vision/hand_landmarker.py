@@ -59,7 +59,9 @@ class MpHandLandmarkerResultC(ctypes.Structure):
 
 _C_TYPES_RESULT_CALLBACK = ctypes.CFUNCTYPE(
     None,
+    ctypes.c_void_p,  # user_data
     ctypes.c_int32,  # MpStatus
+    ctypes.c_char_p,  # error_msg
     ctypes.POINTER(MpHandLandmarkerResultC),
     ctypes.c_void_p,  # MpImage
     ctypes.c_int64,  # timestamp_ms
@@ -77,6 +79,7 @@ class MpHandLandmarkerOptionsC(ctypes.Structure):
       ('min_hand_presence_confidence', ctypes.c_float),
       ('min_tracking_confidence', ctypes.c_float),
       ('result_callback', _C_TYPES_RESULT_CALLBACK),
+      ('result_callback_user_data', ctypes.c_void_p),
   ]
 
   @classmethod
@@ -195,7 +198,7 @@ class HandLandmarksConnections:
 
   HAND_PALM_CONNECTIONS: List[Connection] = [
       Connection(0, 1),
-      Connection(1, 5),
+      Connection(0, 5),
       Connection(9, 13),
       Connection(13, 17),
       Connection(5, 9),
@@ -247,7 +250,9 @@ class HandLandmarkerResult:
   """The hand landmarks result from HandLandmarker, where each vector element represents a single hand detected in the image.
 
   Attributes:
-    handedness: Classification of handedness.
+    handedness: Classification of handedness. Left and Right handedness
+      correspond to the subject's hands, not the viewer. Passing a horizontally
+      mirrored image will invert these outputs.
     hand_landmarks: Detected hand landmarks in normalized image coordinates.
     hand_world_landmarks: Detected hand landmarks in world coordinates.
   """
@@ -299,8 +304,8 @@ class HandLandmarkerOptions:
     running_mode: The running mode of the task. Default to the image mode.
       HandLandmarker has three running modes: 1) The image mode for detecting
       hand landmarks on single image inputs. 2) The video mode for detecting
-      hand landmarks on the decoded frames of a video. 3) The live stream mode
-      for detecting hand landmarks on the live stream of input data, such as
+      hand landmarks on the decoded frames of a video. 3) The livestream mode
+      for detecting hand landmarks on the livestream of input data, such as
       from camera. In this mode, the "result_callback" below must be specified
       to receive the detection results asynchronously.
     num_hands: The maximum number of hands can be detected by the hand
@@ -311,9 +316,9 @@ class HandLandmarkerOptions:
       score in the hand landmark detection.
     min_tracking_confidence: The minimum confidence score for the hand tracking
       to be considered successful.
-    result_callback: The user-defined result callback for processing live stream
+    result_callback: The user-defined result callback for processing livestream
       data. The result callback should only be specified when the running mode
-      is set to the live stream mode.
+      is set to the livestream mode.
   """
 
   base_options: _BaseOptions
@@ -398,13 +403,13 @@ class HandLandmarker:
       RuntimeError: If other types of error occurred.
     """
     vision_task_running_mode.validate_running_mode(
-        options.running_mode, options.result_callback
+        options.running_mode, options.result_callback  # pyrefly: ignore[bad-argument-type]
     )
 
     lib = mediapipe_c_bindings.load_shared_library(_CTYPES_SIGNATURES)
 
     def convert_result(
-        c_result_ptr: ctypes.POINTER(MpHandLandmarkerResultC),
+        c_result_ptr: ctypes.POINTER(MpHandLandmarkerResultC),  # pyrefly: ignore[invalid-annotation]
         image_ptr: ctypes.c_void_p,
         timestamp_ms: int,
     ) -> Tuple[HandLandmarkerResult, image_lib.Image, int]:
@@ -428,7 +433,7 @@ class HandLandmarker:
     )
 
     landmarker_handle = ctypes.c_void_p()
-    lib.MpHandLandmarkerCreate(
+    lib.MpHandLandmarkerCreate(  # pyrefly: ignore[missing-attribute]
         ctypes.byref(ctypes_options),
         ctypes.byref(landmarker_handle),
     )
@@ -472,7 +477,7 @@ class HandLandmarker:
         if image_processing_options
         else None
     )
-    self._lib.MpHandLandmarkerDetectImage(
+    self._lib.MpHandLandmarkerDetectImage(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         c_image_processing_options,
@@ -480,7 +485,7 @@ class HandLandmarker:
     )
 
     py_result = HandLandmarkerResult.from_ctypes(c_result)
-    self._lib.MpHandLandmarkerCloseResult(ctypes.byref(c_result))
+    self._lib.MpHandLandmarkerCloseResult(ctypes.byref(c_result))  # pyrefly: ignore[missing-attribute]
     return py_result
 
   def detect_for_video(
@@ -519,7 +524,7 @@ class HandLandmarker:
         if image_processing_options
         else None
     )
-    self._lib.MpHandLandmarkerDetectForVideo(
+    self._lib.MpHandLandmarkerDetectForVideo(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         c_image_processing_options,
@@ -528,7 +533,7 @@ class HandLandmarker:
     )
 
     py_result = HandLandmarkerResult.from_ctypes(c_result)
-    self._lib.MpHandLandmarkerCloseResult(ctypes.byref(c_result))
+    self._lib.MpHandLandmarkerCloseResult(ctypes.byref(c_result))  # pyrefly: ignore[missing-attribute]
     return py_result
 
   def detect_async(
@@ -541,14 +546,14 @@ class HandLandmarker:
 
     The results will be available via the "result_callback" provided in the
     HandLandmarkerOptions. Only use this method when the HandLandmarker is
-    created with the live stream running mode.
+    created with the livestream running mode.
 
-    Only use this method when the HandLandmarker is created with the live
-    stream running mode. The input timestamps should be monotonically increasing
+    Only use this method when the HandLandmarker is created with the livestream
+    running mode. The input timestamps should be monotonically increasing
     for adjacent calls of this method. This method will return immediately after
     the input image is accepted. The results will be available via the
     `result_callback` provided in the `HandLandmarkerOptions`. The
-    `detect_async` method is designed to process live stream data such as
+    `detect_async` method is designed to process livestream data such as
     camera input. To lower the overall latency, hand landmarker may drop the
     input images if needed. In other words, it's not guaranteed to have output
     per input image.
@@ -575,7 +580,7 @@ class HandLandmarker:
         if image_processing_options
         else None
     )
-    self._lib.MpHandLandmarkerDetectAsync(
+    self._lib.MpHandLandmarkerDetectAsync(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         c_image_processing_options,
@@ -585,10 +590,15 @@ class HandLandmarker:
   def close(self):
     """Shuts down the MediaPipe task instance."""
     if self._handle:
-      self._lib.MpHandLandmarkerClose(self._handle)
-      self._handle = None
-      self._dispatcher.close()
-      self._lib.close()
+      # The C library frees the task even if it fails to close, so the handle
+      # must not be used again.
+      handle = self._handle
+      self._handle = None  # pyrefly: ignore[bad-assignment]
+      try:
+        self._lib.MpHandLandmarkerClose(handle)  # pyrefly: ignore[missing-attribute]
+      finally:
+        self._dispatcher.close()
+        self._lib.close()
 
   def __enter__(self):
     """Returns `self` upon entering the runtime context."""

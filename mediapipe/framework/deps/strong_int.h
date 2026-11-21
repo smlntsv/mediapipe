@@ -97,15 +97,14 @@
 #ifndef MEDIAPIPE_DEPS_STRONG_INT_H_
 #define MEDIAPIPE_DEPS_STRONG_INT_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <iosfwd>
 #include <limits>
 #include <ostream>
 #include <type_traits>
 
-#include "absl/base/macros.h"
-#include "absl/log/absl_log.h"
-#include "mediapipe/framework/port/port.h"
+#include "absl/log/absl_log.h"  // from @com_google_absl
 
 namespace mediapipe {
 namespace intops {

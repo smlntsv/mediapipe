@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "absl/status/status.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
@@ -141,19 +142,19 @@ constexpr char kGateAndMuxGraph[] = R"pb(
   })pb";
 
 absl::Status SendInput(GateAndMuxGraphInput in, CalculatorGraph& graph) {
-  MP_RETURN_IF_ERROR(graph.AddPacketToInputStream(
+  ABSL_RETURN_IF_ERROR(graph.AddPacketToInputStream(
       "input0", MakePacket<int>(in.input0).At(in.at)));
-  MP_RETURN_IF_ERROR(graph.AddPacketToInputStream(
+  ABSL_RETURN_IF_ERROR(graph.AddPacketToInputStream(
       "input1", MakePacket<int>(in.input1).At(in.at)));
-  MP_RETURN_IF_ERROR(graph.AddPacketToInputStream(
+  ABSL_RETURN_IF_ERROR(graph.AddPacketToInputStream(
       "input2", MakePacket<int>(in.input2).At(in.at)));
-  MP_RETURN_IF_ERROR(graph.AddPacketToInputStream(
+  ABSL_RETURN_IF_ERROR(graph.AddPacketToInputStream(
       "select", MakePacket<int>(in.select).At(in.at)));
-  MP_RETURN_IF_ERROR(graph.AddPacketToInputStream(
+  ABSL_RETURN_IF_ERROR(graph.AddPacketToInputStream(
       "allow0", MakePacket<bool>(in.allow0).At(in.at)));
-  MP_RETURN_IF_ERROR(graph.AddPacketToInputStream(
+  ABSL_RETURN_IF_ERROR(graph.AddPacketToInputStream(
       "allow1", MakePacket<bool>(in.allow1).At(in.at)));
-  MP_RETURN_IF_ERROR(graph.AddPacketToInputStream(
+  ABSL_RETURN_IF_ERROR(graph.AddPacketToInputStream(
       "allow2", MakePacket<bool>(in.allow2).At(in.at)));
   return graph.WaitUntilIdle();
 }

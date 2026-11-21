@@ -17,9 +17,10 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
-#include "absl/log/absl_log.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "absl/log/absl_log.h"          // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
 #include "mediapipe/framework/api2/builder.h"
 #include "mediapipe/framework/api2/port.h"
 #include "mediapipe/framework/formats/classification.pb.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "mediapipe/framework/formats/image.h"
 #include "mediapipe/framework/formats/landmark.pb.h"
 #include "mediapipe/framework/formats/rect.pb.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/tasks/cc/common.h"
 #include "mediapipe/tasks/cc/core/model_asset_bundle_resources.h"
 #include "mediapipe/tasks/cc/core/model_resources_cache.h"
@@ -92,8 +92,8 @@ struct GestureRecognizerOutputs {
 absl::Status SetSubTaskBaseOptions(const ModelAssetBundleResources& resources,
                                    GestureRecognizerGraphOptions* options,
                                    bool is_copy) {
-  MP_ASSIGN_OR_RETURN(const auto hand_landmarker_file,
-                      resources.GetFile(kHandLandmarkerBundleAssetName));
+  ABSL_ASSIGN_OR_RETURN(const auto hand_landmarker_file,
+                        resources.GetFile(kHandLandmarkerBundleAssetName));
   auto* hand_landmarker_graph_options =
       options->mutable_hand_landmarker_graph_options();
   SetExternalFile(hand_landmarker_file,
@@ -106,8 +106,9 @@ absl::Status SetSubTaskBaseOptions(const ModelAssetBundleResources& resources,
   hand_landmarker_graph_options->mutable_base_options()->set_use_stream_mode(
       options->base_options().use_stream_mode());
 
-  MP_ASSIGN_OR_RETURN(const auto hand_gesture_recognizer_file,
-                      resources.GetFile(kHandGestureRecognizerBundleAssetName));
+  ABSL_ASSIGN_OR_RETURN(
+      const auto hand_gesture_recognizer_file,
+      resources.GetFile(kHandGestureRecognizerBundleAssetName));
   auto* hand_gesture_recognizer_graph_options =
       options->mutable_hand_gesture_recognizer_graph_options();
   SetExternalFile(hand_gesture_recognizer_file,
@@ -117,17 +118,34 @@ absl::Status SetSubTaskBaseOptions(const ModelAssetBundleResources& resources,
   hand_gesture_recognizer_graph_options->mutable_base_options()
       ->mutable_acceleration()
       ->CopyFrom(options->base_options().acceleration());
-  if (!hand_gesture_recognizer_graph_options->base_options()
-           .acceleration()
-           .has_xnnpack() &&
-      !hand_gesture_recognizer_graph_options->base_options()
-           .acceleration()
-           .has_tflite()) {
+  if (options->base_options().acceleration().has_litert()) {
+    auto* litert = hand_gesture_recognizer_graph_options->mutable_base_options()
+                       ->mutable_acceleration()
+                       ->mutable_litert();
+    // CPU-only ops: drop GPU and NPU, since LiteRT would also try to delegate
+    // to any accelerator that stays set.
+    if (litert->has_gpu() || litert->has_npu() || !litert->has_cpu()) {
+      litert->clear_gpu();
+      litert->clear_npu();
+      litert->mutable_cpu();
+      ABSL_LOG(WARNING)
+          << "HandGestureRecognizerGraph contains CPU only ops, so only this "
+          << "subgraph runs on LiteRT CPU; HandLandmarkerGraph keeps the "
+          << "requested acceleration.";
+    }
+  } else if (!hand_gesture_recognizer_graph_options->base_options()
+                  .acceleration()
+                  .has_xnnpack() &&
+             !hand_gesture_recognizer_graph_options->base_options()
+                  .acceleration()
+                  .has_tflite()) {
     hand_gesture_recognizer_graph_options->mutable_base_options()
         ->mutable_acceleration()
         ->mutable_xnnpack();
-    ABSL_LOG(WARNING) << "Hand Gesture Recognizer contains CPU only ops. Sets "
-                      << "HandGestureRecognizerGraph acceleration to Xnnpack.";
+    ABSL_LOG(WARNING)
+        << "HandGestureRecognizerGraph contains CPU only ops, so only this "
+        << "subgraph runs on XNNPACK; HandLandmarkerGraph keeps the requested "
+        << "acceleration.";
   }
   hand_gesture_recognizer_graph_options->mutable_base_options()
       ->set_use_stream_mode(options->base_options().use_stream_mode());
@@ -209,19 +227,19 @@ class GestureRecognizerGraph : public core::ModelTaskGraph {
     if (sc->Options<GestureRecognizerGraphOptions>()
             .base_options()
             .has_model_asset()) {
-      MP_ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           const auto* model_asset_bundle_resources,
           CreateModelAssetBundleResources<GestureRecognizerGraphOptions>(sc));
       // When the model resources cache service is available, filling in
       // the file pointer meta in the subtasks' base options. Otherwise,
       // providing the file contents instead.
-      MP_RETURN_IF_ERROR(SetSubTaskBaseOptions(
+      ABSL_RETURN_IF_ERROR(SetSubTaskBaseOptions(
           *model_asset_bundle_resources,
           sc->MutableOptions<GestureRecognizerGraphOptions>(),
           !sc->Service(::mediapipe::tasks::core::kModelResourcesCacheService)
                .IsAvailable()));
     }
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto hand_gesture_recognition_output,
         BuildGestureRecognizerGraph(
             *sc->MutableOptions<GestureRecognizerGraphOptions>(),

@@ -21,7 +21,9 @@ licenses(["notice"])
 
 cc_library(
     name = "base_options",
+    srcs = ["base_options.cc"],
     hdrs = ["base_options.h"],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -61,11 +63,63 @@ cc_library(
 )
 
 cc_library(
+    name = "mp_logging_c_lib",
+    srcs = ["mp_logging.cc"],
+    hdrs = ["mp_logging.h"],
+    deps = [
+        ":common",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:log_entry",
+        "@com_google_absl//absl/log:log_sink",
+        "@com_google_absl//absl/log:log_sink_registry",
+        "@com_google_absl//absl/synchronization",
+    ],
+    alwayslink = 1,
+)
+
+cc_test(
+    name = "mp_logging_test",
+    srcs = ["mp_logging_test.cc"],
+    deps = [
+        ":mp_logging_c_lib",
+        "//mediapipe/framework/port:gtest",
+        "@com_google_absl//absl/base:log_severity",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "mp_status_converter",
     srcs = ["mp_status_converter.cc"],
     hdrs = ["mp_status_converter.h"],
     deps = [
         ":mp_status",
         "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
+    name = "result_callback",
+    hdrs = ["result_callback.h"],
+    deps = [
+        ":mp_status",
+        ":mp_status_converter",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_test(
+    name = "result_callback_test",
+    srcs = ["result_callback_test.cc"],
+    deps = [
+        ":mp_status",
+        ":result_callback",
+        "//mediapipe/framework/port:gtest",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
     ],
 )

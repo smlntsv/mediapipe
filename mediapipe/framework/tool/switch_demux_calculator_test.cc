@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
+#include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
@@ -49,8 +49,8 @@ Packet pack(int data, int timestamp) {
 // Tests showing packet channel synchronization through SwitchDemuxCalculator.
 class SwitchDemuxCalculatorTest : public ::testing::Test {
  protected:
-  SwitchDemuxCalculatorTest() {}
-  ~SwitchDemuxCalculatorTest() override {}
+  SwitchDemuxCalculatorTest() = default;
+  ~SwitchDemuxCalculatorTest() override = default;
   void SetUp() override {}
   void TearDown() override {}
 

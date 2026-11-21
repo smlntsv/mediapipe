@@ -49,6 +49,7 @@
 
 #include "absl/log/absl_log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -62,8 +63,8 @@
 #include "mediapipe/framework/formats/tensor.h"
 #include "mediapipe/framework/port/ret_check.h"
 #include "mediapipe/framework/port/status_macros.h"
-#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
-#include "tensorflow/lite/schema/schema_generated.h"
+#include "tflite/delegates/xnnpack/xnnpack_delegate.h"  // from @litert
+#include "tflite/schema/schema_generated.h"  // from @litert
 
 namespace mediapipe {
 namespace api2 {
@@ -204,7 +205,7 @@ class InferenceCalculatorCoreMlImpl
 
 absl::Status InferenceCalculatorCoreMlImpl::UpdateContract(
     CalculatorContract* cc) {
-  MP_RETURN_IF_ERROR(TensorContractCheck(cc));
+  ABSL_RETURN_IF_ERROR(TensorContractCheck(cc));
 
   RET_CHECK(!kDelegate(cc).IsConnected())
       << "Delegate configuration through side packet is not supported.";
@@ -219,7 +220,7 @@ absl::Status InferenceCalculatorCoreMlImpl::Open(CalculatorContext* cc) {
   const auto& options = cc->Options<mediapipe::InferenceCalculatorOptions>();
   const auto& coreml_options = options.delegate().coreml();
 
-  MP_ASSIGN_OR_RETURN(model_packet_, GetModelAsPacket(cc));
+  ABSL_ASSIGN_OR_RETURN(model_packet_, GetModelAsPacket(cc));
   const tflite::FlatBufferModel& flatbuffer = *model_packet_.Get();
   const std::string model_hash = Sha256Hex(flatbuffer.allocation()->base(),
                                            flatbuffer.allocation()->bytes());
@@ -237,11 +238,11 @@ absl::Status InferenceCalculatorCoreMlImpl::Open(CalculatorContext* cc) {
           fileExistsAtPath:@(compiled_model_path.c_str())
                isDirectory:&is_dir];
   if (model_available) {
-    MP_RETURN_IF_ERROR(InitCoreMlModel(cc, compiled_model_path));
+    ABSL_RETURN_IF_ERROR(InitCoreMlModel(cc, compiled_model_path));
     // I/O mapping uses the TFLite tensor names; Core ML features are already
     // ordered by the input_<i>/output_<i> convention.
-    MP_ASSIGN_OR_RETURN(auto op_resolver_packet, GetOpResolverAsPacket(cc));
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(auto op_resolver_packet, GetOpResolverAsPacket(cc));
+    ABSL_ASSIGN_OR_RETURN(
         const auto io_names,
         InferenceIoMapper::GetInputOutputTensorNamesFromModel(
             flatbuffer, op_resolver_packet.Get()));
@@ -257,7 +258,7 @@ absl::Status InferenceCalculatorCoreMlImpl::Open(CalculatorContext* cc) {
       model_hash,
       compiled_model_path.empty() ? "<model_cache_dir unset>"
                                   : compiled_model_path);
-  MP_RETURN_IF_ERROR(InitFallbackRunner(cc));
+  ABSL_RETURN_IF_ERROR(InitFallbackRunner(cc));
   return InferenceCalculatorNodeImpl::UpdateIoMapping(
       cc, fallback_runner_->GetInputOutputTensorNames());
 }
@@ -383,14 +384,14 @@ absl::Status InferenceCalculatorCoreMlImpl::InitCoreMlModel(
 
 absl::Status InferenceCalculatorCoreMlImpl::InitFallbackRunner(
     CalculatorContext* cc) {
-  MP_ASSIGN_OR_RETURN(auto op_resolver_packet, GetOpResolverAsPacket(cc));
+  ABSL_ASSIGN_OR_RETURN(auto op_resolver_packet, GetOpResolverAsPacket(cc));
   const auto& options = cc->Options<mediapipe::InferenceCalculatorOptions>();
   auto xnnpack_opts = TfLiteXNNPackDelegateOptionsDefault();
   xnnpack_opts.num_threads =
       GetXnnpackNumThreads(/*opts_has_delegate=*/false, options.delegate());
   TfLiteDelegatePtr delegate(TfLiteXNNPackDelegateCreate(&xnnpack_opts),
                              &TfLiteXNNPackDelegateDelete);
-  MP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       fallback_runner_,
       CreateInferenceInterpreterDelegateRunner(
           model_packet_, op_resolver_packet, std::move(delegate),
@@ -466,7 +467,7 @@ absl::StatusOr<std::vector<Tensor>> InferenceCalculatorCoreMlImpl::Process(
     RET_CHECK(array != nil) << absl::StrCat(
         "Core ML prediction is missing output feature '",
         output_names_[i].UTF8String, "'.");
-    MP_RETURN_IF_ERROR(CopyMultiArrayToFloats(
+    ABSL_RETURN_IF_ERROR(CopyMultiArrayToFloats(
         array, write_view.buffer<float>(),
         output_tensors.back().shape().num_elements()));
   }

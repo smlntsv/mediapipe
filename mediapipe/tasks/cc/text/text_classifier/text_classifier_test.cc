@@ -20,11 +20,12 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/flags/flag.h"
-#include "absl/status/status.h"
-#include "absl/strings/cord.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
+#include "absl/flags/flag.h"           // from @com_google_absl
+#include "absl/status/status.h"        // from @com_google_absl
+#include "absl/status/statusor.h"      // from @com_google_absl
+#include "absl/strings/cord.h"         // from @com_google_absl
+#include "absl/strings/str_cat.h"      // from @com_google_absl
+#include "absl/strings/string_view.h"  // from @com_google_absl
 #include "mediapipe/framework/deps/file_path.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
@@ -32,8 +33,12 @@ limitations under the License.
 #include "mediapipe/tasks/cc/common.h"
 #include "mediapipe/tasks/cc/components/containers/category.h"
 #include "mediapipe/tasks/cc/components/containers/classification_result.h"
+#include "mediapipe/tasks/cc/core/host_environment.h"
+#include "mediapipe/tasks/cc/core/logging/tasks_logger.h"
+#include "mediapipe/tasks/cc/core/running_mode.h"
+#include "mediapipe/tasks/cc/core/task_runner_test_peer.h"
 #include "mediapipe/tasks/cc/text/text_classifier/text_classifier_test_utils.h"
-#include "tensorflow/lite/test_util.h"
+#include "tflite/test_util.h"  // from @litert
 
 namespace mediapipe::tasks::text::text_classifier {
 namespace {
@@ -91,9 +96,38 @@ TEST_F(TextClassifierTest, CreateSucceedsWithBertModel) {
   MP_ASSERT_OK(TextClassifier::Create(std::move(options)));
 }
 
+TEST_F(TextClassifierTest, ForwardsBaseOptionsTelemetryToTasksLogger) {
+  auto options = std::make_unique<TextClassifierOptions>();
+  options->base_options.model_asset_path = GetFullPath(kTestBertModelPath);
+  options->base_options.host_environment =
+      core::HostEnvironment::HOST_ENVIRONMENT_IOS;
+  options->base_options.host_system = core::HostSystem::HOST_SYSTEM_IOS;
+  options->base_options.host_version = "17.4.1";
+  options->base_options.app_id = "com.example.app";
+  options->base_options.app_version = "1.2.3";
+  options->base_options.ca_bundle_path = "/etc/ssl/certs/ca-certificates.crt";
+  MP_ASSERT_OK_AND_ASSIGN(std::unique_ptr<TextClassifier> classifier,
+                          TextClassifier::Create(std::move(options)));
+  const core::logging::LoggingOptions* logging_options =
+      core::TaskRunnerTestPeer::GetLoggingOptions(*classifier);
+  ASSERT_NE(logging_options, nullptr);
+  EXPECT_EQ(logging_options->task_name, "TextClassifier");
+  EXPECT_EQ(logging_options->task_running_mode,
+            core::RunningMode::kUnspecified);
+  EXPECT_EQ(logging_options->host_environment,
+            core::HostEnvironment::HOST_ENVIRONMENT_IOS);
+  EXPECT_EQ(logging_options->host_system, core::HostSystem::HOST_SYSTEM_IOS);
+  EXPECT_EQ(logging_options->host_version, "17.4.1");
+  EXPECT_EQ(logging_options->app_id, "com.example.app");
+  EXPECT_EQ(logging_options->app_version, "1.2.3");
+  EXPECT_EQ(logging_options->ca_bundle_path,
+            "/etc/ssl/certs/ca-certificates.crt");
+  MP_ASSERT_OK(classifier->Close());
+}
+
 TEST_F(TextClassifierTest, CreateFailsWithMissingBaseOptions) {
   auto options = std::make_unique<TextClassifierOptions>();
-  StatusOr<std::unique_ptr<TextClassifier>> classifier =
+  absl::StatusOr<std::unique_ptr<TextClassifier>> classifier =
       TextClassifier::Create(std::move(options));
 
   EXPECT_EQ(classifier.status().code(), absl::StatusCode::kInvalidArgument);
@@ -109,7 +143,7 @@ TEST_F(TextClassifierTest, CreateFailsWithMissingBaseOptions) {
 TEST_F(TextClassifierTest, CreateFailsWithMissingModel) {
   auto options = std::make_unique<TextClassifierOptions>();
   options->base_options.model_asset_path = GetFullPath(kInvalidModelPath);
-  StatusOr<std::unique_ptr<TextClassifier>> classifier =
+  absl::StatusOr<std::unique_ptr<TextClassifier>> classifier =
       TextClassifier::Create(std::move(options));
 
   EXPECT_EQ(classifier.status().code(), absl::StatusCode::kNotFound);

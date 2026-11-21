@@ -18,17 +18,19 @@ limitations under the License.
 #include <stdint.h>
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <ostream>
 #include <string>
 #include <vector>
 
-#include "absl/strings/str_join.h"
-#include "absl/strings/str_split.h"
-#include "flatbuffers/flatbuffers.h"
+#include "absl/strings/str_join.h"    // from @com_google_absl
+#include "absl/strings/str_split.h"   // from @com_google_absl
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "mediapipe/tasks/metadata/metadata_schema_generated.h"
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/tools/logging.h"
+#include "tflite/c/common.h"                        // from @litert
+#include "tflite/kernels/internal/compatibility.h"  // from @litert
+#include "tflite/tools/logging.h"                   // from @litert
 
 namespace mediapipe {
 namespace tasks {

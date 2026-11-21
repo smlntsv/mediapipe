@@ -17,17 +17,19 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/substitute.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
+#include "absl/strings/substitute.h"    // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/calculator_runner.h"
 #include "mediapipe/framework/formats/tensor.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
 #include "mediapipe/framework/port/parse_text_proto.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/framework/port/status_matchers.h"
+
+using ::absl_testing::StatusIs;
 
 using ::mediapipe::Packet;
 using ::mediapipe::Tensor;
@@ -64,7 +66,7 @@ class VectorToTensorCalculatorTest : public Test {
 template <typename T>
 absl::Status VectorToTensorCalculatorTest<T>::RunE2ETest(
     const std::vector<T>& input, bool output_dynamic_tensor_shape) {
-  MP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       const auto packet_dump,
       RunsVectorToTensorCalculator(input, output_dynamic_tensor_shape));
 
@@ -121,15 +123,15 @@ VectorToTensorCalculatorTest<T>::RunsVectorToTensorCalculator(
   tool::AddVectorSink("output", &config, &packet_dump);
   // Create and start graph.
   CalculatorGraph graph;
-  MP_RETURN_IF_ERROR(graph.Initialize(config));
-  MP_RETURN_IF_ERROR(graph.StartRun({}));
+  ABSL_RETURN_IF_ERROR(graph.Initialize(config));
+  ABSL_RETURN_IF_ERROR(graph.StartRun({}));
   // Send input.
-  MP_RETURN_IF_ERROR(graph.AddPacketToInputStream(
+  ABSL_RETURN_IF_ERROR(graph.AddPacketToInputStream(
       "input", MakePacket<std::vector<T>>(input).At(Timestamp(0))));
-  MP_RETURN_IF_ERROR(graph.WaitUntilIdle());
+  ABSL_RETURN_IF_ERROR(graph.WaitUntilIdle());
   // Finish processing.
-  MP_RETURN_IF_ERROR(graph.CloseAllInputStreams());
-  MP_RETURN_IF_ERROR(graph.WaitUntilDone());
+  ABSL_RETURN_IF_ERROR(graph.CloseAllInputStreams());
+  ABSL_RETURN_IF_ERROR(graph.WaitUntilDone());
   return packet_dump;
 }
 

@@ -19,8 +19,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/log/absl_check.h"
-#include "absl/status/status.h"
+#include "absl/log/absl_check.h"        // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/framework/api3/calculator.h"
 #include "mediapipe/framework/api3/calculator_context.h"
 #include "mediapipe/framework/formats/rect.pb.h"
@@ -49,7 +50,7 @@ class HandAssociationNodeImpl
   }
 
   absl::Status Process(CalculatorContext<HandAssociationNode>& cc) override {
-    MP_ASSIGN_OR_RETURN(auto result, GetNonOverlappingElements(cc));
+    ABSL_ASSIGN_OR_RETURN(auto result, GetNonOverlappingElements(cc));
 
     auto output =
         std::make_unique<std::vector<NormalizedRect>>(std::move(result));
@@ -98,7 +99,7 @@ class HandAssociationNodeImpl
       }
 
       for (auto rect : rects_input_stream.GetOrDie()) {
-        MP_ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             bool is_overlapping,
             mediapipe::DoesRectOverlap(rect, result,
                                        options_.min_similarity_threshold()));

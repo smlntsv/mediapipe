@@ -13,20 +13,27 @@
 // limitations under the License.
 //
 // An example of sending OpenCV webcam frames into a MediaPipe graph.
+#include <cstddef>
 #include <cstdlib>
+#include <memory>
+#include <string>
 
-#include "absl/flags/flag.h"
-#include "absl/flags/parse.h"
-#include "absl/log/absl_log.h"
+#include "absl/flags/flag.h"            // from @com_google_absl
+#include "absl/flags/parse.h"           // from @com_google_absl
+#include "absl/log/absl_log.h"          // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/image_frame.h"
 #include "mediapipe/framework/formats/image_frame_opencv.h"
+#include "mediapipe/framework/output_stream_poller.h"
 #include "mediapipe/framework/port/file_helpers.h"
+#include "mediapipe/framework/port/opencv_core_inc.h"
 #include "mediapipe/framework/port/opencv_highgui_inc.h"
 #include "mediapipe/framework/port/opencv_imgproc_inc.h"
 #include "mediapipe/framework/port/opencv_video_inc.h"
 #include "mediapipe/framework/port/parse_text_proto.h"
-#include "mediapipe/framework/port/status.h"
+#include "mediapipe/framework/port/ret_check.h"
 
 constexpr char kInputStream[] = "input_video";
 constexpr char kOutputStream[] = "output_video";
@@ -43,7 +50,7 @@ ABSL_FLAG(std::string, output_video_path, "",
 
 absl::Status RunMPPGraph() {
   std::string calculator_graph_config_contents;
-  MP_RETURN_IF_ERROR(mediapipe::file::GetContents(
+  ABSL_RETURN_IF_ERROR(mediapipe::file::GetContents(
       absl::GetFlag(FLAGS_calculator_graph_config_file),
       &calculator_graph_config_contents));
   ABSL_LOG(INFO) << "Get calculator graph config contents: "
@@ -54,7 +61,7 @@ absl::Status RunMPPGraph() {
 
   ABSL_LOG(INFO) << "Initialize the calculator graph.";
   mediapipe::CalculatorGraph graph;
-  MP_RETURN_IF_ERROR(graph.Initialize(config));
+  ABSL_RETURN_IF_ERROR(graph.Initialize(config));
 
   ABSL_LOG(INFO) << "Initialize the camera or load the video.";
   cv::VideoCapture capture;
@@ -87,9 +94,9 @@ absl::Status RunMPPGraph() {
   }
 
   ABSL_LOG(INFO) << "Start running the calculator graph.";
-  MP_ASSIGN_OR_RETURN(mediapipe::OutputStreamPoller poller,
-                      graph.AddOutputStreamPoller(kOutputStream));
-  MP_RETURN_IF_ERROR(graph.StartRun({}));
+  ABSL_ASSIGN_OR_RETURN(mediapipe::OutputStreamPoller poller,
+                        graph.AddOutputStreamPoller(kOutputStream));
+  ABSL_RETURN_IF_ERROR(graph.StartRun({}));
 
   ABSL_LOG(INFO) << "Start grabbing and processing frames.";
   bool grab_frames = true;
@@ -105,7 +112,7 @@ absl::Status RunMPPGraph() {
     }
 
     // Wrap Mat into an ImageFrame.
-    auto input_frame = absl::make_unique<mediapipe::ImageFrame>(
+    auto input_frame = std::make_unique<mediapipe::ImageFrame>(
         mediapipe::ImageFormat::SRGB, camera_frame.cols, camera_frame.rows,
         mediapipe::ImageFrame::kDefaultAlignmentBoundary);
     cv::Mat input_frame_mat = mediapipe::formats::MatView(input_frame.get());
@@ -114,7 +121,7 @@ absl::Status RunMPPGraph() {
     // Send image packet into the graph.
     size_t frame_timestamp_us =
         (double)cv::getTickCount() / (double)cv::getTickFrequency() * 1e6;
-    MP_RETURN_IF_ERROR(graph.AddPacketToInputStream(
+    ABSL_RETURN_IF_ERROR(graph.AddPacketToInputStream(
         kInputStream, mediapipe::Adopt(input_frame.release())
                           .At(mediapipe::Timestamp(frame_timestamp_us))));
 
@@ -138,7 +145,7 @@ absl::Status RunMPPGraph() {
 
   ABSL_LOG(INFO) << "Shutting down.";
   if (writer.isOpened()) writer.release();
-  MP_RETURN_IF_ERROR(graph.CloseInputStream(kInputStream));
+  ABSL_RETURN_IF_ERROR(graph.CloseInputStream(kInputStream));
   return graph.WaitUntilDone();
 }
 

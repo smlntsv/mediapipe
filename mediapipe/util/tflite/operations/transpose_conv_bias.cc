@@ -18,8 +18,17 @@
 
 #include "mediapipe/util/tflite/operations/transpose_conv_bias.h"
 
-#include "tensorflow/lite/kernels/internal/tensor.h"
-#include "tensorflow/lite/kernels/padding.h"
+#include <algorithm>
+
+#include "tflite/c/builtin_op_data.h"               // from @litert
+#include "tflite/c/c_api_types.h"                   // from @litert
+#include "tflite/c/common.h"                        // from @litert
+#include "tflite/kernels/internal/compatibility.h"  // from @litert
+#include "tflite/kernels/internal/runtime_shape.h"  // from @litert
+#include "tflite/kernels/internal/tensor_ctypes.h"  // from @litert
+#include "tflite/kernels/internal/types.h"          // from @litert
+#include "tflite/kernels/kernel_util.h"             // from @litert
+#include "tflite/kernels/padding.h"                 // from @litert
 
 namespace mediapipe {
 namespace tflite_operations {

@@ -19,12 +19,12 @@
 #include <utility>
 #include <vector>
 
-#include "absl/log/absl_check.h"
-#include "absl/strings/match.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_replace.h"
-#include "absl/strings/string_view.h"
-#include "absl/types/span.h"
+#include "absl/log/absl_check.h"       // from @com_google_absl
+#include "absl/strings/match.h"        // from @com_google_absl
+#include "absl/strings/str_cat.h"      // from @com_google_absl
+#include "absl/strings/str_replace.h"  // from @com_google_absl
+#include "absl/strings/string_view.h"  // from @com_google_absl
+#include "absl/types/span.h"           // from @com_google_absl
 #include "mediapipe/calculators/tensor/inference_calculator.pb.h"
 #include "mediapipe/calculators/tensor/inference_calculator_test_base.h"
 #include "mediapipe/framework/api3/function_runner.h"
@@ -41,10 +41,10 @@
 #include "mediapipe/framework/port/parse_text_proto.h"
 #include "mediapipe/framework/port/status_matchers.h"  // NOLINT
 #include "mediapipe/framework/tool/validate_type.h"
-#include "tensorflow/lite/error_reporter.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
-#include "tensorflow/lite/util.h"
+#include "tflite/error_reporter.h"    // from @litert
+#include "tflite/kernels/register.h"  // from @litert
+#include "tflite/model.h"             // from @litert
+#include "tflite/util.h"              // from @litert
 
 #ifdef __APPLE__
 #include <CoreFoundation/CoreFoundation.h>

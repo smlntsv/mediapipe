@@ -19,6 +19,16 @@
 #include "mediapipe/framework/formats/image_format.pb.h"
 #include "mediapipe/framework/formats/image_frame.h"
 
+// Fork addition: the macOS build links OpenCV 3.4, which has no CV_16F (added
+// in OpenCV 4). There, half-float frames are exposed as 16-bit unsigned Mats,
+// which keeps their element size and memory layout; no vision task produces
+// half-float frames.
+#ifndef CV_16F
+#define CV_16F CV_16U
+#define CV_16FC2 CV_16UC2
+#define CV_16FC4 CV_16UC4
+#endif  // CV_16F
+
 namespace {
 // Maps ImageFrame format to OpenCV Mat depth (element type).
 // See mediapipe...image_format.proto and cv...opencv2/core/hal/interface.h
@@ -46,6 +56,11 @@ int GetMatDepth(const mediapipe::ImageFormat::Format format) {
     case mediapipe::ImageFormat::VEC32F2:
     case mediapipe::ImageFormat::VEC32F4:
       type = CV_32F;
+      break;
+    case mediapipe::ImageFormat::VEC16F1:
+    case mediapipe::ImageFormat::VEC16F2:
+    case mediapipe::ImageFormat::VEC16F4:
+      type = CV_16F;
       break;
     case mediapipe::ImageFormat::YCBCR420P:
       // Invalid; Default to uchar.

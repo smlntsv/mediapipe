@@ -20,8 +20,8 @@
 #include <limits>
 #include <vector>
 
-#include "absl/log/absl_check.h"
-#include "mediapipe/framework/port/status.h"
+#include "absl/log/absl_check.h"  // from @com_google_absl
+#include "absl/status/status.h"   // from @com_google_absl
 
 namespace mediapipe {
 namespace autoflip {

@@ -49,6 +49,17 @@ class _MpEmbedderOptionsC(ctypes.Structure):
   ]
 
 
+C_TYPES_RESULT_CALLBACK = ctypes.CFUNCTYPE(
+    None,
+    ctypes.c_void_p,  # user_data
+    ctypes.c_int32,  # MpStatus
+    ctypes.c_char_p,  # error_msg
+    ctypes.POINTER(embedding_result_c_module.MpEmbeddingResultC),
+    ctypes.c_void_p,  # MpImage
+    ctypes.c_int64,  # timestamp_ms
+)
+
+
 class MpImageEmbedderOptionsC(ctypes.Structure):
   """The MediaPipe Tasks MpImageEmbedderOptions CTypes struct."""
 
@@ -56,16 +67,8 @@ class MpImageEmbedderOptionsC(ctypes.Structure):
       ('base_options', base_options_c_module.MpBaseOptionsC),
       ('running_mode', ctypes.c_int),
       ('embedder_options', _MpEmbedderOptionsC),
-      (
-          'result_callback',
-          ctypes.CFUNCTYPE(
-              None,
-              ctypes.c_int32,  # MpStatus
-              ctypes.POINTER(embedding_result_c_module.MpEmbeddingResultC),
-              ctypes.c_void_p,  # image
-              ctypes.c_int64,  # timestamp_ms
-          ),
-      ),
+      ('result_callback', C_TYPES_RESULT_CALLBACK),
+      ('result_callback_user_data', ctypes.c_void_p),
   ]
 
 
@@ -122,14 +125,6 @@ _CTYPES_SIGNATURES = (
     ),
 )
 
-C_TYPES_RESULT_CALLBACK = ctypes.CFUNCTYPE(
-    None,
-    ctypes.c_int32,  # MpStatus
-    ctypes.POINTER(embedding_result_c_module.MpEmbeddingResultC),
-    ctypes.c_void_p,  # MpImage
-    ctypes.c_int64,  # timestamp_ms
-)
-
 
 @dataclasses.dataclass
 class ImageEmbedderOptions:
@@ -140,8 +135,8 @@ class ImageEmbedderOptions:
     running_mode: The running mode of the task. Default to the image mode. Image
       embedder task has three running modes: 1) The image mode for embedding
       image on single image inputs. 2) The video mode for embedding image on the
-      decoded frames of a video. 3) The live stream mode for embedding image on
-      a live stream of input data, such as from camera.
+      decoded frames of a video. 3) The livestream mode for embedding image on
+      a livestream of input data, such as from camera.
     l2_normalize: Whether to normalize the returned feature vector with L2 norm.
       Use this option only if the model does not already contain a native
       L2_NORMALIZATION TF Lite Op. In most cases, this is already the case and
@@ -150,9 +145,9 @@ class ImageEmbedderOptions:
       scalar quantization. Embeddings are implicitly assumed to be unit-norm and
       therefore any dimension is guaranteed to have a value in [-1.0, 1.0]. Use
       the l2_normalize option if this is not the case.
-    result_callback: The user-defined result callback for processing live stream
+    result_callback: The user-defined result callback for processing livestream
       data. The result callback should only be specified when the running mode
-      is set to the live stream mode.
+      is set to the livestream mode.
   """
 
   base_options: _BaseOptions
@@ -163,26 +158,12 @@ class ImageEmbedderOptions:
       Callable[[ImageEmbedderResult, image_module.Image, int], None]
   ] = None
 
-  _result_callback_c: Optional[
-      Callable[
-          [
-              ctypes.c_int32,  # MpStatus
-              ctypes.c_void_p,  # MpEmbeddingResultC
-              ctypes.c_void_p,  # MpImage
-              ctypes.c_int64,  # timestamp_ms
-          ],
-          None,
-      ]
-  ] = None
-
   @doc_controls.do_not_generate_docs
   def to_ctypes(
-      self, dispatcher: async_result_dispatcher.AsyncResultDispatcher
+      self,
+      result_callback: C_TYPES_RESULT_CALLBACK,
   ) -> MpImageEmbedderOptionsC:
     """Generates an MpImageEmbedderOptionsC object."""
-    self._result_callback_c = dispatcher.wrap_callback(
-        self.result_callback, C_TYPES_RESULT_CALLBACK
-    )
     base_options_c = self.base_options.to_ctypes()
     embedder_options_c = _MpEmbedderOptionsC(
         l2_normalize=self.l2_normalize, quantize=self.quantize
@@ -191,7 +172,7 @@ class ImageEmbedderOptions:
         base_options=base_options_c,
         running_mode=self.running_mode.ctype,
         embedder_options=embedder_options_c,
-        result_callback=self._result_callback_c,
+        result_callback=result_callback,
     )
 
 
@@ -218,12 +199,14 @@ class ImageEmbedder:
   _lib: serial_dispatcher.SerialDispatcher
   _handle: ctypes.c_void_p
   _dispatcher: async_result_dispatcher.AsyncResultDispatcher
+  _async_callback: C_TYPES_RESULT_CALLBACK
 
   def __init__(
       self,
       lib: serial_dispatcher.SerialDispatcher,
       handle: ctypes.c_void_p,
       dispatcher: async_result_dispatcher.AsyncResultDispatcher,
+      async_callback: C_TYPES_RESULT_CALLBACK,
   ):
     """Initializes a new ImageEmbedder instance.
 
@@ -231,10 +214,13 @@ class ImageEmbedder:
       lib: The dispatcher to use for all C function calls.
       handle: The C pointer to the underlying image embedder.
       dispatcher: The handler for async results.
+      async_callback: The C callback for async results, retained for the
+        lifetime of the task.
     """
     self._lib = lib
     self._handle = handle
     self._dispatcher = dispatcher
+    self._async_callback = async_callback
 
   @classmethod
   def create_from_model_path(cls, model_path: str) -> 'ImageEmbedder':
@@ -279,12 +265,12 @@ class ImageEmbedder:
       RuntimeError: If other types of error occurred.
     """
     running_mode_module.validate_running_mode(
-        options.running_mode, options.result_callback
+        options.running_mode, options.result_callback  # pyrefly: ignore[bad-argument-type]
     )
     lib = mediapipe_c_bindings.load_shared_library(_CTYPES_SIGNATURES)
 
     def convert_result(
-        c_result_ptr: ctypes.POINTER(
+        c_result_ptr: ctypes.POINTER(  # pyrefly: ignore[invalid-annotation]
             embedding_result_c_module.MpEmbeddingResultC
         ),
         image_ptr: ctypes.c_void_p,
@@ -306,13 +292,18 @@ class ImageEmbedder:
       return (py_result, py_image, timestamp_ms)
 
     dispatcher = _AsyncResultDispatcher(converter=convert_result)
-    ctypes_options = options.to_ctypes(dispatcher)
+    c_callback = dispatcher.wrap_callback(
+        options.result_callback, C_TYPES_RESULT_CALLBACK
+    )
+    ctypes_options = options.to_ctypes(c_callback)
 
     embedder_handle = ctypes.c_void_p()
-    lib.MpImageEmbedderCreate(
+    lib.MpImageEmbedderCreate(  # pyrefly: ignore[missing-attribute]
         ctypes.byref(ctypes_options), ctypes.byref(embedder_handle)
     )
-    return cls(lib, embedder_handle, dispatcher=dispatcher)
+    return cls(
+        lib, embedder_handle, dispatcher=dispatcher, async_callback=c_callback
+    )
 
   def embed(
       self,
@@ -342,14 +333,14 @@ class ImageEmbedder:
         if image_processing_options
         else None
     )
-    self._lib.MpImageEmbedderEmbedImage(
+    self._lib.MpImageEmbedderEmbedImage(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         options_c,
         ctypes.byref(c_result),
     )
     py_result = embedding_result_module.EmbeddingResult.from_ctypes(c_result)
-    self._lib.MpImageEmbedderCloseResult(ctypes.byref(c_result))
+    self._lib.MpImageEmbedderCloseResult(ctypes.byref(c_result))  # pyrefly: ignore[missing-attribute]
     return py_result
 
   def embed_for_video(
@@ -360,7 +351,7 @@ class ImageEmbedder:
   ) -> ImageEmbedderResult:
     """Performs image embedding extraction on the provided video frames.
 
-    Extraction is performed on the region of interested specified by the `roi`
+    Extraction is performed on the region of interest specified by the `roi`
     argument if provided, or on the entire image otherwise.
 
     Only use this method when the ImageEmbedder is created with the video
@@ -387,7 +378,7 @@ class ImageEmbedder:
         if image_processing_options
         else None
     )
-    self._lib.MpImageEmbedderEmbedForVideo(
+    self._lib.MpImageEmbedderEmbedForVideo(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         options_c,
@@ -396,7 +387,7 @@ class ImageEmbedder:
     )
 
     py_result = embedding_result_module.EmbeddingResult.from_ctypes(c_result)
-    self._lib.MpImageEmbedderCloseResult(ctypes.byref(c_result))
+    self._lib.MpImageEmbedderCloseResult(ctypes.byref(c_result))  # pyrefly: ignore[missing-attribute]
     return py_result
 
   def embed_async(
@@ -409,15 +400,15 @@ class ImageEmbedder:
 
     The results will be available via the "result_callback" provided in the
     ImageEmbedderOptions. Embedding extraction is performed on the region of
-    interested specified by the `roi` argument if provided, or on the entire
+    interest specified by the `roi` argument if provided, or on the entire
     image otherwise.
 
-    Only use this method when the ImageEmbedder is created with the live
-    stream running mode. The input timestamps should be monotonically increasing
+    Only use this method when the ImageEmbedder is created with the livestream
+    running mode. The input timestamps should be monotonically increasing
     for adjacent calls of this method. This method will return immediately after
     the input image is accepted. The results will be available via the
     `result_callback` provided in the `ImageEmbedderOptions`. The
-    `embed_async` method is designed to process live stream data such as
+    `embed_async` method is designed to process livestream data such as
     camera input. To lower the overall latency, image embedder may drop the
     input images if needed. In other words, it's not guaranteed to have output
     per input image.
@@ -442,7 +433,7 @@ class ImageEmbedder:
         if image_processing_options
         else None
     )
-    self._lib.MpImageEmbedderEmbedAsync(
+    self._lib.MpImageEmbedderEmbedAsync(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         options_c,
@@ -453,10 +444,15 @@ class ImageEmbedder:
     """Closes the ImageEmbedder."""
     if not self._handle:
       return
-    self._lib.MpImageEmbedderClose(self._handle)
-    self._handle = None
-    self._dispatcher.close()
-    self._lib.close()
+    # The C library frees the task even if it fails to close, so the handle
+    # must not be used again.
+    handle = self._handle
+    self._handle = None  # pyrefly: ignore[bad-assignment]
+    try:
+      self._lib.MpImageEmbedderClose(handle)  # pyrefly: ignore[missing-attribute]
+    finally:
+      self._dispatcher.close()
+      self._lib.close()
 
   @classmethod
   def cosine_similarity(

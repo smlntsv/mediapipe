@@ -14,13 +14,21 @@
 
 #include "mediapipe/objc/util.h"
 
+#include <iterator>
+
 #if defined(__APPLE__)
 
-#import <Accelerate/Accelerate.h>          // IWYU pragma: keep
-#import <CoreFoundation/CoreFoundation.h>  // IWYU pragma: keep
-#import <CoreGraphics/CGImage.h>           // IWYU pragma: keep
-#import <CoreGraphics/CoreGraphics.h>      // IWYU pragma: keep
-#import <CoreVideo/CoreVideo.h>            // IWYU pragma: keep
+#import <Accelerate/Accelerate.h>                // IWYU pragma: keep
+#include <CoreFoundation/CFBase.h>               // IWYU pragma: keep
+#include <CoreFoundation/CFDictionary.h>         // IWYU pragma: keep
+#include <CoreFoundation/CFNumber.h>             // IWYU pragma: keep
+#import <CoreFoundation/CoreFoundation.h>        // IWYU pragma: keep
+#import <CoreGraphics/CGImage.h>                 // IWYU pragma: keep
+#import <CoreGraphics/CoreGraphics.h>            // IWYU pragma: keep
+#include <CoreVideo/CVPixelBuffer.h>             // IWYU pragma: keep
+#include <CoreVideo/CVPixelFormatDescription.h>  // IWYU pragma: keep
+#import <CoreVideo/CoreVideo.h>                  // IWYU pragma: keep
+#include <TargetConditionals.h>                  // IWYU pragma: keep
 
 #include "mediapipe/objc/CFHolder.h"  // IWYU pragma: keep
 
@@ -32,14 +40,15 @@
 #include <memory>
 #include <vector>
 
-#include "absl/base/macros.h"
-#include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
-#include "absl/memory/memory.h"
+#include "absl/base/macros.h"           // from @com_google_absl
+#include "absl/log/absl_check.h"        // from @com_google_absl
+#include "absl/log/absl_log.h"          // from @com_google_absl
+#include "absl/memory/memory.h"         // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/framework/port/logging.h"
 #include "mediapipe/framework/port/ret_check.h"
 #include "mediapipe/framework/port/source_location.h"
-#include "mediapipe/framework/port/status.h"
 #include "mediapipe/framework/port/status_builder.h"
 
 namespace {
@@ -221,7 +230,7 @@ vImage_Error vImageConvertCVPixelBuffers(CVPixelBufferRef src,
   int dst_buffer_count =
       vImageConverter_GetNumberOfDestinationBuffers(converter);
   vImage_Buffer buffers[8];
-  if (src_buffer_count + dst_buffer_count > ABSL_ARRAYSIZE(buffers)) {
+  if (src_buffer_count + dst_buffer_count > std::size(buffers)) {
     vImageConverter_Release(converter);
     return kvImageMemoryAllocationError;
   }
@@ -266,33 +275,41 @@ vImage_Error vImageConvertCVPixelBuffers(CVPixelBufferRef src,
   return error;
 }
 
-#if TARGET_IPHONE_SIMULATOR
-static void FreeRefConReleaseCallback(void* refCon, const void* baseAddress) {
-  free(refCon);
+static CFDictionaryRef GetCVPixelBufferAttributesForGpuBuffer() {
+  static CFDictionaryRef attrs = nullptr;
+  if (!attrs) {
+    CFDictionaryRef empty_dict = CFDictionaryCreate(
+        kCFAllocatorDefault, nullptr, nullptr, 0,
+        &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+
+    // MediaPipe GpuBuffers require kCVPixelBufferIOSurfacePropertiesKey on all
+    // platforms (including the iOS Simulator) so CVMetalTextureCache can create
+    // Metal textures from them, while GpuBufferStorageCvPixelBuffer bridges
+    // IOSurface-backed pixel buffers for CVOpenGLESTextureCache on Simulator.
+    const void* keys[] = {
+        kCVPixelBufferIOSurfacePropertiesKey,
+#if TARGET_OS_OSX
+        kCVPixelFormatOpenGLCompatibility,
+#else
+        kCVPixelFormatOpenGLESCompatibility,
+#endif  // TARGET_OS_OSX
+    };
+
+    const void* values[] = {empty_dict, kCFBooleanTrue};
+
+    attrs = CFDictionaryCreate(
+        kCFAllocatorDefault, keys, values, std::size(values),
+        &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    CFRelease(empty_dict);
+  }
+  return attrs;
 }
-#endif
 
 CVReturn CreateCVPixelBufferWithoutPool(int width, int height, OSType cv_format,
                                         CVPixelBufferRef* out_buffer) {
-#if TARGET_IPHONE_SIMULATOR
-  // On the simulator, syncing the texture with the pixelbuffer does not work,
-  // and we have to use glReadPixels. Since GL_UNPACK_ROW_LENGTH is not
-  // available in OpenGL ES 2, we should create the buffer so the pixels are
-  // contiguous.
-  //
-  // TODO: verify if we can use kIOSurfaceBytesPerRow to force
-  // CoreVideo to give us contiguous data.
-  size_t bytes_per_row = width * 4;
-  void* data = malloc(bytes_per_row * height);
-  return CVPixelBufferCreateWithBytes(
-      kCFAllocatorDefault, width, height, cv_format, data, bytes_per_row,
-      FreeRefConReleaseCallback, data,
-      GetCVPixelBufferAttributesForGlCompatibility(), out_buffer);
-#else
   return CVPixelBufferCreate(kCFAllocatorDefault, width, height, cv_format,
-                             GetCVPixelBufferAttributesForGlCompatibility(),
+                             GetCVPixelBufferAttributesForGpuBuffer(),
                              out_buffer);
-#endif
 }
 
 absl::StatusOr<CFHolder<CVPixelBufferRef>> CreateCVPixelBufferWithoutPool(
@@ -304,6 +321,7 @@ absl::StatusOr<CFHolder<CVPixelBufferRef>> CreateCVPixelBufferWithoutPool(
   return MakeCFHolderAdopting(buffer);
 }
 
+#if !TARGET_OS_SIMULATOR
 /// When storing a shared_ptr in a CVPixelBuffer's refcon, this can be
 /// used as a CVPixelBufferReleaseBytesCallback. This keeps the data
 /// alive while the CVPixelBuffer is in use.
@@ -311,13 +329,14 @@ static void ReleaseSharedPtr(void* refcon, const void* base_address) {
   auto ptr = (std::shared_ptr<void>*)refcon;
   delete ptr;
 }
+#endif  // !TARGET_OS_SIMULATOR
 
 CVPixelBufferRef CreateCVPixelBufferForImageFramePacket(
     const mediapipe::Packet& image_frame_packet) {
   CFHolder<CVPixelBufferRef> buffer;
   absl::Status status =
       CreateCVPixelBufferForImageFramePacket(image_frame_packet, &buffer);
-  MEDIAPIPE_CHECK_OK(status) << "Failed to create CVPixelBufferRef";
+  ABSL_CHECK_OK(status) << "Failed to create CVPixelBufferRef";
   return (CVPixelBufferRef)CFRetain(*buffer);
 }
 
@@ -338,13 +357,19 @@ absl::Status CreateCVPixelBufferForImageFramePacket(
   auto image_frame = std::const_pointer_cast<mediapipe::ImageFrame>(
       mediapipe::SharedPtrWithPacket<mediapipe::ImageFrame>(
           image_frame_packet));
-  MP_ASSIGN_OR_RETURN(*out_buffer, CreateCVPixelBufferForImageFrame(
-                                       image_frame, can_overwrite));
+  ABSL_ASSIGN_OR_RETURN(*out_buffer, CreateCVPixelBufferForImageFrame(
+                                         image_frame, can_overwrite));
   return absl::OkStatus();
 }
 
 absl::StatusOr<CFHolder<CVPixelBufferRef>> CreateCVPixelBufferForImageFrame(
     std::shared_ptr<mediapipe::ImageFrame> image_frame, bool can_overwrite) {
+  if (!image_frame) {
+    return absl::InvalidArgumentError("image_frame cannot be nullptr");
+  }
+#if TARGET_OS_SIMULATOR
+  return CreateCVPixelBufferCopyingImageFrame(*image_frame);
+#else
   CFHolder<CVPixelBufferRef> pixel_buffer;
   const auto& frame = *image_frame;
   void* frame_data =
@@ -362,9 +387,9 @@ absl::StatusOr<CFHolder<CVPixelBufferRef>> CreateCVPixelBufferForImageFrame(
       if (can_overwrite) {
         v_dest = v_image;
       } else {
-        MP_ASSIGN_OR_RETURN(pixel_buffer,
-                            CreateCVPixelBufferWithoutPool(
-                                frame.Width(), frame.Height(), pixel_format));
+        ABSL_ASSIGN_OR_RETURN(pixel_buffer,
+                              CreateCVPixelBufferWithoutPool(
+                                  frame.Width(), frame.Height(), pixel_format));
         // Lock read-write: the CPU writes the pixels below. With a read-only
         // lock, Intel/AMD GPUs on Intel Macs never see the CPU writes to the
         // IOSurface and sample an all-zero image (Apple GPUs happen to see
@@ -397,6 +422,24 @@ absl::StatusOr<CFHolder<CVPixelBufferRef>> CreateCVPixelBufferForImageFrame(
       pixel_format = kCVPixelFormatType_128RGBAFloat;
       break;
 
+    case mediapipe::ImageFormat::VEC16F1:
+      pixel_format = kCVPixelFormatType_OneComponent16Half;
+      break;
+
+    case mediapipe::ImageFormat::VEC16F2:
+      pixel_format = kCVPixelFormatType_TwoComponent16Half;
+      break;
+
+    case mediapipe::ImageFormat::VEC16F4:
+      pixel_format = kCVPixelFormatType_64RGBAHalf;
+      break;
+
+    case mediapipe::ImageFormat::SRGB:
+      return ::mediapipe::InvalidArgumentErrorBuilder(MEDIAPIPE_LOC)
+             << "Unsupported ImageFrame format: SRGB. MacOS/iOS GPU "
+                "input requires an alpha channel.";
+      break;
+
     default:
       return ::mediapipe::UnknownErrorBuilder(MEDIAPIPE_LOC)
              << "unsupported ImageFrame format: " << image_format;
@@ -420,6 +463,7 @@ absl::StatusOr<CFHolder<CVPixelBufferRef>> CreateCVPixelBufferForImageFrame(
   }
 
   return pixel_buffer;
+#endif  // TARGET_OS_SIMULATOR
 }
 
 absl::StatusOr<CFHolder<CVPixelBufferRef>> CreateCVPixelBufferCopyingImageFrame(
@@ -475,15 +519,27 @@ absl::StatusOr<CFHolder<CVPixelBufferRef>> CreateCVPixelBufferCopyingImageFrame(
       pixel_format = kCVPixelFormatType_128RGBAFloat;
       break;
 
+    case mediapipe::ImageFormat::VEC16F1:
+      pixel_format = kCVPixelFormatType_OneComponent16Half;
+      break;
+
+    case mediapipe::ImageFormat::VEC16F2:
+      pixel_format = kCVPixelFormatType_TwoComponent16Half;
+      break;
+
+    case mediapipe::ImageFormat::VEC16F4:
+      pixel_format = kCVPixelFormatType_64RGBAHalf;
+      break;
+
     default:
       return ::mediapipe::UnknownErrorBuilder(MEDIAPIPE_LOC)
              << "unsupported ImageFrame format: " << image_format;
   }
 
   CVReturn cv_err;
-  MP_ASSIGN_OR_RETURN(pixel_buffer, CreateCVPixelBufferWithoutPool(
-                                        image_frame.Width(),
-                                        image_frame.Height(), pixel_format));
+  ABSL_ASSIGN_OR_RETURN(pixel_buffer, CreateCVPixelBufferWithoutPool(
+                                          image_frame.Width(),
+                                          image_frame.Height(), pixel_format));
   // Lock read-write: the CPU writes the pixels (see
   // CreateCVPixelBufferForImageFrame).
   cv_err = CVPixelBufferLockBaseAddress(*pixel_buffer, 0);
@@ -498,7 +554,7 @@ absl::StatusOr<CFHolder<CVPixelBufferRef>> CreateCVPixelBufferCopyingImageFrame(
   RET_CHECK(cv_err == kCVReturnSuccess)
       << "CVPixelBufferUnlockBaseAddress failed: " << cv_err;
 
-  MP_RETURN_IF_ERROR(status);
+  ABSL_RETURN_IF_ERROR(status);
 
   return pixel_buffer;
 }
@@ -650,6 +706,18 @@ std::unique_ptr<mediapipe::ImageFrame> CreateImageFrameForCVPixelBuffer(
       image_format = mediapipe::ImageFormat::VEC32F1;
       break;
 
+    case kCVPixelFormatType_OneComponent16Half:
+      image_format = mediapipe::ImageFormat::VEC16F1;
+      break;
+
+    case kCVPixelFormatType_TwoComponent16Half:
+      image_format = mediapipe::ImageFormat::VEC16F2;
+      break;
+
+    case kCVPixelFormatType_64RGBAHalf:
+      image_format = mediapipe::ImageFormat::VEC16F4;
+      break;
+
     default: {
       char format_str[5] = {static_cast<char>(pixel_format >> 24 & 0xFF),
                             static_cast<char>(pixel_format >> 16 & 0xFF),
@@ -707,7 +775,7 @@ CFDictionaryRef GetCVPixelBufferAttributesForGlCompatibility() {
         kCFBooleanTrue};
 
     attrs = CFDictionaryCreate(
-        kCFAllocatorDefault, keys, values, ABSL_ARRAYSIZE(values),
+        kCFAllocatorDefault, keys, values, std::size(values),
         &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
     CFRelease(empty_dict);
   }

@@ -62,12 +62,6 @@ cc_library(
 )
 
 cc_library(
-    name = "cleanup",
-    hdrs = ["cleanup.h"],
-    deps = ["@com_google_absl//absl/base:core_headers"],
-)
-
-cc_library(
     name = "clock",
     srcs = [
         "clock.cc",
@@ -138,10 +132,10 @@ cc_library(
         ":file_path",
         ":mmapped_file",
         ":platform_strings",
-        "//mediapipe/framework/port:status",
         "@com_google_absl//absl/base:config",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ] + select({
@@ -157,7 +151,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":platform_strings",
-        "//mediapipe/framework/port:status",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
@@ -171,27 +164,8 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//mediapipe/framework/port",
-        "//mediapipe/framework/port:integral_types",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
-    ],
-)
-
-cc_library(
-    name = "endian",
-    hdrs = ["endian.h"],
-    deps = ["@com_google_absl//absl/base:config"],
-)
-
-cc_test(
-    name = "endian_test",
-    srcs = ["endian_test.cc"],
-    deps = [
-        ":endian",
-        "//mediapipe/framework/port:gtest_main",
-        "@com_google_absl//absl/base:config",
     ],
 )
 
@@ -209,10 +183,7 @@ cc_library(
 
     # Use this library through "mediapipe/framework/port:map_util".
     visibility = ["//mediapipe/framework/port:__pkg__"],
-    deps = [
-        "//mediapipe/framework/port:logging",
-        "@com_google_absl//absl/log:absl_check",
-    ],
+    deps = ["@com_google_absl//absl/log:absl_check"],
 )
 
 cc_library(
@@ -235,11 +206,6 @@ cc_library(
         "//mediapipe/framework/port:integral_types",
         "@com_google_absl//absl/strings",
     ],
-)
-
-cc_library(
-    name = "no_destructor",
-    hdrs = ["no_destructor.h"],
 )
 
 cc_library(
@@ -292,14 +258,15 @@ cc_library(
     ],
     deps = [
         ":registration_token",
-        "//mediapipe/framework/port:status",
-        "//mediapipe/framework/port:statusor",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/meta:type_traits",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],
@@ -312,40 +279,8 @@ cc_library(
     # Use this library through "mediapipe/framework/port:singleton".
     visibility = ["//mediapipe/framework/port:__pkg__"],
     deps = [
-        "@com_google_absl//absl/synchronization",
-    ],
-)
-
-cc_library(
-    name = "source_location",
-    hdrs = ["source_location.h"],
-
-    # Use this library through "mediapipe/framework/port:source_location".
-    visibility = ["//mediapipe/framework/port:__pkg__"],
-)
-
-cc_library(
-    name = "status",
-    srcs = [
-        "status.cc",
-        "status_builder.cc",
-    ],
-    hdrs = [
-        "canonical_errors.h",
-        "status.h",
-        "status_builder.h",
-        "status_macros.h",
-    ],
-
-    # Use this library through "mediapipe/framework/port:status".
-    visibility = ["//mediapipe/framework/port:__pkg__"],
-    deps = [
-        ":source_location",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/log:absl_log",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -367,20 +302,15 @@ cc_library(
     # Use this library through "mediapipe/framework/port:gtest_main".
     visibility = ["//mediapipe/framework/port:__pkg__"],
     deps = [
-        "//mediapipe/framework/port:status",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_builder",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
     ],
-)
-
-cc_library(
-    name = "requires",
-    hdrs = ["requires.h"],
-
-    # Use this library through "mediapipe/framework/port:requires".
-    visibility = ["//mediapipe/framework/port:__pkg__"],
 )
 
 cc_library(
@@ -391,10 +321,12 @@ cc_library(
     # Use this library through "mediapipe/framework/port:ret_check".
     visibility = ["//mediapipe/framework/port:__pkg__"],
     deps = [
-        ":status",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_builder",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:source_location",
     ],
 )
 
@@ -479,7 +411,6 @@ cc_test(
     deps = [
         ":intops",
         "//mediapipe/framework/port:gtest_main",
-        "@com_google_absl//absl/base:core_headers",
     ],
 )
 
@@ -502,29 +433,6 @@ cc_test(
 )
 
 cc_test(
-    name = "status_builder_test",
-    size = "small",
-    srcs = ["status_builder_test.cc"],
-    linkstatic = 1,
-    deps = [
-        ":status",
-        "//mediapipe/framework/port:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "status_test",
-    size = "small",
-    srcs = ["status_test.cc"],
-    linkstatic = 1,
-    deps = [
-        ":status",
-        ":status_matchers",
-        "//mediapipe/framework/port:gtest_main",
-    ],
-)
-
-cc_test(
     name = "topologicalsorter_test",
     srcs = ["topologicalsorter_test.cc"],
     linkstatic = 1,
@@ -539,6 +447,7 @@ cc_test(
     srcs = ["threadpool_test.cc"],
     linkstatic = 1,
     deps = [
+        ":thread_options",
         ":threadpool",
         "//mediapipe/framework/port:gtest_main",
         "@com_google_absl//absl/synchronization",

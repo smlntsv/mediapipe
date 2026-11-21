@@ -19,7 +19,9 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
-#include "absl/status/statusor.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
 #include "mediapipe/calculators/util/align_hand_to_pose_in_world_calculator.h"
 #include "mediapipe/calculators/util/align_hand_to_pose_in_world_calculator.pb.h"
 #include "mediapipe/framework/api2/builder.h"
@@ -32,7 +34,6 @@ limitations under the License.
 #include "mediapipe/framework/formats/image.h"
 #include "mediapipe/framework/formats/landmark.pb.h"
 #include "mediapipe/framework/formats/rect.pb.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/modules/holistic_landmark/calculators/roi_tracking_calculator.pb.h"
 #include "mediapipe/tasks/cc/components/utils/gate.h"
 #include "mediapipe/tasks/cc/vision/hand_landmarker/proto/hand_landmarks_detector_graph_options.pb.h"
@@ -220,9 +221,10 @@ absl::StatusOr<HolisticHandTrackingOutput> TrackHolisticHand(
       GetHandRoiFromPosePalmLandmarks(pose_palm_landmarks, image_size, graph);
 
   // Refine hand ROI with re-crop model.
-  MP_ASSIGN_OR_RETURN(Stream<NormalizedRect> roi_from_recrop,
-                      RefineHandRoi(image, roi_from_pose,
-                                    hand_roi_refinement_graph_options, graph));
+  ABSL_ASSIGN_OR_RETURN(
+      Stream<NormalizedRect> roi_from_recrop,
+      RefineHandRoi(image, roi_from_pose, hand_roi_refinement_graph_options,
+                    graph));
 
   // Loop for previous frame landmarks.
   auto [prev_landmarks, set_prev_landmarks_fn] =

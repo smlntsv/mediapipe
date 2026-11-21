@@ -15,7 +15,7 @@
 #include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
+#include "absl/memory/memory.h"  // from @com_google_absl
 #include "mediapipe/framework/executor.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
@@ -45,7 +45,7 @@ class MyExecutor : public mediapipe::Executor {
 };
 
 MyExecutor::MyExecutor() {
-  thread_pool_ = absl::make_unique<mediapipe::ThreadPool>("my_executor", 1);
+  thread_pool_ = std::make_unique<mediapipe::ThreadPool>("my_executor", 1);
   thread_pool_->StartWorkers();
 }
 

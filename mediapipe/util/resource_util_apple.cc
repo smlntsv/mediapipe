@@ -14,12 +14,16 @@
 
 #import <Foundation/Foundation.h>
 
+#include <cstddef>
 #include <fstream>
 #include <sstream>
+#include <string>
 
-#include "absl/log/absl_log.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/match.h"
+#include "absl/log/absl_log.h"          // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
+#include "absl/strings/match.h"         // from @com_google_absl
 #include "mediapipe/framework/port/file_helpers.h"
 #include "mediapipe/framework/port/ret_check.h"
 #include "mediapipe/util/resource_util.h"
@@ -28,8 +32,8 @@ namespace mediapipe {
 
 namespace {
 absl::StatusOr<std::string> PathToResourceAsFileInternal(
-    const std::string& path) {
-  NSString* ns_path = [NSString stringWithUTF8String:path.c_str()];
+    absl::string_view path) {
+  NSString* ns_path = [NSString stringWithUTF8String:std::string(path).c_str()];
   Class mediapipeGraphClass = NSClassFromString(@"MPPGraph");
   NSString* resource_dir =
       [[NSBundle bundleForClass:mediapipeGraphClass] resourcePath];
@@ -50,16 +54,16 @@ absl::Status DefaultGetResourceContents(const std::string& path,
     ABSL_LOG(WARNING)
         << "Setting \"read_as_binary\" to false is a no-op on ios.";
   }
-  MP_ASSIGN_OR_RETURN(std::string full_path, PathToResourceAsFile(path));
+  ABSL_ASSIGN_OR_RETURN(std::string full_path, PathToResourceAsFile(path));
   return file::GetContents(full_path, output, read_as_binary);
 }
 }  // namespace internal
 
-absl::StatusOr<std::string> PathToResourceAsFile(const std::string& path,
+absl::StatusOr<std::string> PathToResourceAsFile(absl::string_view path,
                                                  bool /*shadow_copy*/) {
   // Return full path.
   if (absl::StartsWith(path, "/")) {
-    return path;
+    return std::string(path);
   }
 
   // Try to load a relative path or a base filename as is.
@@ -74,7 +78,7 @@ absl::StatusOr<std::string> PathToResourceAsFile(const std::string& path,
   // If that fails, assume it was a relative path, and try just the base name.
   {
     const size_t last_slash_idx = path.find_last_of("\\/");
-    RET_CHECK(last_slash_idx != std::string::npos)
+    RET_CHECK(last_slash_idx != absl::string_view::npos)
         << path << " doesn't have a slash in it";  // Make sure it's a path.
     auto base_name = path.substr(last_slash_idx + 1);
     auto status_or_path = PathToResourceAsFileInternal(base_name);
@@ -98,7 +102,7 @@ absl::StatusOr<std::string> PathToResourceAsFile(const std::string& path,
     }
   }
 
-  return path;
+  return std::string(path);
 }
 
 }  // namespace mediapipe

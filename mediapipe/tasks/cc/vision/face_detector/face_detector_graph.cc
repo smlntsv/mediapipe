@@ -16,8 +16,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
 #include "mediapipe/calculators/core/clip_vector_size_calculator.pb.h"
 #include "mediapipe/calculators/tensor/image_to_tensor_calculator.pb.h"
 #include "mediapipe/calculators/tensor/tensors_to_detections_calculator.pb.h"
@@ -33,11 +34,9 @@ limitations under the License.
 #include "mediapipe/framework/formats/rect.pb.h"
 #include "mediapipe/framework/formats/tensor.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/tasks/cc/components/processors/image_preprocessing_graph.h"
 #include "mediapipe/tasks/cc/core/model_resources.h"
 #include "mediapipe/tasks/cc/core/model_task_graph.h"
-#include "mediapipe/tasks/cc/core/proto/inference_subgraph.pb.h"
 #include "mediapipe/tasks/cc/metadata/metadata_extractor.h"
 #include "mediapipe/tasks/cc/vision/face_detector/proto/face_detector_graph_options.pb.h"
 #include "mediapipe/tasks/cc/vision/utils/image_tensor_specs.h"
@@ -305,14 +304,15 @@ class FaceDetectorGraph : public core::ModelTaskGraph {
  public:
   absl::StatusOr<CalculatorGraphConfig> GetConfig(
       SubgraphContext* sc) override {
-    MP_ASSIGN_OR_RETURN(const auto* model_resources,
-                        CreateModelResources<FaceDetectorGraphOptions>(sc));
+    ABSL_ASSIGN_OR_RETURN(const auto* model_resources,
+                          CreateModelResources<FaceDetectorGraphOptions>(sc));
     Graph graph;
-    MP_ASSIGN_OR_RETURN(FaceDetectionOuts outs,
-                        BuildFaceDetectionSubgraph(
-                            sc->Options<FaceDetectorGraphOptions>(),
-                            *model_resources, graph[Input<Image>(kImageTag)],
-                            graph[Input<NormalizedRect>(kNormRectTag)], graph));
+    ABSL_ASSIGN_OR_RETURN(
+        FaceDetectionOuts outs,
+        BuildFaceDetectionSubgraph(
+            sc->Options<FaceDetectorGraphOptions>(), *model_resources,
+            graph[Input<Image>(kImageTag)],
+            graph[Input<NormalizedRect>(kNormRectTag)], graph));
     outs.face_detections >>
         graph.Out(kDetectionsTag).Cast<std::vector<Detection>>();
     outs.face_rects >>
@@ -336,8 +336,8 @@ class FaceDetectorGraph : public core::ModelTaskGraph {
     // Prepare face detector options and image tensor specs from model.
     const FaceDetectorOptions* face_detector_options =
         GetFaceDetectorOptionsFromMetadata(model_resources);
-    MP_ASSIGN_OR_RETURN(ImageTensorSpecs input_specs,
-                        BuildInputImageTensorSpecs(model_resources));
+    ABSL_ASSIGN_OR_RETURN(ImageTensorSpecs input_specs,
+                          BuildInputImageTensorSpecs(model_resources));
 
     // Image preprocessing subgraph to convert image to tensor for the tflite
     // model.
@@ -345,10 +345,12 @@ class FaceDetectorGraph : public core::ModelTaskGraph {
     bool use_gpu =
         components::processors::DetermineImagePreprocessingGpuBackend(
             subgraph_options.base_options().acceleration());
-    MP_RETURN_IF_ERROR(components::processors::ConfigureImagePreprocessingGraph(
-        model_resources, use_gpu, subgraph_options.base_options().gpu_origin(),
-        &preprocessing.GetOptions<
-            components::processors::proto::ImagePreprocessingGraphOptions>()));
+    ABSL_RETURN_IF_ERROR(
+        components::processors::ConfigureImagePreprocessingGraph(
+            model_resources, use_gpu,
+            subgraph_options.base_options().gpu_origin(),
+            &preprocessing.GetOptions<components::processors::proto::
+                                          ImagePreprocessingGraphOptions>()));
     auto& image_to_tensor_options =
         *preprocessing
              .GetOptions<components::processors::proto::
@@ -372,7 +374,7 @@ class FaceDetectorGraph : public core::ModelTaskGraph {
 
     // Generates a single side packet containing a vector of SSD anchors.
     auto& ssd_anchor = graph.AddNode("SsdAnchorsCalculator");
-    MP_RETURN_IF_ERROR(ConfigureSsdAnchorsCalculator(
+    ABSL_RETURN_IF_ERROR(ConfigureSsdAnchorsCalculator(
         face_detector_options, subgraph_options, input_specs.image_width,
         input_specs.image_height,
         &ssd_anchor.GetOptions<mediapipe::SsdAnchorsCalculatorOptions>()));
@@ -382,7 +384,7 @@ class FaceDetectorGraph : public core::ModelTaskGraph {
     auto& tensors_to_detections =
         graph.AddNode("TensorsToDetectionsCalculator");
     bool is_long_range = input_specs.image_width == kLongRangeImageSize;
-    MP_RETURN_IF_ERROR(ConfigureTensorsToDetectionsCalculator(
+    ABSL_RETURN_IF_ERROR(ConfigureTensorsToDetectionsCalculator(
         face_detector_options, subgraph_options,
         &tensors_to_detections
              .GetOptions<mediapipe::TensorsToDetectionsCalculatorOptions>(),

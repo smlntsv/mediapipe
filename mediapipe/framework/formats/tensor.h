@@ -28,11 +28,11 @@
 #include <utility>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/functional/any_invocable.h"
-#include "absl/status/status.h"
-#include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
+#include "absl/base/thread_annotations.h"   // from @com_google_absl
+#include "absl/functional/any_invocable.h"  // from @com_google_absl
+#include "absl/status/status.h"             // from @com_google_absl
+#include "absl/strings/string_view.h"       // from @com_google_absl
+#include "absl/synchronization/mutex.h"     // from @com_google_absl
 #include "mediapipe/framework/formats/tensor/internal.h"
 #include "mediapipe/framework/memory_manager.h"
 // Exports MEDIAPIPE_TENSOR_USE_AHWB macro.
@@ -44,7 +44,7 @@
 
 #include <list>
 
-#include "absl/log/absl_check.h"
+#include "absl/log/absl_check.h"  // from @com_google_absl
 #include "mediapipe/framework/formats/hardware_buffer.h"
 #include "mediapipe/framework/formats/hardware_buffer_pool.h"
 #include "mediapipe/framework/formats/tensor_ahwb_usage.h"
@@ -283,6 +283,13 @@ class Tensor {
       ahwb_usage_->release_callbacks.push_back(std::move(callback));
     }
 
+    // Passed `callback` is invoked when the underlying HardwareBuffer is
+    // released (e.g., on destruction or pool eviction).
+    void AddHardwareBufferReleaseCallback(
+        absl::AnyInvocable<void() &&> callback) const {
+      hardware_buffer_->AddReleaseCallback(std::move(callback));
+    }
+
    protected:
     friend class Tensor;
     AHardwareBufferView(HardwareBuffer* hardware_buffer,
@@ -369,7 +376,8 @@ class Tensor {
 #if MEDIAPIPE_OPENGL_ES_VERSION >= MEDIAPIPE_OPENGL_ES_31
   class OpenGlBufferView : public View {
    public:
-    GLuint name() const { return name_; }
+    GLuint name() const& { return name_; }
+    GLuint name() const&& = delete;
 
     OpenGlBufferView(OpenGlBufferView&& src) : View(std::move(src.lock_)) {
       is_write_view_ = src.is_write_view_;
@@ -377,6 +385,7 @@ class Tensor {
       ssbo_read_ = std::exchange(src.ssbo_read_, nullptr);
       gl_context_ = std::exchange(src.gl_context_, nullptr);
       gl_write_read_sync_ = std::exchange(src.gl_write_read_sync_, nullptr);
+      on_write_completed_ = std::exchange(src.on_write_completed_, nullptr);
     }
 
     ~OpenGlBufferView() {
@@ -388,8 +397,21 @@ class Tensor {
           *ssbo_read_ = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
         }
       } else {
-        if (gl_write_read_sync_ != nullptr && gl_context_ != nullptr) {
-          *gl_write_read_sync_ = gl_context_->CreateSyncToken();
+        if (gl_context_ != nullptr &&
+            (gl_write_read_sync_ != nullptr || on_write_completed_)) {
+          // Ensure that all GPU memory modifications made by compute shaders or
+          // rendering commands to this buffer are visible across all GL
+          // pipeline resources and contexts before generating the
+          // synchronization tokens.
+          gl_context_->Run([this] {
+            glMemoryBarrier(GL_ALL_BARRIER_BITS);
+            if (on_write_completed_) {
+              on_write_completed_();
+            }
+            if (gl_write_read_sync_ != nullptr) {
+              *gl_write_read_sync_ = gl_context_->CreateSyncToken();
+            }
+          });
         }
       }
     }
@@ -401,13 +423,15 @@ class Tensor {
     OpenGlBufferView(bool is_write_view, GLuint name,
                      std::unique_ptr<absl::MutexLock>&& lock, GLsync* ssbo_read,
                      GlContext* gl_context,
-                     std::shared_ptr<GlSyncPoint>* gl_write_read_sync)
+                     std::shared_ptr<GlSyncPoint>* gl_write_read_sync,
+                     absl::AnyInvocable<void()> on_write_completed = nullptr)
         : View(std::move(lock)),
           is_write_view_(is_write_view),
           name_(name),
           ssbo_read_(ssbo_read),
           gl_context_(gl_context),
-          gl_write_read_sync_(gl_write_read_sync) {
+          gl_write_read_sync_(gl_write_read_sync),
+          on_write_completed_(std::move(on_write_completed)) {
       if (!is_write_view) {
         MaybeWaitForWrites();
       }
@@ -433,6 +457,7 @@ class Tensor {
     GLsync* ssbo_read_;
     GlContext* gl_context_;
     std::shared_ptr<GlSyncPoint>* gl_write_read_sync_;
+    absl::AnyInvocable<void()> on_write_completed_;
   };
   // A valid OpenGL context must be bound to the calling thread due to possible
   // GPU resource allocation.

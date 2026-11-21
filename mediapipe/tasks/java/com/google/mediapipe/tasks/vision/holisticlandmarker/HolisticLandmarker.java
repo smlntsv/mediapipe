@@ -200,6 +200,7 @@ public final class HolisticLandmarker extends BaseVisionTaskApi {
                 getNormalizedLandmarkList(packets.get(FACE_LANDMARKS_OUT_STREAM_INDEX));
             Optional<ClassificationList> faceBlendshapeProtos =
                 landmarkerOptions.outputFaceBlendshapes()
+                        && !packets.get(faceBlendshapesOutStreamIndex[0]).isEmpty()
                     ? Optional.of(
                         PacketGetter.getProto(
                             packets.get(faceBlendshapesOutStreamIndex[0]),
@@ -211,6 +212,7 @@ public final class HolisticLandmarker extends BaseVisionTaskApi {
                 getLandmarkList(packets.get(POSE_WORLD_LANDMARKS_OUT_STREAM_INDEX));
             Optional<MPImage> segmentationMask =
                 landmarkerOptions.outputPoseSegmentationMasks()
+                        && !packets.get(poseSegmentationMasksOutStreamIndex[0]).isEmpty()
                     ? Optional.of(
                         getSegmentationMask(packets, poseSegmentationMasksOutStreamIndex[0]))
                     : Optional.empty();
@@ -234,7 +236,7 @@ public final class HolisticLandmarker extends BaseVisionTaskApi {
                 rightHandLandmarkProtos,
                 rightHandWorldLandmarkProtos,
                 BaseVisionTaskApi.generateResultTimestampMs(
-                    landmarkerOptions.runningMode(), packets.get(FACE_LANDMARKS_OUT_STREAM_INDEX)));
+                    landmarkerOptions.runningMode(), packets.get(IMAGE_OUT_STREAM_INDEX)));
           }
 
           @Override
@@ -250,7 +252,7 @@ public final class HolisticLandmarker extends BaseVisionTaskApi {
         TaskRunner.create(
             context,
             TaskInfo.<HolisticLandmarkerOptions>builder()
-                .setTaskName(HolisticLandmarker.class.getSimpleName())
+                .setTaskName("HolisticLandmarker")
                 .setTaskRunningModeName(landmarkerOptions.runningMode().name())
                 .setTaskGraphName(TASK_GRAPH_NAME)
                 .setInputStreams(INPUT_STREAMS)
@@ -438,7 +440,7 @@ public final class HolisticLandmarker extends BaseVisionTaskApi {
        * <ul>
        *   <li>IMAGE: The mode for detecting holistic landmarks on single image inputs.
        *   <li>VIDEO: The mode for detecting holistic landmarks on the decoded frames of a video.
-       *   <li>LIVE_STREAM: The mode for for detecting holistic landmarks on a live stream of input
+       *   <li>LIVE_STREAM: The mode for detecting holistic landmarks on a livestream of input
        *       data, such as from camera. In this mode, {@code setResultListener} must be called to
        *       set up a listener to receive the detection results asynchronously.
        * </ul>
@@ -495,7 +497,7 @@ public final class HolisticLandmarker extends BaseVisionTaskApi {
 
       /**
        * Sets the result listener to receive the detection results asynchronously when the holistic
-       * landmarker is in the live stream mode.
+       * landmarker is in the livestream mode.
        */
       public abstract Builder setResultListener(
           ResultListener<HolisticLandmarkerResult, MPImage> value);
@@ -510,7 +512,7 @@ public final class HolisticLandmarker extends BaseVisionTaskApi {
        *
        * @throws IllegalArgumentException if the result listener and the running mode are not
        *     properly configured. The result listener should only be set when the holistic
-       *     landmarker is in the live stream mode.
+       *     landmarker is in the livestream mode.
        */
       public final HolisticLandmarkerOptions build() {
         HolisticLandmarkerOptions options = autoBuild();
@@ -569,7 +571,7 @@ public final class HolisticLandmarker extends BaseVisionTaskApi {
           .setOutputPoseSegmentationMasks(DEFAULT_OUTPUT_SEGMENTATION_MASKS);
     }
 
-    /** Converts a {@link HolisticLandmarkerOptions} to a {@link Any} protobuf message. */
+    /** Converts a {@link HolisticLandmarkerOptions} to an {@link Any} protobuf message. */
     @Override
     public Any convertToAnyProto() {
       HolisticLandmarkerGraphOptions.Builder holisticLandmarkerGraphOptions =
@@ -577,7 +579,7 @@ public final class HolisticLandmarker extends BaseVisionTaskApi {
               .setBaseOptions(
                   BaseOptionsProto.BaseOptions.newBuilder()
                       .setUseStreamMode(runningMode() != RunningMode.IMAGE)
-                      .mergeFrom(convertBaseOptionsToProto(baseOptions()))
+                      .mergeFrom(convertBaseOptionsToProto(baseOptions(), /* useLiteRt= */ true))
                       .build());
 
       HandLandmarksDetectorGraphOptions.Builder handLandmarksDetectorGraphOptions =
@@ -639,7 +641,7 @@ public final class HolisticLandmarker extends BaseVisionTaskApi {
 
     if (!PacketGetter.getImageData(packets.get(packetIndex), buffer)) {
       throw new MediaPipeException(
-          MediaPipeException.StatusCode.INTERNAL.ordinal(),
+          MediaPipeException.StatusCode.INTERNAL,
           "There was an error getting the sefmentation mask.");
     }
 

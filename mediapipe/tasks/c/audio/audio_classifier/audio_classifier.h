@@ -2,7 +2,7 @@
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
-You may not obtain a copy of the License at
+You may obtain a copy of the License at
 
     http://www.apache.org/licenses/LICENSE-2.0
 
@@ -15,6 +15,8 @@ limitations under the License.
 
 #ifndef MEDIAPIPE_TASKS_C_AUDIO_AUDIO_CLASSIFIER_AUDIO_CLASSIFIER_H_
 #define MEDIAPIPE_TASKS_C_AUDIO_AUDIO_CLASSIFIER_AUDIO_CLASSIFIER_H_
+
+#include <stdint.h>
 
 #include "mediapipe/tasks/c/audio/core/common.h"
 #include "mediapipe/tasks/c/components/containers/classification_result.h"
@@ -38,12 +40,35 @@ typedef struct MpAudioClassifierInternal* MpAudioClassifierPtr;
 
 // The C representation of a list of audio classification results.
 // The caller must call `MpAudioClassifierCloseResult` to free the memory.
-typedef struct {
+typedef struct MpAudioClassifierResult {
   struct MpClassificationResult* results;
   int results_count;
 } MpAudioClassifierResult;
 
+// User-defined result callback for processing audio stream data.
+//
+// Arguments of the callback function:
+//   - `user_data`: the `result_callback_user_data` of the options that the
+//     audio classifier was created with, passed through unchanged.
+//   - `status`: `kMpOk` if a result is available, or the error otherwise.
+//   - `error_msg`: the message of the error, or null if `status` is `kMpOk`.
+//   - `result`: the classification result, or null if `status` is not `kMpOk`.
+//
+// `error_msg` and `result` are only valid for the lifetime of the callback and
+// must not be freed by the caller (do not pass `error_msg` to `MpErrorFree()`
+// or `result` to `MpAudioClassifierCloseResult()`). The callback is invoked on
+// a thread of the audio classifier and must not call
+// `MpAudioClassifierClose()`.
+typedef void (*MpAudioClassifierResultCallbackFn)(
+    void* user_data, MpStatus status, const char* error_msg,
+    const MpAudioClassifierResult* result);
+
 // The options for configuring a MediaPipe AudioClassifier task.
+//
+// The struct has no default values, in C or in C++: a field that is never
+// written is indeterminate. Zero-initialize the struct (`= {0}` in C, `= {}`
+// in C++) and then set its fields; the suggested defaults are listed below.
+// Zero is not a valid `running_mode`, so that field must always be set.
 struct MpAudioClassifierOptions {
   // Base options for configuring MediaPipe Tasks, such as specifying the model
   // file with metadata, accelerator options, op resolver, etc.
@@ -53,21 +78,26 @@ struct MpAudioClassifierOptions {
   // number of results, etc.
   struct MpClassifierOptions classifier_options;
 
-  // The running mode of the audio classifier. Default to the audio clips mode.
+  // The running mode of the audio classifier. Suggested default:
+  // kMpAudioRunningModeAudioClips.
   // Audio classifier has two running modes:
   // 1) The audio clips mode for running classification on independent audio
   //    clips.
   // 2) The audio stream mode for running classification on the audio stream,
   //    such as from microphone. In this mode, the "result_callback" below must
   //    be specified to receive the classification results asynchronously.
-  MpAudioRunningMode running_mode = kMpAudioRunningModeAudioClips;
+  enum MpAudioRunningMode running_mode;
 
   // The user-defined result callback for processing audio stream data.
   // The result callback should only be specified when the running mode is set
   // to kMpAudioRunningModeAudioStream.
-  typedef void (*result_callback_fn)(MpStatus status,
-                                     MpAudioClassifierResult* result);
-  result_callback_fn result_callback;
+  MpAudioClassifierResultCallbackFn result_callback;
+
+  // The pointer that is passed as `user_data` to every invocation of
+  // `result_callback`. Can be null. The audio classifier neither dereferences
+  // nor frees it. It must remain valid until `MpAudioClassifierClose()`
+  // returns.
+  void* result_callback_user_data;
 };
 
 // Creates an AudioClassifier from the provided `options`.
@@ -101,7 +131,7 @@ MpAudioClassifierCreate(struct MpAudioClassifierOptions* options,
 //     error message with `MpErrorFree()`.
 // @return An `MpStatus` indicating success or failure.
 MP_EXPORT MpStatus MpAudioClassifierClassify(
-    MpAudioClassifierPtr classifier, const MpAudioData* audio_data,
+    MpAudioClassifierPtr classifier, const struct MpAudioData* audio_data,
     MpAudioClassifierResult* result_out, char** error_msg);
 
 // Sends audio data (a block in a continuous audio stream) to perform audio
@@ -118,7 +148,7 @@ MP_EXPORT MpStatus MpAudioClassifierClassify(
 // @return An `MpStatus` indicating whether the audio data was successfully sent
 //     for classification.
 MP_EXPORT MpStatus MpAudioClassifierClassifyAsync(
-    MpAudioClassifierPtr classifier, const MpAudioData* audio_data,
+    MpAudioClassifierPtr classifier, const struct MpAudioData* audio_data,
     int64_t timestamp_ms, char** error_msg);
 
 // Frees the memory allocated inside a MpAudioClassifierResult result. Does not
@@ -130,6 +160,10 @@ MP_EXPORT void MpAudioClassifierCloseResult(MpAudioClassifierResult* result);
 
 // Shuts down the AudioClassifier when all the work is done. Frees all memory.
 //
+// Waits for the results of the audio data that was sent with
+// `MpAudioClassifierClassifyAsync()`. Once this function returns,
+// `result_callback` is not invoked anymore, and `classifier` is freed and must
+// not be used, even if an error is returned.
 //
 // @param classifier The audio classifier instance to be closed.
 // @param error_msg An optional pointer to receive the error message if the

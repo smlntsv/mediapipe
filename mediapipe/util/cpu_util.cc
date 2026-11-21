@@ -16,6 +16,10 @@
 
 #include <cmath>
 #include <cstdint>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
 #ifdef __ANDROID__
 #include "ndk/sources/android/cpufeatures/cpu-features.h"
@@ -26,13 +30,13 @@
 #endif
 #include <fstream>
 
-#include "absl/algorithm/container.h"
-#include "absl/strings/match.h"
-#include "absl/strings/numbers.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/substitute.h"
-#include "mediapipe/framework/port/canonical_errors.h"
-#include "mediapipe/framework/port/statusor.h"
+#include "absl/algorithm/container.h"  // from @com_google_absl
+#include "absl/status/status.h"        // from @com_google_absl
+#include "absl/status/statusor.h"      // from @com_google_absl
+#include "absl/strings/match.h"        // from @com_google_absl
+#include "absl/strings/numbers.h"      // from @com_google_absl
+#include "absl/strings/str_cat.h"      // from @com_google_absl
+#include "absl/strings/substitute.h"   // from @com_google_absl
 
 namespace mediapipe {
 namespace {

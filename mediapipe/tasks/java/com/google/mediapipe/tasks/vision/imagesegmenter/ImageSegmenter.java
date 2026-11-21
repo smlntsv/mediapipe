@@ -167,7 +167,7 @@ public final class ImageSegmenter extends BaseVisionTaskApi {
               if (!PacketGetter.getImageList(
                   packets.get(confidenceMasksOutStreamIndex), buffersArray, copyImage)) {
                 throw new MediaPipeException(
-                    MediaPipeException.StatusCode.INTERNAL.ordinal(),
+                    MediaPipeException.StatusCode.INTERNAL,
                     "There is an error getting confidence masks.");
               }
               for (ByteBuffer buffer : buffersArray) {
@@ -185,7 +185,7 @@ public final class ImageSegmenter extends BaseVisionTaskApi {
                 buffer = ByteBuffer.allocateDirect(width * height);
                 if (!PacketGetter.getImageData(packets.get(categoryMaskOutStreamIndex), buffer)) {
                   throw new MediaPipeException(
-                      MediaPipeException.StatusCode.INTERNAL.ordinal(),
+                      MediaPipeException.StatusCode.INTERNAL,
                       "There is an error getting category mask.");
                 }
               } else {
@@ -222,7 +222,7 @@ public final class ImageSegmenter extends BaseVisionTaskApi {
         TaskRunner.create(
             context,
             TaskInfo.<ImageSegmenterOptions>builder()
-                .setTaskName(ImageSegmenter.class.getSimpleName())
+                .setTaskName("ImageSegmenter")
                 .setTaskRunningModeName(segmenterOptions.runningMode().name())
                 .setTaskGraphName(TASK_GRAPH_NAME)
                 .setInputStreams(INPUT_STREAMS)
@@ -262,7 +262,7 @@ public final class ImageSegmenter extends BaseVisionTaskApi {
       if (node.getName().contains(TENSORS_TO_SEGMENTATION_CALCULATOR_NAME)) {
         if (foundTensorsToSegmentation) {
           throw new MediaPipeException(
-              MediaPipeException.StatusCode.INTERNAL.ordinal(),
+              MediaPipeException.StatusCode.INTERNAL,
               "The graph has more than one mediapipe.tasks.TensorsToSegmentationCalculator.");
         }
         foundTensorsToSegmentation = true;
@@ -275,7 +275,7 @@ public final class ImageSegmenter extends BaseVisionTaskApi {
           Long labelKey = Long.valueOf(i);
           if (!options.getLabelItemsMap().containsKey(labelKey)) {
             throw new MediaPipeException(
-                MediaPipeException.StatusCode.INTERNAL.ordinal(),
+                MediaPipeException.StatusCode.INTERNAL,
                 "The lablemap have no expected key: " + labelKey);
           }
           labels.add(options.getLabelItemsMap().get(labelKey).getName());
@@ -356,7 +356,7 @@ public final class ImageSegmenter extends BaseVisionTaskApi {
   public ImageSegmenterResult segment(MPImage image, SegmentationOptions segmentationOptions) {
     if (hasResultListener) {
       throw new MediaPipeException(
-          MediaPipeException.StatusCode.FAILED_PRECONDITION.ordinal(),
+          MediaPipeException.StatusCode.FAILED_PRECONDITION,
           "ResultListener is provided in the ImageSegmenterOptions, but this method will return an"
               + " ImageSegmentationResult.");
     }
@@ -436,17 +436,13 @@ public final class ImageSegmenter extends BaseVisionTaskApi {
    * @param image a MediaPipe {@link MPImage} object for processing.
    * @param segmentationOptions the {@link SegmentationOptions} used to configure the runtime
    *     behavior of the {@link ImageSegmenter}.
-   * @param imageProcessingOptions the {@link ImageProcessingOptions} specifying how to process the
-   *     input image before running inference. Note that region-of-interest is <b>not</b> supported
-   *     by this task: specifying {@link ImageProcessingOptions#regionOfInterest()} will result in
-   *     this method throwing an IllegalArgumentException.
    * @throws MediaPipeException if there is an internal error. Or if {@link ImageSegmenter} is not
    *     created with {@link ResultListener} set in {@link ImageSegmenterOptions}.
    */
   public void segmentWithResultListener(MPImage image, SegmentationOptions segmentationOptions) {
     if (!hasResultListener) {
       throw new MediaPipeException(
-          MediaPipeException.StatusCode.FAILED_PRECONDITION.ordinal(),
+          MediaPipeException.StatusCode.FAILED_PRECONDITION,
           "ResultListener is not set in the ImageSegmenterOptions, but this method expects a"
               + " ResultListener to process ImageSegmentationResult.");
     }
@@ -538,7 +534,7 @@ public final class ImageSegmenter extends BaseVisionTaskApi {
       MPImage image, SegmentationOptions segmentationOptions, long timestampMs) {
     if (hasResultListener) {
       throw new MediaPipeException(
-          MediaPipeException.StatusCode.FAILED_PRECONDITION.ordinal(),
+          MediaPipeException.StatusCode.FAILED_PRECONDITION,
           "ResultListener is provided in the ImageSegmenterOptions, but this method will return an"
               + " ImageSegmentationResult.");
     }
@@ -629,7 +625,7 @@ public final class ImageSegmenter extends BaseVisionTaskApi {
       MPImage image, SegmentationOptions segmentationOptions, long timestampMs) {
     if (!hasResultListener) {
       throw new MediaPipeException(
-          MediaPipeException.StatusCode.FAILED_PRECONDITION.ordinal(),
+          MediaPipeException.StatusCode.FAILED_PRECONDITION,
           "ResultListener is not set in the ImageSegmenterOptions, but this method expects a"
               + " ResultListener to process ImageSegmentationResult.");
     }
@@ -802,7 +798,7 @@ public final class ImageSegmenter extends BaseVisionTaskApi {
        * <ul>
        *   <li>IMAGE: The mode for segmenting image on single image inputs.
        *   <li>VIDEO: The mode for segmenting image on the decoded frames of a video.
-       *   <li>LIVE_STREAM: The mode for for segmenting image on a live stream of input data, such
+       *   <li>LIVE_STREAM: The mode for segmenting image on a livestream of input data, such
        *       as from camera. In this mode, {@code setResultListener} must be called to set up a
        *       listener to receive the recognition results asynchronously.
        * </ul>
@@ -838,7 +834,7 @@ public final class ImageSegmenter extends BaseVisionTaskApi {
        *
        * @throws IllegalArgumentException if the result listener and the running mode are not
        *     properly configured. The result listener must be set when the image segmenter is in the
-       *     live stream mode.
+       *     livestream mode.
        */
       public final ImageSegmenterOptions build() {
         ImageSegmenterOptions options = autoBuild();

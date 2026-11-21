@@ -16,6 +16,8 @@
 
 #import <Foundation/Foundation.h>
 
+#include <functional>
+
 #include "mediapipe/objc/util.h"
 
 #if !defined(ENABLE_MEDIAPIPE_GPU_BUFFER_THRESHOLD_CHECK) && !defined(NDEBUG)
@@ -29,16 +31,22 @@ CVPixelBufferPoolRef CreateCVPixelBufferPool(int width, int height,
                                              CFTimeInterval maxAge) {
   CVPixelBufferPoolRef pool = NULL;
 
-  NSMutableDictionary* sourcePixelBufferOptions =
+  NSMutableDictionary<NSString*, id>* sourcePixelBufferOptions =
       [(__bridge NSDictionary*)GetCVPixelBufferAttributesForGlCompatibility()
           mutableCopy];
   [sourcePixelBufferOptions addEntriesFromDictionary:@{
+    // GetCVPixelBufferAttributesForGlCompatibility() omits
+    // kCVPixelBufferIOSurfacePropertiesKey on the iOS Simulator because raw
+    // CVOpenGLESTextureCache rejects IOSurface-backed buffers. Pooled
+    // GpuBuffers still require IOSurface backing for CVMetalTextureCache, and
+    // GpuBufferStorageCvPixelBuffer bridges them for OpenGL ES on Simulator.
+    (id)kCVPixelBufferIOSurfacePropertiesKey : @{},
     (id)kCVPixelBufferPixelFormatTypeKey : @(pixelFormat),
     (id)kCVPixelBufferWidthKey : @(width),
     (id)kCVPixelBufferHeightKey : @(height),
   }];
 
-  NSMutableDictionary* pixelBufferPoolOptions =
+  NSMutableDictionary<NSString*, NSNumber*>* pixelBufferPoolOptions =
       [[NSMutableDictionary alloc] init];
   pixelBufferPoolOptions[(id)kCVPixelBufferPoolMinimumBufferCountKey] =
       @(keepCount);
@@ -58,7 +66,7 @@ OSStatus PreallocateCVPixelBufferPoolBuffers(CVPixelBufferPoolRef pool,
                                              int count,
                                              CFDictionaryRef auxAttributes) {
   CVReturn err = kCVReturnSuccess;
-  NSMutableArray* pixelBuffers = [[NSMutableArray alloc] init];
+  NSMutableArray<id>* pixelBuffers = [[NSMutableArray alloc] init];
   for (int i = 0; i < count && err == kCVReturnSuccess; i++) {
     CVPixelBufferRef pixelBuffer = NULL;
     err = CVPixelBufferPoolCreatePixelBufferWithAuxAttributes(
@@ -102,7 +110,7 @@ CVReturn CreateCVPixelBufferWithPool(CVPixelBufferPoolRef pool,
 
 CVReturn CreateCVPixelBufferWithPool(CVPixelBufferPoolRef pool,
                                      CFDictionaryRef auxAttributes,
-                                     std::function<void(void)> flush,
+                                     std::function<void()> flush,
                                      CVPixelBufferRef* outBuffer) {
   CVReturn err = CVPixelBufferPoolCreatePixelBufferWithAuxAttributes(
       kCFAllocatorDefault, pool, auxAttributes, outBuffer);
@@ -115,9 +123,9 @@ CVReturn CreateCVPixelBufferWithPool(CVPixelBufferPoolRef pool,
           kCFAllocatorDefault, pool, auxAttributes, outBuffer);
     }
     if (err == kCVReturnWouldExceedAllocationThreshold) {
-      // TODO: allow the application to set the threshold. For now, disable it
-      // by default, since the threshold we are using is arbitrary and some
-      // graphs routinely cross it.
+      // TODO: allow the application to set the threshold. For now,
+      // disable it by default, since the threshold we are using is arbitrary
+      // and some graphs routinely cross it.
 #ifdef ENABLE_MEDIAPIPE_GPU_BUFFER_THRESHOLD_CHECK
       NSLog(
           @"Using more buffers than expected! This is a debug-only warning, "

@@ -18,17 +18,20 @@
 #include <memory>
 #include <vector>
 
-#include "absl/log/absl_check.h"
+#include "absl/log/absl_check.h"        // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/framework/formats/frame_buffer.h"
 #include "mediapipe/framework/formats/tensor.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/framework/port/status_matchers.h"
 
 namespace mediapipe {
 namespace frame_buffer {
 namespace {
+
+using ::absl_testing::StatusIs;
 
 // Grayscale unit tests.
 //------------------------------------------------------------------------------
@@ -786,8 +789,8 @@ absl::StatusOr<std::shared_ptr<FrameBuffer>> CreateYuvBuffer(
     uint8_t* buffer, FrameBuffer::Dimension dimension, int plane_count,
     FrameBuffer::Format format) {
   ABSL_DCHECK(plane_count > 0 && plane_count < 4);
-  MP_ASSIGN_OR_RETURN(auto uv_dimension,
-                      GetUvPlaneDimension(dimension, format));
+  ABSL_ASSIGN_OR_RETURN(auto uv_dimension,
+                        GetUvPlaneDimension(dimension, format));
 
   if (plane_count == 1) {
     const std::vector<FrameBuffer::Plane> planes = {
@@ -1043,12 +1046,12 @@ TEST(FrameBufferUtil, NV21ConvertRgb) {
   const int kInputSize =
       GetFrameBufferByteSize(kBufferDimension, FrameBuffer::Format::kNV21);
   std::vector<uint8_t> input_data(kInputSize);
-  input_data.data()[0] = 1;
-  input_data.data()[1] = 2;
-  input_data.data()[32] = 7;
-  input_data.data()[33] = 8;
-  input_data.data()[256] = 13;
-  input_data.data()[257] = 14;
+  input_data[0] = 1;
+  input_data[1] = 2;
+  input_data[32] = 7;
+  input_data[33] = 8;
+  input_data[256] = 13;
+  input_data[257] = 14;
   MP_ASSERT_OK_AND_ASSIGN(
       auto input, CreateFromRawBuffer(input_data.data(), kBufferDimension,
                                       FrameBuffer::Format::kNV21));

@@ -1,0 +1,332 @@
+/**
+ * Copyright 2026 The MediaPipe Authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import {TaskRunnerOptions} from '../../../../tasks/web/core/task_runner_options';
+
+/**
+ * Multimodal decision input combining text, encoded image bytes, and/or
+ * 16kHz mono PCM audio samples.
+ */
+export declare interface DecisionContextInput {
+  /** Optional text context or query description. */
+  text?: string;
+  /** Optional raw encoded image bytes (PNG, JPEG, WebP, or TGA). */
+  imageBytes?: Uint8Array;
+  /** Optional mono 16kHz PCM audio samples in [-1.0, 1.0]. */
+  audioSamples?: Float32Array;
+}
+
+/**
+ * How examples and inputs are embedded, for questions with examples (ignored
+ * otherwise). `'CLASSIFICATION'` (used when unset) embeds
+ * `task: classification | query: <text>` and suits sentences; `'NONE'` embeds
+ * the raw text and suits single words and short phrases.
+ */
+export type InputPrompt = 'CLASSIFICATION' | 'NONE';
+
+/**
+ * A single candidate option for binary, categorical, or ordinal questions.
+ */
+export declare interface ClassifierOption {
+  /** Short identifier or level label (e.g. "billing", "1", "true"). */
+  label: string;
+  /** Optional natural language description of the option criteria. */
+  description?: string;
+  /** Optional encoded image bytes (PNG, JPEG, WebP, or TGA) for multimodal options. */
+  imageBytes?: Uint8Array;
+  /** Optional mono 16kHz PCM audio samples in [-1.0, 1.0] for multimodal options. */
+  audioSamples?: Float32Array;
+  /**
+   * Optional example inputs that belong to this option (choice questions with
+   * an embedding model). If any option has examples, every option needs at
+   * least one.
+   */
+  examples?: string[];
+}
+
+/**
+ * Supported question types in a ClassifierSchema.
+ */
+export type ClassifierQuestionType =
+  | 'binary'
+  | 'categorical'
+  | 'ordinal'
+  | 'boolean'
+  | 'choice'
+  | 'score';
+
+/**
+ * A single question within a multi-question ClassifierSchema.
+ */
+export declare interface ClassifierQuestion {
+  /** Unique identifier key in the returned ClassifierResult record. */
+  id: string;
+  /** Question evaluation type. */
+  type: ClassifierQuestionType;
+  /**
+   * Task instruction or natural language condition prompt (optional when
+   * examples or `fittedHead` are set).
+   */
+  prompt?: string;
+  /**
+   * Candidate options (required for ordinal, and for categorical unless
+   * `fittedHead` is set).
+   */
+  options?: ClassifierOption[];
+  /** Decision threshold in [0.0, 1.0] for binary questions. Defaults to 0.5. */
+  threshold?: number;
+  /**
+   * Softmax temperature override (> 0.0). When unset or <= 0, the model's
+   * calibrated temperature is used.
+   */
+  temperature?: number;
+  /** Whether to normalize against the empty-context ("[None]") prior. */
+  normalizePrior?: boolean;
+  /**
+   * Example inputs for which a binary question is true / false. With both,
+   * embedding models fit a classifier on them and `prompt` may be empty.
+   */
+  positiveExamples?: string[];
+  negativeExamples?: string[];
+  /** How examples and inputs are embedded. Only used with examples. */
+  inputPrompt?: InputPrompt;
+  /**
+   * With option examples, weights each option by N / (K * N_c), so that
+   * options with fewer examples aren't penalized. Defaults to true.
+   */
+  balanceClassWeights?: boolean;
+  /**
+   * Optional pre-fitted `FittedHead` binary payload (e.g. from
+   * `exportFittedHeads()`) for boolean or choice questions on embedding models.
+   * Cannot be combined with examples.
+   */
+  fittedHead?: Uint8Array;
+}
+
+/**
+ * Expected input modality and language configuration.
+ */
+export declare interface ClassifierExpectedInput {
+  type: 'text' | 'image' | 'audio';
+  languages?: string[];
+}
+
+/**
+ * Multi-question decision schema compatible with the Web Classifier API.
+ */
+export declare interface ClassifierSchema {
+  /** Optional domain or system context prepended to question instructions. */
+  context?: string;
+  /** Optional expected input modalities and languages. */
+  expectedInputs?: ClassifierExpectedInput[];
+  /** Ordered list of questions to evaluate against the input. */
+  questions?: ClassifierQuestion[];
+}
+
+/**
+ * Per-call options for `evaluate()`, `evaluateBatch()`, and `classify()`.
+ */
+export declare interface ClassifierEvaluateOptions {
+  /** Optional per-call context prepended to the input text. */
+  context?: string;
+  /** Optional raw encoded image bytes (PNG, JPEG, WebP, or TGA) for multimodal decisions. */
+  imageBytes?: Uint8Array;
+  /** Optional mono 16kHz PCM audio samples in [-1.0, 1.0] for multimodal decisions. */
+  audioSamples?: Float32Array;
+  /** Optional AbortSignal to cancel an in-flight evaluation. */
+  signal?: AbortSignal;
+}
+
+/**
+ * Question configuration for a Boolean Predicate evaluation.
+ */
+export declare interface BooleanQuestion {
+  /**
+   * The natural language boolean condition to evaluate. Optional when both
+   * `positiveExamples` and `negativeExamples` are given, or when `fittedHead`
+   * is provided.
+   */
+  condition?: string;
+  /**
+   * Example inputs for which the answer is true / false. With both, embedding
+   * models fit a classifier on them.
+   */
+  positiveExamples?: string[];
+  negativeExamples?: string[];
+  /** How examples and inputs are embedded. Only used with examples. */
+  inputPrompt?: InputPrompt;
+  /** Probability threshold for true. Defaults to 0.5. */
+  threshold?: number;
+  /**
+   * Softmax temperature override (> 0.0). When unset or <= 0, the model's
+   * calibrated temperature is used.
+   */
+  temperature?: number;
+  /**
+   * Subtracts the memoized empty-context ("[None]") prior distribution in
+   * log-probability space to eliminate positional or label bias.
+   */
+  normalizePrior?: boolean;
+  /**
+   * Optional custom false/true option descriptions (defaults to Laya's
+   * "false: no, the statement does not hold" and
+   * "true: yes, the statement holds").
+   */
+  options?: ClassifierOption[];
+  /** Optional domain or schema context prepended to the condition. */
+  context?: string;
+  /** Optional raw encoded image bytes (PNG, JPEG, WebP, or TGA) for the context. */
+  imageBytes?: Uint8Array;
+  /** Optional mono 16kHz PCM audio samples in [-1.0, 1.0] for the context. */
+  audioSamples?: Float32Array;
+  /**
+   * Optional pre-fitted `FittedHead` binary payload (e.g. from
+   * `exportFittedHeadBoolean()`). Cannot be combined with two or more custom
+   * `options`.
+   */
+  fittedHead?: Uint8Array;
+}
+
+/**
+ * Question configuration for a Categorical Choice evaluation.
+ */
+export declare interface ChoiceQuestion {
+  /** Map of choice keys to descriptive phrases or criteria. */
+  criteria?: Record<string, string>;
+  /**
+   * Map of choice keys to example inputs (embedding models). If any choice
+   * has examples, every choice needs at least one; the keys must match
+   * `criteria` / `options` when those are given, and can replace them.
+   */
+  examples?: Record<string, string[]>;
+  /** How examples and inputs are embedded. Only used with examples. */
+  inputPrompt?: InputPrompt;
+  /**
+   * With examples, weights each choice by N / (K * N_c), so that choices with
+   * fewer examples aren't penalized. Defaults to true.
+   */
+  balanceClassWeights?: boolean;
+  /**
+   * Ordered list of candidate options with `{ label, description }`.
+   * Can be provided instead of or alongside `criteria`.
+   */
+  options?: ClassifierOption[];
+  /**
+   * Softmax temperature override (> 0.0). When unset or <= 0, the model's
+   * calibrated temperature is used.
+   */
+  temperature?: number;
+  /** Optional task instruction prompt for the model. */
+  instructions?: string;
+  /** Optional domain or schema context prepended to instructions. */
+  context?: string;
+  /**
+   * Scoring mode (0=SCORING_AUTO, 1=SCORING_SINGLE_TOKEN,
+   * 2=SCORING_FULL_OPTION). Defaults to 0 (SCORING_AUTO).
+   */
+  scoringMode?: number;
+  /**
+   * Subtracts the memoized empty-context ("[None]") prior distribution in
+   * log-probability space to eliminate positional or label bias.
+   */
+  normalizePrior?: boolean;
+  /** Optional raw encoded image bytes (PNG, JPEG, WebP, or TGA) for the context. */
+  imageBytes?: Uint8Array;
+  /** Optional mono 16kHz PCM audio samples in [-1.0, 1.0] for the context. */
+  audioSamples?: Float32Array;
+  /**
+   * Optional pre-fitted `FittedHead` binary payload (e.g. from
+   * `exportFittedHeadChoice()`). When set, `criteria` and `options` may be
+   * omitted to use the fittedHead's choice keys.
+   */
+  fittedHead?: Uint8Array;
+}
+
+/**
+ * Question configuration for an Ordinal Score evaluation.
+ */
+export declare interface ScoreQuestion {
+  /** List of ordered rubric grade descriptors from lowest to highest. */
+  rubric?: string[];
+  /**
+   * Ordered list of rubric levels with `{ label, description }`. When all
+   * `label` values parse as finite numbers (e.g. "1".."5"), `expectedScore`
+   * is computed directly over those numeric level values.
+   */
+  options?: ClassifierOption[];
+  /**
+   * Softmax temperature override (> 0.0). When unset or <= 0, the model's
+   * calibrated temperature is used.
+   */
+  temperature?: number;
+  /** Optional task instruction prompt for the model. */
+  instructions?: string;
+  /** Optional domain or schema context prepended to instructions. */
+  context?: string;
+  /** Optional raw encoded image bytes (PNG, JPEG, WebP, or TGA) for the context. */
+  imageBytes?: Uint8Array;
+  /** Optional mono 16kHz PCM audio samples in [-1.0, 1.0] for the context. */
+  audioSamples?: Float32Array;
+}
+
+/**
+ * Options to configure the MediaPipe Semantic Decision Maker Task.
+ *
+ * Note: On Web, `baseOptions.delegate` defaults to `'GPU'` (WebGPU).
+ * `.litertlm` containers with external weights (such as EmbeddingGemma 2 and
+ * Gemma 4) require WebGPU on Web and do not support `delegate: 'CPU'`.
+ * Setting `baseOptions.delegate` to `'CPU'` on Web is only supported for
+ * `.task` or inline `.tflite` models (such as Laya).
+ */
+export declare interface DecisionMakerOptions extends TaskRunnerOptions {
+  /** Backend type (0=AUTO, 1=ENCODER, 2=DIRECT_LOGIT, 3=EMBEDDING). */
+  backendType?: number;
+  /** The maximum number of tokens in prompt context. */
+  maxNumTokens?: number;
+  /** Optional session-bound ClassifierSchema for `classify()`. */
+  schema?: ClassifierSchema;
+  /** Optional session-level context prepended to question prompts. */
+  context?: string;
+  /** Optional expected input modalities and languages. */
+  expectedInputs?: ClassifierExpectedInput[];
+  /** Optional session-bound questions for `classify()`. */
+  questions?: ClassifierQuestion[];
+  /**
+   * Optional byte length of `baseOptions.modelAssetBuffer` when provided as a
+   * `ReadableStreamDefaultReader`, enabling single-pass zero-copy streaming
+   * allocation directly in the Wasm heap.
+   */
+  modelAssetSize?: number;
+  /**
+   * Optional URL or path to a companion per-layer embedder `.tflite` model
+   * (e.g. `*_per_layer_embedder.tflite` for Gemma 4 E2B).
+   */
+  companionPleAssetPath?: string;
+  /**
+   * Optional buffer or stream reader for a companion per-layer embedder
+   * `.tflite` model.
+   */
+  companionPleAssetBuffer?: Uint8Array | ReadableStreamDefaultReader;
+  /**
+   * Optional byte length of `companionPleAssetBuffer` when provided as a
+   * `ReadableStreamDefaultReader`.
+   */
+  companionPleAssetSize?: number;
+  /**
+   * When true, skips checking the fitted head canary vector on load.
+   */
+  skipHeadCompatibilityCheck?: boolean;
+}

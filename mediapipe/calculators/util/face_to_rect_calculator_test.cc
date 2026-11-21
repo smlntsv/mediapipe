@@ -3,7 +3,8 @@
 #include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/calculators/util/face_to_rect_calculator.pb.h"
 #include "mediapipe/framework/calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
@@ -69,7 +70,7 @@ absl::StatusOr<NormalizedRect> RunCalculator(
           MakePacket<std::pair<int, int>>(kImageWidth, kImageHeight)
               .At(Timestamp::PostStream()));
 
-  MP_RETURN_IF_ERROR(runner.Run());
+  ABSL_RETURN_IF_ERROR(runner.Run());
   const std::vector<Packet>& output = runner.Outputs().Tag("NORM_RECT").packets;
   RET_CHECK_EQ(output.size(), 1);
   return output[0].Get<NormalizedRect>();

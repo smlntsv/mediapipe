@@ -25,6 +25,7 @@ import com.google.mediapipe.framework.image.ByteBufferImageBuilder;
 import com.google.mediapipe.framework.image.MPImage;
 import com.google.mediapipe.tasks.components.containers.NormalizedKeypoint;
 import com.google.mediapipe.tasks.core.BaseOptionsUtils;
+import com.google.mediapipe.tasks.core.JniConfig;
 import com.google.mediapipe.tasks.core.proto.BaseOptionsProto;
 import com.google.mediapipe.tasks.vision.interactivesegmenter.proto.StrokeProto;
 import com.google.mediapipe.tasks.vision.interactivesegmenter.proto.StrokeProto.Stroke.BrushMode;
@@ -49,7 +50,7 @@ public final class InteractiveSegmenter implements AutoCloseable {
   private final AndroidPacketCreator packetCreator;
 
   static {
-    System.loadLibrary("mediapipe_tasks_jni");
+    System.loadLibrary(JniConfig.INSTANCE.getVisionJniLib());
   }
 
   private InteractiveSegmenter(long nativeSegmenterHandle) {
@@ -68,28 +69,35 @@ public final class InteractiveSegmenter implements AutoCloseable {
   public static InteractiveSegmenter createFromOptions(
       Context context, InteractiveSegmenterOptions options) {
     AndroidAssetUtil.initializeNativeAssetManager(context);
+    // The graph defaults the LiteRT GPU backend to OpenGL unless the app sets OPENCL (see
+    // interactive_segmenter_graph_gpu.cc).
     BaseOptionsProto.BaseOptions baseOptionsProto =
-        BaseOptionsUtils.convertBaseOptionsToProto(options.baseOptions());
+        BaseOptionsUtils.convertBaseOptionsToProto(options.baseOptions(), /* useLiteRt= */ true);
     byte[] baseOptionsBytes = baseOptionsProto.toByteArray();
     String appVersion = BaseOptionsUtils.getAppVersion(context);
     String appId = BaseOptionsUtils.getAppId(context);
+    Object liteRtSystemRuntimeHandle = null;
     long nativeSegmenterHandle =
         nativeCreate(
             baseOptionsBytes,
             appId,
             appVersion,
             BaseOptionsUtils.HOST_ENVIRONMENT_ANDROID,
-            BaseOptionsUtils.HOST_SYSTEM_ANDROID);
+            BaseOptionsUtils.HOST_SYSTEM_ANDROID,
+            liteRtSystemRuntimeHandle);
     if (nativeSegmenterHandle == 0) {
-      // TODO: b/509975940 - get rid of ordinal() use.
-      @SuppressWarnings("EnumOrdinal")
-      final int code = MediaPipeException.StatusCode.INTERNAL.ordinal();
-      throw new MediaPipeException(code, "Error creating InteractiveSegmenter. Handle is 0.");
+      throw new MediaPipeException(
+          MediaPipeException.StatusCode.INTERNAL,
+          "Error creating InteractiveSegmenter. Handle is 0.");
     }
     return new InteractiveSegmenter(nativeSegmenterHandle);
   }
 
-  /** Sets the image to be segmented. */
+  /**
+   * Sets the image to be segmented.
+   *
+   * @throws MediaPipeException if the graph cannot be created.
+   */
   public void setImage(MPImage image) {
     Objects.requireNonNull(image, "Image must not be null");
     Packet imagePacket = packetCreator.createImage(image);
@@ -113,10 +121,8 @@ public final class InteractiveSegmenter implements AutoCloseable {
     long resultPacketHandle =
         nativeSegment(nativeSegmenterHandle, strokesBytes, graph.getNativeHandle());
     if (resultPacketHandle == 0) {
-      // TODO: b/509975940 - get rid of ordinal() use.
-      @SuppressWarnings("EnumOrdinal")
-      final int code = MediaPipeException.StatusCode.INTERNAL.ordinal();
-      throw new MediaPipeException(code, "Error running segmentation.");
+      throw new MediaPipeException(
+          MediaPipeException.StatusCode.INTERNAL, "Error running segmentation.");
     }
     Packet resultPacket = Packet.create(resultPacketHandle);
     try {
@@ -124,10 +130,8 @@ public final class InteractiveSegmenter implements AutoCloseable {
       int height = PacketGetter.getImageHeight(resultPacket);
       ByteBuffer buffer = PacketGetter.getImageDataDirectly(resultPacket);
       if (buffer == null) {
-        // TODO: b/509975940 - get rid of ordinal() use.
-        @SuppressWarnings("EnumOrdinal")
-        final int code = MediaPipeException.StatusCode.INTERNAL.ordinal();
-        throw new MediaPipeException(code, "Error getting output image data.");
+        throw new MediaPipeException(
+            MediaPipeException.StatusCode.INTERNAL, "Error getting output image data.");
       }
 
       // Copy the buffer because the underlying native memory of `resultPacket`
@@ -170,7 +174,8 @@ public final class InteractiveSegmenter implements AutoCloseable {
       String appId,
       String appVersion,
       int hostEnvironment,
-      int hostSystem);
+      int hostSystem,
+      Object liteRtSystemRuntimeHandle);
 
   private native void nativeSetImage(long segmenterHandle, long imagePacketHandle);
 

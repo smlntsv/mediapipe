@@ -16,23 +16,20 @@ limitations under the License.
 #ifndef MEDIAPIPE_TASKS_CC_VISION_CORE_BASE_VISION_TASK_API_FACTORY_H_
 #define MEDIAPIPE_TASKS_CC_VISION_CORE_BASE_VISION_TASK_API_FACTORY_H_
 
-#include <functional>
 #include <memory>
-#include <optional>
-#include <string>
 #include <type_traits>
 #include <utility>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
 #include "mediapipe/framework/calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
+#include "mediapipe/tasks/cc/common.h"
 #include "mediapipe/tasks/cc/core/task_api_factory.h"
 #include "mediapipe/tasks/cc/core/task_runner.h"
 #include "mediapipe/tasks/cc/vision/core/base_vision_task_api.h"
 #include "mediapipe/tasks/cc/vision/core/running_mode.h"
-#include "tensorflow/lite/core/api/op_resolver.h"
 
 namespace mediapipe {
 namespace tasks {
@@ -63,13 +60,13 @@ class VisionTaskApiFactory {
             "Task graph config should only contain one task subgraph node.",
             MediaPipeTasksStatus::kInvalidTaskGraphConfigError);
       } else {
-        MP_RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(
             tasks::core::TaskApiFactory::CheckHasValidOptions<Options>(node));
         found_task_subgraph = true;
       }
     }
-    MP_ASSIGN_OR_RETURN(RunningMode running_mode,
-                        GetVisionRunningMode(options.task_running_mode));
+    ABSL_ASSIGN_OR_RETURN(RunningMode running_mode,
+                          GetVisionRunningMode(options.task_running_mode));
     if (running_mode == RunningMode::LIVE_STREAM) {
       if (options.packets_callback == nullptr) {
         return CreateStatusWithPayload(
@@ -85,8 +82,8 @@ class VisionTaskApiFactory {
           "callback shouldn't be provided.",
           MediaPipeTasksStatus::kInvalidTaskGraphConfigError);
     }
-    MP_ASSIGN_OR_RETURN(auto runner,
-                        tasks::core::TaskRunner::Create(std::move(options)));
+    ABSL_ASSIGN_OR_RETURN(auto runner,
+                          tasks::core::TaskRunner::Create(std::move(options)));
     return std::make_unique<T>(std::move(runner), running_mode);
   }
 };

@@ -24,17 +24,19 @@
 #include <utility>
 #include <vector>
 
-#include "absl/cleanup/cleanup.h"
-#include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
-#include "absl/memory/memory.h"
-#include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_split.h"
-#include "absl/strings/string_view.h"
-#include "absl/strings/substitute.h"
-#include "absl/synchronization/mutex.h"
-#include "absl/time/time.h"
+#include "absl/cleanup/cleanup.h"        // from @com_google_absl
+#include "absl/log/absl_check.h"         // from @com_google_absl
+#include "absl/log/absl_log.h"           // from @com_google_absl
+#include "absl/memory/memory.h"          // from @com_google_absl
+#include "absl/status/status.h"          // from @com_google_absl
+#include "absl/status/status_builder.h"  // from @com_google_absl
+#include "absl/status/status_macros.h"   // from @com_google_absl
+#include "absl/strings/str_cat.h"        // from @com_google_absl
+#include "absl/strings/str_split.h"      // from @com_google_absl
+#include "absl/strings/string_view.h"    // from @com_google_absl
+#include "absl/strings/substitute.h"     // from @com_google_absl
+#include "absl/synchronization/mutex.h"  // from @com_google_absl
+#include "absl/time/time.h"              // from @com_google_absl
 #include "mediapipe/framework/calculator.pb.h"
 #include "mediapipe/framework/calculator_base.h"
 #include "mediapipe/framework/calculator_state.h"
@@ -50,8 +52,6 @@
 #include "mediapipe/framework/port/logging.h"
 #include "mediapipe/framework/port/proto_ns.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/source_location.h"
-#include "mediapipe/framework/port/status_builder.h"
 #include "mediapipe/framework/timestamp.h"
 #include "mediapipe/framework/tool/name_util.h"
 #include "mediapipe/framework/tool/status_util.h"
@@ -171,15 +171,15 @@ absl::Status CalculatorNode::Initialize(
 
   // TODO Propagate types between calculators when SetAny is used.
 
-  MP_RETURN_IF_ERROR(InitializeOutputSidePackets(
+  ABSL_RETURN_IF_ERROR(InitializeOutputSidePackets(
       node_type_info_->OutputSidePacketTypes(), output_side_packets));
 
-  MP_RETURN_IF_ERROR(InitializeInputSidePackets(output_side_packets));
+  ABSL_RETURN_IF_ERROR(InitializeInputSidePackets(output_side_packets));
 
-  MP_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       InitializeOutputStreamHandler(node_config->output_stream_handler(),
                                     node_type_info_->OutputStreamTypes()));
-  MP_RETURN_IF_ERROR(InitializeOutputStreams(output_stream_managers));
+  ABSL_RETURN_IF_ERROR(InitializeOutputStreams(output_stream_managers));
 
   calculator_state_ = std::make_unique<CalculatorState>(
       name_, node_ref.index, node_config->calculator(), *node_config,
@@ -212,7 +212,7 @@ absl::Status CalculatorNode::Initialize(
 
   // Use calculator or graph specified InputStreamHandler, or the default ISH
   // already set from graph.
-  MP_RETURN_IF_ERROR(InitializeInputStreamHandler(
+  ABSL_RETURN_IF_ERROR(InitializeInputStreamHandler(
       use_calc_specified ? handler_config : node_config->input_stream_handler(),
       node_type_info_->InputStreamTypes()));
 
@@ -263,7 +263,7 @@ absl::Status CalculatorNode::InitializeOutputSidePackets(
     const PacketTypeSet& output_side_packet_types,
     OutputSidePacketImpl* output_side_packets) {
   output_side_packets_ =
-      absl::make_unique<OutputSidePacketSet>(output_side_packet_types.TagMap());
+      std::make_unique<OutputSidePacketSet>(output_side_packet_types.TagMap());
   int base_index = node_type_info_->OutputSidePacketBaseIndex();
   RET_CHECK_LE(0, base_index);
   for (CollectionItemId id = output_side_packets_->BeginId();
@@ -318,7 +318,7 @@ absl::Status CalculatorNode::InitializeInputStreams(
   RET_CHECK_LE(0, node_type_info_->InputStreamBaseIndex());
   InputStreamManager* current_input_stream_managers =
       &input_stream_managers[node_type_info_->InputStreamBaseIndex()];
-  MP_RETURN_IF_ERROR(input_stream_handler_->InitializeInputStreamManagers(
+  ABSL_RETURN_IF_ERROR(input_stream_handler_->InitializeInputStreamManagers(
       current_input_stream_managers));
 
   // Set all the mirrors.
@@ -348,7 +348,7 @@ absl::Status CalculatorNode::InitializeInputStreamHandler(
   const ProtoString& input_stream_handler_name =
       handler_config.input_stream_handler();
   RET_CHECK(!input_stream_handler_name.empty());
-  MP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       input_stream_handler_,
       InputStreamHandlerRegistry::CreateByNameInNamespace(
           validated_graph_->Package(), input_stream_handler_name,
@@ -367,7 +367,7 @@ absl::Status CalculatorNode::InitializeOutputStreamHandler(
   const ProtoString& output_stream_handler_name =
       handler_config.output_stream_handler();
   RET_CHECK(!output_stream_handler_name.empty());
-  MP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       output_stream_handler_,
       OutputStreamHandlerRegistry::CreateByNameInNamespace(
           validated_graph_->Package(), output_stream_handler_name,
@@ -382,7 +382,7 @@ absl::Status CalculatorNode::InitializeOutputStreamHandler(
 absl::Status CalculatorNode::ConnectShardsToStreams(
     CalculatorContext* calculator_context) {
   RET_CHECK(calculator_context);
-  MP_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       input_stream_handler_->SetupInputShards(&calculator_context->Inputs()));
   return output_stream_handler_->SetupOutputShards(
       &calculator_context->Outputs());
@@ -443,7 +443,7 @@ absl::Status CalculatorNode::PrepareForRun(
   const auto& contract = Contract();
   input_side_packet_types_ = RemoveOmittedPacketTypes(
       contract.InputSidePackets(), all_side_packets, validated_graph_);
-  MP_RETURN_IF_ERROR(input_side_packet_handler_.PrepareForRun(
+  ABSL_RETURN_IF_ERROR(input_side_packet_handler_.PrepareForRun(
       input_side_packet_types_.get(), all_side_packets,
       [this]() { CalculatorNode::InputSidePacketsReady(); },
       std::move(error_callback)));
@@ -459,15 +459,15 @@ absl::Status CalculatorNode::PrepareForRun(
       RET_CHECK(req.IsOptional())
           << "required service '" << req.Service().key << "' was not provided";
     } else {
-      MP_RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           calculator_state_->SetServicePacket(req.Service(), it->second));
     }
   }
 
-  MP_RETURN_IF_ERROR(calculator_context_manager_.PrepareForRun(std::bind(
+  ABSL_RETURN_IF_ERROR(calculator_context_manager_.PrepareForRun(std::bind(
       &CalculatorNode::ConnectShardsToStreams, this, std::placeholders::_1)));
 
-  MP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto calculator_factory,
       CalculatorBaseRegistry::CreateByNameInNamespace(
           validated_graph_->Package(), calculator_state_->CalculatorType()));
@@ -559,7 +559,7 @@ absl::Status CalculatorNode::OpenNode() {
       "Open() on node \"$0\" returned tool::StatusStop() which should only be "
       "used to signal that a source node is done producing data.",
       DebugName());
-  MP_RETURN_IF_ERROR(result).SetPrepend() << absl::Substitute(
+  ABSL_RETURN_IF_ERROR(result).SetPrepend() << absl::Substitute(
       "Calculator::Open() for node \"$0\" failed: ", DebugName());
   needs_to_close_ = true;
 
@@ -668,7 +668,7 @@ absl::Status CalculatorNode::CloseNode(const absl::Status& graph_status,
     status_ = kStateClosed;
   }
 
-  MP_RETURN_IF_ERROR(result).SetPrepend() << absl::Substitute(
+  ABSL_RETURN_IF_ERROR(result).SetPrepend() << absl::Substitute(
       "Calculator::Close() for node \"$0\" failed: ", DebugName());
 
   VLOG(2) << "Closed node " << DebugName();
@@ -884,15 +884,14 @@ absl::Status CalculatorNode::ProcessNode(
         // Needs to call CloseNode().
         node_stopped = true;
       } else {
-        return mediapipe::StatusBuilder(result, MEDIAPIPE_LOC).SetPrepend()
-               << absl::Substitute(
-                      "Calculator::Process() for node \"$0\" failed: ",
-                      DebugName());
+        return absl::StatusBuilder(result).SetPrepend() << absl::Substitute(
+                   "Calculator::Process() for node \"$0\" failed: ",
+                   DebugName());
       }
     }
     output_stream_handler_->PostProcess(input_timestamp);
     if (node_stopped) {
-      MP_RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           CloseNode(absl::OkStatus(), /*graph_run_ended=*/false));
     }
     return absl::OkStatus();
@@ -940,10 +939,9 @@ absl::Status CalculatorNode::ProcessNode(
         // streams will be processed before the graph is terminated.
         if (result.has_value() && !result->ok() &&
             result != tool::StatusStop()) {
-          return mediapipe::StatusBuilder(*result, MEDIAPIPE_LOC).SetPrepend()
-                 << absl::Substitute(
-                        "Calculator::Process() for node \"$0\" failed: ",
-                        DebugName());
+          return absl::StatusBuilder(*result).SetPrepend() << absl::Substitute(
+                     "Calculator::Process() for node \"$0\" failed: ",
+                     DebugName());
         }
         output_stream_handler_->PostProcess(input_timestamp);
         if (result == tool::StatusStop()) {

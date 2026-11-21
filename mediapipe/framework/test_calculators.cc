@@ -20,17 +20,16 @@
 #include <string>
 #include <utility>
 
-#include "Eigen/Core"
-#include "absl/log/absl_check.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
+#include "Eigen/Core"                  // from @eigen
+#include "absl/log/absl_check.h"       // from @com_google_absl
+#include "absl/status/status.h"        // from @com_google_absl
+#include "absl/strings/str_cat.h"      // from @com_google_absl
+#include "absl/strings/string_view.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/deps/mathutil.h"
 #include "mediapipe/framework/formats/matrix.h"
 #include "mediapipe/framework/port/logging.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/framework/test_calculators.pb.h"
 
 namespace mediapipe {
@@ -295,7 +294,7 @@ class MergeCalculator : public CalculatorBase {
   }
 
   absl::Status Open(CalculatorContext* cc) final {
-    auto header = absl::make_unique<std::string>();
+    auto header = std::make_unique<std::string>();
     for (auto& input : cc->Inputs()) {
       if (!input.Header().IsEmpty()) {
         if (!header->empty()) {
@@ -393,7 +392,7 @@ class RandomMatrixCalculator : public CalculatorBase {
     std::seed_seq seq(seed_str.begin(), seed_str.end());
     std::vector<std::uint32_t> seed(1);
     seq.generate(seed.begin(), seed.end());
-    random_ = absl::make_unique<RandomEngine>(seed[0]);
+    random_ = std::make_unique<RandomEngine>(seed[0]);
     return absl::OkStatus();
   }
 

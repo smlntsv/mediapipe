@@ -17,9 +17,9 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/substitute.h"
+#include "absl/status/status.h"       // from @com_google_absl
+#include "absl/status/statusor.h"     // from @com_google_absl
+#include "absl/strings/substitute.h"  // from @com_google_absl
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
 #include "mediapipe/framework/port/parse_text_proto.h"
@@ -29,8 +29,8 @@ limitations under the License.
 #include "mediapipe/tasks/cc/core/proto/external_file.pb.h"
 #include "mediapipe/tasks/cc/core/proto/model_resources_calculator.pb.h"
 #include "mediapipe/tasks/cc/metadata/metadata_extractor.h"
-#include "tensorflow/lite/core/api/op_resolver.h"
-#include "tensorflow/lite/test_util.h"
+#include "tflite/core/api/op_resolver.h"  // from @litert
+#include "tflite/test_util.h"             // from @litert
 
 namespace mediapipe {
 namespace tasks {

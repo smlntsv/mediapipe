@@ -16,13 +16,13 @@
 #include <string>
 #include <vector>
 
-#include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
-#include "absl/time/clock.h"
-#include "absl/time/time.h"
+#include "absl/status/status.h"          // from @com_google_absl
+#include "absl/strings/string_view.h"    // from @com_google_absl
+#include "absl/synchronization/mutex.h"  // from @com_google_absl
+#include "absl/time/clock.h"             // from @com_google_absl
+#include "absl/time/time.h"              // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/calculator_graph.h"
-#include "mediapipe/framework/port/canonical_errors.h"
 #include "mediapipe/framework/port/core_proto_inc.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
@@ -543,7 +543,7 @@ TEST_F(CalculatorGraphEventLoopTest, WaitToAddPacketToInputStream) {
 class TextMessageLogSink : public LogSink {
  public:
   std::vector<std::string> messages;
-  void Send(const LogEntry& entry) {
+  void Send(const LogEntry& entry) override {
     messages.push_back(std::string(entry.text_message()));
   }
 };

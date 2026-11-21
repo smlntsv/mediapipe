@@ -20,11 +20,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "absl/flags/flag.h"
-#include "absl/strings/string_view.h"
-#include "absl/synchronization/blocking_counter.h"
-#include "absl/time/clock.h"
-#include "absl/time/time.h"
+#include "absl/flags/flag.h"           // from @com_google_absl
+#include "absl/strings/string_view.h"  // from @com_google_absl
+#include "absl/time/clock.h"           // from @com_google_absl
+#include "absl/time/time.h"            // from @com_google_absl
 #include "mediapipe/framework/deps/file_path.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
@@ -191,16 +190,19 @@ TEST(ImageSegmenterTest, VideoModeTest) {
 
 // A structure to support LiveStreamModeTest below. This structure holds a
 // static method `Fn` for a callback function of C API. A `static` qualifier
-// allows to take an address of the method to follow API style. Another static
-// struct member is `last_timestamp` that is used to verify that current
-// timestamp is greater than the previous one.
+// allows to take an address of the method to follow API style. An instance of
+// the structure is passed to the callback as `user_data`. Its member
+// `last_timestamp` is used to verify that current timestamp is greater than
+// the previous one.
 struct LiveStreamModeCallback {
-  static int64_t last_timestamp;
-  static absl::BlockingCounter* blocking_counter;
-  static void Fn(MpStatus status,
+  int64_t last_timestamp = -1;
+  static void Fn(void* user_data, MpStatus status, const char* error_msg,
                  const MpImageSegmenterResult* segmenter_result,
                  MpImagePtr image, int64_t timestamp) {
+    auto* self = reinterpret_cast<LiveStreamModeCallback*>(user_data);
+    ASSERT_NE(self, nullptr);
     ASSERT_EQ(status, kMpOk);
+    EXPECT_EQ(error_msg, nullptr);
     ASSERT_NE(segmenter_result, nullptr);
     EXPECT_GT(MpImageGetWidth(image), 0);
     EXPECT_GT(MpImageGetHeight(image), 0);
@@ -212,22 +214,17 @@ struct LiveStreamModeCallback {
     EXPECT_GT(SimilarToUint8Mask(actual_mask, expected_mask.get(),
                                  kGoldenMaskMagnificationFactor),
               kGoldenMaskSimilarity);
-    EXPECT_GT(timestamp, last_timestamp);
-    ++last_timestamp;
-
-    if (blocking_counter) {
-      blocking_counter->DecrementCount();
-    }
+    EXPECT_GT(timestamp, self->last_timestamp);
+    self->last_timestamp = timestamp;
   }
 };
-int64_t LiveStreamModeCallback::last_timestamp = -1;
-absl::BlockingCounter* LiveStreamModeCallback::blocking_counter = nullptr;
 
 TEST(ImageSegmenterTest, LiveStreamModeTest) {
   const auto image = GetImage(GetFullPath(kImageFile));
 
   const std::string model_path = GetFullPath(kModelName);
 
+  LiveStreamModeCallback callback;
   MpImageSegmenterOptions options = {
       .base_options = {.model_asset_buffer = nullptr,
                        .model_asset_buffer_count = 0,
@@ -237,15 +234,13 @@ TEST(ImageSegmenterTest, LiveStreamModeTest) {
       .output_confidence_masks = false,
       .output_category_mask = true,
       .result_callback = LiveStreamModeCallback::Fn,
+      .result_callback_user_data = &callback,
   };
 
   MpImageSegmenterPtr segmenter;
   ASSERT_EQ(
       MpImageSegmenterCreate(&options, &segmenter, /* error_msg= */ nullptr),
       kMpOk);
-
-  absl::BlockingCounter counter(kIterations);
-  LiveStreamModeCallback::blocking_counter = &counter;
 
   for (int i = 0; i < kIterations; ++i) {
     ASSERT_EQ(
@@ -257,16 +252,12 @@ TEST(ImageSegmenterTest, LiveStreamModeTest) {
     absl::SleepFor(absl::Milliseconds(kSleepBetweenFramesMilliseconds));
   }
 
-  // Wait for all callbacks to be invoked.
-  counter.Wait();
-  LiveStreamModeCallback::blocking_counter = nullptr;
-
   EXPECT_EQ(MpImageSegmenterClose(segmenter, /* error_msg= */ nullptr), kMpOk);
 
   // Due to the flow limiter, the total of outputs might be smaller than the
   // number of iterations.
-  EXPECT_LE(LiveStreamModeCallback::last_timestamp, kIterations);
-  EXPECT_GT(LiveStreamModeCallback::last_timestamp, 0);
+  EXPECT_LE(callback.last_timestamp, kIterations);
+  EXPECT_GE(callback.last_timestamp, 0);
 }
 
 TEST(ImageSegmenterTest, InvalidArgumentHandling) {

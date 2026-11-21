@@ -18,8 +18,10 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/flags/flag.h"
-#include "absl/status/statusor.h"
+#include "absl/flags/flag.h"            // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
 #include "mediapipe/calculators/tensor/image_to_tensor_calculator.pb.h"
 #include "mediapipe/framework/api2/builder.h"
 #include "mediapipe/framework/api2/port.h"
@@ -39,7 +41,7 @@ limitations under the License.
 #include "mediapipe/tasks/cc/core/running_mode.h"
 #include "mediapipe/tasks/cc/core/task_runner.h"
 #include "mediapipe/tasks/cc/vision/utils/image_utils.h"
-#include "tensorflow/lite/test_util.h"
+#include "tflite/test_util.h"  // from @litert
 
 namespace mediapipe {
 namespace tasks {
@@ -112,7 +114,7 @@ absl::StatusOr<std::unique_ptr<TaskRunner>> CreateTaskRunner(
       preprocessing.GetOptions<proto::ImagePreprocessingGraphOptions>();
   options.mutable_image_to_tensor_options()->set_keep_aspect_ratio(
       keep_aspect_ratio);
-  MP_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ConfigureImagePreprocessingGraph(model_resources, false, &options));
   graph[Input<Image>(kImageTag)].SetName(kImageName) >>
       preprocessing.In(kImageTag);

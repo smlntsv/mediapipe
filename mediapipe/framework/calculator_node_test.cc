@@ -18,15 +18,15 @@
 
 #include <memory>
 
-#include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
+#include "absl/log/absl_check.h"        // from @com_google_absl
+#include "absl/log/absl_log.h"          // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/output_side_packet_impl.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
 #include "mediapipe/framework/port/parse_text_proto.h"
-#include "mediapipe/framework/port/status.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/framework/port/status_matchers.h"
 
 namespace mediapipe {
@@ -154,8 +154,8 @@ class CalculatorNodeTest : public ::testing::Test {
           "  input_side_packet: \"input_a\"\n"  // Input side packet index 3
           "}\n");
     }
-    MEDIAPIPE_CHECK_OK(validated_graph_.Initialize(graph_config));
-    MEDIAPIPE_CHECK_OK(InitializeStreams());
+    ABSL_CHECK_OK(validated_graph_.Initialize(graph_config));
+    ABSL_CHECK_OK(InitializeStreams());
 
     input_side_packets_.emplace("input_a", Adopt(new int(42)));
     input_side_packets_.emplace("input_b", Adopt(new int(42)));
@@ -193,7 +193,7 @@ class CalculatorNodeTest : public ::testing::Test {
          ++index) {
       const EdgeInfo& edge_info =
           validated_graph_.OutputSidePacketInfos()[index];
-      MP_RETURN_IF_ERROR(output_side_packets_[index].Initialize(
+      ABSL_RETURN_IF_ERROR(output_side_packets_[index].Initialize(
           edge_info.name, edge_info.packet_type));
     }
     // END OF: code is copied from
@@ -206,7 +206,7 @@ class CalculatorNodeTest : public ::testing::Test {
     for (int index = 0; index < validated_graph_.InputStreamInfos().size();
          ++index) {
       const EdgeInfo& edge_info = validated_graph_.InputStreamInfos()[index];
-      MP_RETURN_IF_ERROR(input_stream_managers_[index].Initialize(
+      ABSL_RETURN_IF_ERROR(input_stream_managers_[index].Initialize(
           edge_info.name, edge_info.packet_type, edge_info.back_edge));
     }
 
@@ -216,7 +216,7 @@ class CalculatorNodeTest : public ::testing::Test {
     for (int index = 0; index < validated_graph_.OutputStreamInfos().size();
          ++index) {
       const EdgeInfo& edge_info = validated_graph_.OutputStreamInfos()[index];
-      MP_RETURN_IF_ERROR(output_stream_managers_[index].Initialize(
+      ABSL_RETURN_IF_ERROR(output_stream_managers_[index].Initialize(
           edge_info.name, edge_info.packet_type));
     }
     // END OF: code is copied from CalculatorGraph::InitializeStreams.

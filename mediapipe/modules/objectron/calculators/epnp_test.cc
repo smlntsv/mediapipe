@@ -1,12 +1,18 @@
 #include "mediapipe/modules/objectron/calculators/epnp.h"
 
+#include <cstdint>
+#include <vector>
+
+#include "Eigen/Core"            // from @eigen
+#include "Eigen/Geometry"        // from @eigen
+#include "absl/status/status.h"  // from @com_google_absl
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
-#include "mediapipe/framework/tool/test_util.h"
 
 namespace mediapipe {
 namespace {
 
+using ::absl_testing::StatusIs;
 using Eigen::AngleAxisf;
 using Eigen::Map;
 using Eigen::Matrix;
@@ -16,7 +22,6 @@ using Eigen::Vector2f;
 using Eigen::Vector3f;
 using ::testing::HasSubstr;
 using ::testing::Test;
-using ::testing::status::StatusIs;
 using Matrix3f = Eigen::Matrix<float, 3, 3, Eigen::RowMajor>;
 
 constexpr uint8_t kNumKeypoints = 9;

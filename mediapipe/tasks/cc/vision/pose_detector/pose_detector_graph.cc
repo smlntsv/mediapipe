@@ -15,7 +15,9 @@ limitations under the License.
 
 #include <vector>
 
-#include "absl/status/statusor.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
 #include "mediapipe/calculators/core/clip_vector_size_calculator.pb.h"
 #include "mediapipe/calculators/tensor/image_to_tensor_calculator.pb.h"
 #include "mediapipe/calculators/tensor/tensors_to_detections_calculator.pb.h"
@@ -24,6 +26,7 @@ limitations under the License.
 #include "mediapipe/calculators/util/non_max_suppression_calculator.pb.h"
 #include "mediapipe/calculators/util/rect_transformation_calculator.pb.h"
 #include "mediapipe/framework/api2/builder.h"
+#include "mediapipe/framework/api2/port.h"
 #include "mediapipe/framework/calculator.pb.h"
 #include "mediapipe/framework/formats/detection.pb.h"
 #include "mediapipe/framework/formats/image.h"
@@ -31,6 +34,7 @@ limitations under the License.
 #include "mediapipe/framework/formats/tensor.h"
 #include "mediapipe/framework/subgraph.h"
 #include "mediapipe/tasks/cc/components/processors/image_preprocessing_graph.h"
+#include "mediapipe/tasks/cc/core/model_resources.h"
 #include "mediapipe/tasks/cc/core/model_task_graph.h"
 #include "mediapipe/tasks/cc/vision/pose_detector/proto/pose_detector_graph_options.pb.h"
 
@@ -207,14 +211,14 @@ class PoseDetectorGraph : public core::ModelTaskGraph {
  public:
   absl::StatusOr<CalculatorGraphConfig> GetConfig(
       SubgraphContext* sc) override {
-    MP_ASSIGN_OR_RETURN(const auto* model_resources,
-                        CreateModelResources<PoseDetectorGraphOptions>(sc));
+    ABSL_ASSIGN_OR_RETURN(const auto* model_resources,
+                          CreateModelResources<PoseDetectorGraphOptions>(sc));
     Graph graph;
-    MP_ASSIGN_OR_RETURN(auto outs,
-                        BuildPoseDetectionSubgraph(
-                            sc->Options<PoseDetectorGraphOptions>(),
-                            *model_resources, graph[Input<Image>(kImageTag)],
-                            graph[Input<NormalizedRect>(kNormRectTag)], graph));
+    ABSL_ASSIGN_OR_RETURN(
+        auto outs, BuildPoseDetectionSubgraph(
+                       sc->Options<PoseDetectorGraphOptions>(),
+                       *model_resources, graph[Input<Image>(kImageTag)],
+                       graph[Input<NormalizedRect>(kNormRectTag)], graph));
 
     outs.pose_detections >>
         graph.Out(kDetectionsTag).Cast<std::vector<Detection>>();
@@ -239,10 +243,12 @@ class PoseDetectorGraph : public core::ModelTaskGraph {
     bool use_gpu =
         components::processors::DetermineImagePreprocessingGpuBackend(
             subgraph_options.base_options().acceleration());
-    MP_RETURN_IF_ERROR(components::processors::ConfigureImagePreprocessingGraph(
-        model_resources, use_gpu, subgraph_options.base_options().gpu_origin(),
-        &preprocessing.GetOptions<
-            components::processors::proto::ImagePreprocessingGraphOptions>()));
+    ABSL_RETURN_IF_ERROR(
+        components::processors::ConfigureImagePreprocessingGraph(
+            model_resources, use_gpu,
+            subgraph_options.base_options().gpu_origin(),
+            &preprocessing.GetOptions<components::processors::proto::
+                                          ImagePreprocessingGraphOptions>()));
     auto& image_to_tensor_options =
         *preprocessing
              .GetOptions<components::processors::proto::

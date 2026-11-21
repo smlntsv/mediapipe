@@ -17,11 +17,11 @@
 #include <map>
 #include <string>
 
-#include "absl/base/const_init.h"
-#include "absl/memory/memory.h"
-#include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
-#include "absl/synchronization/mutex.h"
+#include "absl/base/const_init.h"        // from @com_google_absl
+#include "absl/memory/memory.h"          // from @com_google_absl
+#include "absl/status/status.h"          // from @com_google_absl
+#include "absl/strings/str_cat.h"        // from @com_google_absl
+#include "absl/synchronization/mutex.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/calculator_graph.h"
@@ -30,9 +30,9 @@
 #include "mediapipe/framework/port/parse_text_proto.h"
 #include "mediapipe/framework/tool/calculator_graph_template.pb.h"
 #include "mediapipe/python/pybind/util.h"
-#include "pybind11/embed.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/stl.h"
+#include "pybind11/embed.h"     // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/stl.h"       // from @pybind11
 
 namespace mediapipe {
 namespace python {
@@ -117,7 +117,7 @@ void CalculatorGraphSubmodule(pybind11::module* module) {
                              "\'validated_graph_config\' to initialize the "
                              "graph with a ValidatedGraphConfig object.");
         }
-        auto calculator_graph = absl::make_unique<CalculatorGraph>();
+        auto calculator_graph = std::make_unique<CalculatorGraph>();
         RaisePyErrorIfNotOk(calculator_graph->Initialize(graph_config_proto));
         return calculator_graph.release();
       }),

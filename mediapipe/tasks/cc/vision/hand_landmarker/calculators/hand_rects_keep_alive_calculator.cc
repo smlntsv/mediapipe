@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "mediapipe/framework/api3/calculator.h"
 #include "mediapipe/framework/api3/calculator_context.h"
 #include "mediapipe/framework/formats/rect.pb.h"
@@ -55,7 +56,7 @@ class HandRectsKeepAliveNodeImpl
     // stay held until they exceed the miss budget.
     std::vector<HeldRect> next_held;
     for (HeldRect& held : held_) {
-      MP_ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           bool recovered,
           mediapipe::DoesRectOverlap(held.rect, incoming, threshold));
       if (!recovered) {
@@ -73,11 +74,11 @@ class HandRectsKeepAliveNodeImpl
       held_rects.push_back(held.rect);
     }
     for (NormalizedRect& rect : prev_live_) {
-      MP_ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           bool still_present,
           mediapipe::DoesRectOverlap(rect, incoming, threshold));
       if (still_present) continue;
-      MP_ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           bool already_held,
           mediapipe::DoesRectOverlap(rect, held_rects, threshold));
       if (already_held) continue;

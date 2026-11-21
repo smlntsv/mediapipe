@@ -21,9 +21,12 @@
 #include <string>
 #include <vector>
 
-#include "absl/log/absl_log.h"
-#include "absl/memory/memory.h"
-#include "absl/strings/str_format.h"
+#include "absl/log/absl_log.h"          // from @com_google_absl
+#include "absl/memory/memory.h"         // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/strings/str_format.h"    // from @com_google_absl
+#include "absl/strings/string_view.h"   // from @com_google_absl
 #include "mediapipe/calculators/tensor/inference_calculator.h"
 #include "mediapipe/calculators/tensor/inference_io_mapper.h"
 #include "mediapipe/calculators/tensor/tensor_span.h"
@@ -33,10 +36,10 @@
 #include "mediapipe/gpu/MPPMetalUtil.h"
 #include "mediapipe/gpu/gpu_buffer.h"
 #include "mediapipe/util/tflite/config.h"
-#include "tensorflow/lite/delegates/gpu/common/shape.h"
-#include "tensorflow/lite/delegates/gpu/metal/buffer_convert.h"
-#include "tensorflow/lite/delegates/gpu/metal_delegate.h"
-#include "tensorflow/lite/delegates/gpu/metal_delegate_internal.h"
+#include "tflite/delegates/gpu/common/shape.h"             // from @litert
+#include "tflite/delegates/gpu/metal/buffer_convert.h"     // from @litert
+#include "tflite/delegates/gpu/metal_delegate.h"           // from @litert
+#include "tflite/delegates/gpu/metal_delegate_internal.h"  // from @litert
 
 namespace {
 
@@ -57,9 +60,6 @@ tflite::gpu::BHWC BhwcFromTensorShape(const Tensor::Shape& shape) {
   tflite::gpu::BHWC result;
   result.b = shape.dims[0];
   switch (shape.dims.size()) {
-    case 1:
-      // result.b is already filled.
-      break;
     case 2:
       result.h = 1;
       result.w = 1;
@@ -76,9 +76,9 @@ tflite::gpu::BHWC BhwcFromTensorShape(const Tensor::Shape& shape) {
       result.c = shape.dims[3];
       break;
     default:
-      // Handles 0 and >4.
+      // Handles <2 and >4.
       ABSL_LOG(FATAL)
-          << "Dimensions size must be in range [1,4] for GPU inference, but "
+          << "Dimensions size must be in range [2,4] for GPU inference, but "
           << shape.dims.size() << " is provided";
   }
   return result;
@@ -99,14 +99,15 @@ class InferenceCalculatorMetalImpl
   absl::StatusOr<std::vector<Tensor>> Process(
       CalculatorContext* cc, const TensorSpan& tensor_span) override;
   absl::Status InitInterpreter(CalculatorContext* cc);
-  void AddDelegate(CalculatorContext* cc,
-                   tflite::InterpreterBuilder* interpreter_builder);
+  void CreateDelegate();
   absl::Status CreateConverters(CalculatorContext* cc);
 
-  // TfLite requires us to keep the model alive as long as the interpreter is.
+  // TfLite requires us to keep the model and delegate alive as long as the
+  // interpreter is; declare `interpreter_` after both so reverse member
+  // destruction on `Open()` failure tears down the interpreter first.
   Packet<TfLiteModelPtr> model_packet_;
-  std::unique_ptr<tflite::Interpreter> interpreter_;
   TfLiteDelegatePtr delegate_;
+  std::unique_ptr<tflite::Interpreter> interpreter_;
   bool allow_precision_loss_ = false;
 
 #if MEDIAPIPE_TFLITE_METAL_INFERENCE
@@ -124,7 +125,7 @@ class InferenceCalculatorMetalImpl
 
 absl::Status InferenceCalculatorMetalImpl::UpdateContract(
     CalculatorContract* cc) {
-  MP_RETURN_IF_ERROR(TensorContractCheck(cc));
+  ABSL_RETURN_IF_ERROR(TensorContractCheck(cc));
 
   RET_CHECK(!kDelegate(cc).IsConnected())
       << "Delegate configuration through side packet is not supported.";
@@ -133,7 +134,7 @@ absl::Status InferenceCalculatorMetalImpl::UpdateContract(
       << "Either model as side packet or model path in options is required.";
 
   WarnFeedbackTensorsUnsupported(cc);
-  MP_RETURN_IF_ERROR([MPPMetalHelper updateContract:cc]);
+  ABSL_RETURN_IF_ERROR([MPPMetalHelper updateContract:cc]);
   return absl::OkStatus();
 }
 
@@ -148,6 +149,46 @@ absl::Status InferenceCalculatorMetalImpl::Open(CalculatorContext* cc) {
 
 absl::StatusOr<std::vector<Tensor>> InferenceCalculatorMetalImpl::Process(
     CalculatorContext* cc, const TensorSpan& tensor_span) {
+  const auto& input_indices = interpreter_->inputs();
+  if (tensor_span.size() != input_indices.size()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Input tensor count (%d) does not match model input count (%d).",
+        tensor_span.size(), input_indices.size()));
+  }
+  for (int i = 0; i < tensor_span.size(); ++i) {
+    if (tensor_span[i].element_type() != Tensor::ElementType::kFloat32) {
+      return absl::InvalidArgumentError(
+          "Only float32 input tensors are supported by the macOS/iOS GPU "
+          "delegate.");
+    }
+    const TfLiteTensor* expected = interpreter_->tensor(input_indices[i]);
+    const auto& actual_dims = tensor_span[i].shape().dims;
+    bool matches =
+        expected != nullptr && expected->dims != nullptr &&
+        expected->dims->size >= 2 &&
+        actual_dims.size() == static_cast<size_t>(expected->dims->size);
+    if (matches) {
+      const int rank = expected->dims->size;
+      for (int d = 0; matches && d < rank - 1; ++d) {
+        matches = (actual_dims[d] == expected->dims->data[d]);
+      }
+      // On Metal, ImageToTensorCalculator and ImageToBatchTensorCalculator pad
+      // 1- or 3-channel image tensors to 4-channel RGBA ([B, H, W, 4]),
+      // matching CreateConverters() rounding the bound Metal input buffer's
+      // channel dimension up to 4.
+      const int expected_last = expected->dims->data[rank - 1];
+      const int actual_last = actual_dims[rank - 1];
+      const bool allow_rgba_padding = (rank == 4 && expected_last > 0 &&
+                                       expected_last < 4 && actual_last == 4);
+      matches = matches && (actual_last == expected_last || allow_rgba_padding);
+    }
+    if (!matches) {
+      return absl::InvalidArgumentError(
+          "Dynamic-sized tensors or input shapes differing from model "
+          "dimensions are not supported by the macOS/iOS GPU delegate.");
+    }
+  }
+
   std::vector<Tensor> output_tensors;
 
   id<MTLCommandBuffer> command_buffer;
@@ -213,36 +254,117 @@ absl::Status InferenceCalculatorMetalImpl::Close(CalculatorContext* cc) {
   return absl::OkStatus();
 }
 
-absl::Status InferenceCalculatorMetalImpl::InitInterpreter(
-    CalculatorContext* cc) {
-  MP_ASSIGN_OR_RETURN(model_packet_, GetModelAsPacket(cc));
-  const auto& model = *model_packet_.Get();
-  MP_ASSIGN_OR_RETURN(auto op_resolver_packet, GetOpResolverAsPacket(cc));
-  const auto& op_resolver = op_resolver_packet.Get();
-  tflite::InterpreterBuilder interpreter_builder(model, op_resolver);
-  AddDelegate(cc, &interpreter_builder);
-  interpreter_builder.SetNumThreads(
-      cc->Options<mediapipe::InferenceCalculatorOptions>().cpu_num_thread());
-  RET_CHECK_EQ(interpreter_builder(&interpreter_), kTfLiteOk);
-  RET_CHECK(interpreter_);
-  MP_ASSIGN_OR_RETURN(
-      const auto& io_mapping,
-      InferenceIoMapper::GetInputOutputTensorNamesFromInterpreter(
-          *interpreter_));
-  MP_RETURN_IF_ERROR(
-      InferenceCalculatorNodeImpl::UpdateIoMapping(cc, io_mapping));
+namespace {
 
-  MP_RETURN_IF_ERROR(CreateConverters(cc));
-  RET_CHECK_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+absl::Status ValidateMetalIoTensor(const TfLiteTensor* tensor, int tensor_index,
+                                   absl::string_view io_kind) {
+  if (tensor == nullptr) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "%s tensor at index [%d] is null.", io_kind, tensor_index));
+  }
   // TODO: Support quantized tensors.
-  RET_CHECK_NE(
-      interpreter_->tensor(interpreter_->inputs()[0])->quantization.type,
-      kTfLiteAffineQuantization);
+  if (tensor->quantization.type == kTfLiteAffineQuantization) {
+    return absl::InvalidArgumentError(
+        "Quantized tensors are not supported by the macOS/iOS GPU delegate.");
+  }
+  if (tensor->type != kTfLiteFloat32) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "%s tensor at index [%d] has type %s, which is not supported by the "
+        "macOS/iOS GPU delegate (only float32 input/output tensors are "
+        "supported).",
+        io_kind, tensor_index, TfLiteTypeGetName(tensor->type)));
+  }
+  if (tensor->dims == nullptr || tensor->dims->size < 2 ||
+      tensor->dims->size > 4) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "%s tensor at index [%d] has rank %d, which is not supported by the "
+        "macOS/iOS GPU delegate (expected rank in [2, 4]).",
+        io_kind, tensor_index, tensor->dims ? tensor->dims->size : 0));
+  }
+  if (tensor->allocation_type == kTfLiteDynamic) {
+    return absl::InvalidArgumentError(
+        "Dynamic-sized tensors are not supported by the macOS/iOS GPU "
+        "delegate.");
+  }
+  for (int d = 0; d < tensor->dims->size; ++d) {
+    if (tensor->dims->data[d] <= 0) {
+      return absl::InvalidArgumentError(
+          "Dynamic-sized tensors are not supported by the macOS/iOS GPU "
+          "delegate.");
+    }
+  }
+  // Keras/TFLite Converter often populates dims_signature[0] = -1 (symbolic
+  // batch) on single-batch models whose dims[0] == 1 (e.g.
+  // mobilenet_v3_small, face_landmarks_detector). Skip index 0 only when it is
+  // a unit batch axis on a multi-dimensional tensor (Process() verifies exact
+  // runtime input shapes against tensor->dims) while rejecting all other
+  // dynamic dimensions up front.
+  if (tensor->dims_signature != nullptr) {
+    const int first_non_batch_dim =
+        (tensor->dims->size > 1 && tensor->dims->data[0] == 1) ? 1 : 0;
+    for (int d = first_non_batch_dim; d < tensor->dims_signature->size; ++d) {
+      if (tensor->dims_signature->data[d] <= 0) {
+        return absl::InvalidArgumentError(
+            "Dynamic-sized tensors are not supported by the macOS/iOS GPU "
+            "delegate.");
+      }
+    }
+  }
   return absl::OkStatus();
 }
 
-void InferenceCalculatorMetalImpl::AddDelegate(
-    CalculatorContext* cc, tflite::InterpreterBuilder* interpreter_builder) {
+}  // namespace
+
+absl::Status InferenceCalculatorMetalImpl::InitInterpreter(
+    CalculatorContext* cc) {
+  ABSL_ASSIGN_OR_RETURN(model_packet_, GetModelAsPacket(cc));
+  const auto& model = *model_packet_.Get();
+  ABSL_ASSIGN_OR_RETURN(auto op_resolver_packet, GetOpResolverAsPacket(cc));
+  const auto& op_resolver = op_resolver_packet.Get();
+  tflite::InterpreterBuilder interpreter_builder(model, op_resolver);
+  interpreter_builder.SetNumThreads(
+      cc->Options<mediapipe::InferenceCalculatorOptions>().cpu_num_thread());
+  if (interpreter_builder(&interpreter_) != kTfLiteOk || !interpreter_) {
+    return absl::InvalidArgumentError(
+        "Failed to build TFLite interpreter for the macOS/iOS GPU delegate.");
+  }
+
+  for (int input_index : interpreter_->inputs()) {
+    ABSL_RETURN_IF_ERROR(ValidateMetalIoTensor(
+        interpreter_->tensor(input_index), input_index, "Input"));
+  }
+  for (int output_index : interpreter_->outputs()) {
+    ABSL_RETURN_IF_ERROR(ValidateMetalIoTensor(
+        interpreter_->tensor(output_index), output_index, "Output"));
+  }
+
+  CreateDelegate();
+  const TfLiteStatus delegate_status =
+      interpreter_->ModifyGraphWithDelegate(delegate_.get());
+  if (delegate_status == kTfLiteApplicationError) {
+    return absl::InvalidArgumentError(
+        "Dynamic-sized tensors are not supported by the macOS/iOS GPU "
+        "delegate.");
+  }
+  if (delegate_status != kTfLiteOk) {
+    return absl::InvalidArgumentError(
+        "Model contains operations or tensor shapes that are not supported by "
+        "the macOS/iOS GPU delegate.");
+  }
+
+  ABSL_ASSIGN_OR_RETURN(
+      const auto& io_mapping,
+      InferenceIoMapper::GetInputOutputTensorNamesFromInterpreter(
+          *interpreter_));
+  ABSL_RETURN_IF_ERROR(
+      InferenceCalculatorNodeImpl::UpdateIoMapping(cc, io_mapping));
+
+  ABSL_RETURN_IF_ERROR(CreateConverters(cc));
+  RET_CHECK_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+  return absl::OkStatus();
+}
+
+void InferenceCalculatorMetalImpl::CreateDelegate() {
   // Configure and create the delegate.
   TFLGpuDelegateOptions options;
   // `enable_quantization` enables the run of sparse models i.e. the models with
@@ -253,7 +375,6 @@ void InferenceCalculatorMetalImpl::AddDelegate(
   options.wait_type = TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeDoNotWait;
   delegate_ =
       TfLiteDelegatePtr(TFLGpuDelegateCreate(&options), &TFLGpuDelegateDelete);
-  interpreter_builder->AddDelegate(delegate_.get());
 }
 
 absl::Status InferenceCalculatorMetalImpl::CreateConverters(
@@ -264,9 +385,6 @@ absl::Status InferenceCalculatorMetalImpl::CreateConverters(
   const auto& input_indices = interpreter_->inputs();
   for (int i = 0; i < input_indices.size(); ++i) {
     const TfLiteTensor* tensor = interpreter_->tensor(input_indices[i]);
-    RET_CHECK(tensor->dims->size > 0) << absl::StrFormat(
-        "Input tensor at index [%d] doesn't specify dimensions.",
-        input_indices[i]);
     // Create and bind input buffer.
     std::vector<int> dims{tensor->dims->data,
                           tensor->dims->data + tensor->dims->size};
@@ -277,9 +395,13 @@ absl::Status InferenceCalculatorMetalImpl::CreateConverters(
         Tensor::Shape{dims}));
     auto buffer_view =
         MtlBufferView::GetWriteView(*gpu_buffers_in_[i], gpu_helper_.mtlDevice);
-    RET_CHECK_EQ(TFLGpuDelegateBindMetalBufferToTensor(
-                     delegate_.get(), input_indices[i], buffer_view.buffer()),
-                 true);
+    if (!TFLGpuDelegateBindMetalBufferToTensor(
+            delegate_.get(), input_indices[i], buffer_view.buffer())) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "Failed to bind Metal buffer to input tensor [%d]; the model "
+          "contains operations not supported by the macOS/iOS GPU delegate.",
+          input_indices[i]));
+    }
   }
 
   interpreter_->SetAllowBufferHandleOutput(true);
@@ -288,10 +410,6 @@ absl::Status InferenceCalculatorMetalImpl::CreateConverters(
   output_shapes_.resize(output_indices.size());
   for (int i = 0; i < output_shapes_.size(); ++i) {
     const TfLiteTensor* tensor = interpreter_->tensor(output_indices[i]);
-    RET_CHECK(tensor->dims->size > 0) << absl::StrFormat(
-        "Output tensor at index [%d] doesn't specify dimensions.",
-        output_indices[i]);
-    RET_CHECK(tensor->dims->size <= 4);
     // Create and bind output buffers.
     // Channels are always padded to multiple of 4.
     std::vector<int> dims{tensor->dims->data,
@@ -302,12 +420,16 @@ absl::Status InferenceCalculatorMetalImpl::CreateConverters(
         allow_precision_loss_ ? Tensor::ElementType::kFloat16
                               : Tensor::ElementType::kFloat32,
         Tensor::Shape{dims}));
-    RET_CHECK_EQ(TFLGpuDelegateBindMetalBufferToTensor(
-                     delegate_.get(), output_indices[i],
-                     MtlBufferView::GetWriteView(*gpu_buffers_out_[i],
-                                                 gpu_helper_.mtlDevice)
-                         .buffer()),
-                 true);
+    if (!TFLGpuDelegateBindMetalBufferToTensor(
+            delegate_.get(), output_indices[i],
+            MtlBufferView::GetWriteView(*gpu_buffers_out_[i],
+                                        gpu_helper_.mtlDevice)
+                .buffer())) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "Failed to bind Metal buffer to output tensor [%d]; the model "
+          "contains operations not supported by the macOS/iOS GPU delegate.",
+          output_indices[i]));
+    }
   }
 
   // Create converter for GPU input.
@@ -316,8 +438,7 @@ absl::Status InferenceCalculatorMetalImpl::CreateConverters(
                                      isFloat16:allow_precision_loss_
                                convertToPBHWC4:true];
   if (converter_to_BPHWC4_ == nil) {
-    return mediapipe::InternalError(
-        "Error initializating input buffer converter");
+    return absl::InternalError("Error initializating input buffer converter");
   }
   // Create converter for GPU output.
   converter_from_BPHWC4_ =

@@ -41,7 +41,9 @@ _LiveStreamPacket = async_result_dispatcher.LiveStreamPacket
 
 _C_TYPES_RESULT_CALLBACK = ctypes.CFUNCTYPE(
     None,
+    ctypes.c_void_p,  # user_data
     ctypes.c_int32,  # MpStatus
+    ctypes.c_char_p,  # error_msg
     ctypes.POINTER(detections_c_module.MpDetectionResultC),
     ctypes.c_void_p,  # MpImage
     ctypes.c_int64,  # timestamp_ms
@@ -62,6 +64,7 @@ class MpObjectDetectorOptionsC(ctypes.Structure):
       ('category_denylist', ctypes.POINTER(ctypes.c_char_p)),
       ('category_denylist_count', ctypes.c_int),
       ('result_callback', _C_TYPES_RESULT_CALLBACK),
+      ('result_callback_user_data', ctypes.c_void_p),
   ]
 
   @classmethod
@@ -173,8 +176,8 @@ class ObjectDetectorOptions:
     running_mode: The running mode of the task. Default to the image mode.
       Object detector task has three running modes: 1) The image mode for
       detecting objects on single image inputs. 2) The video mode for detecting
-      objects on the decoded frames of a video. 3) The live stream mode for
-      detecting objects on a live stream of input data, such as from camera.
+      objects on the decoded frames of a video. 3) The livestream mode for
+      detecting objects on a livestream of input data, such as from camera.
     display_names_locale: The locale to use for display names specified through
       the TFLite Model Metadata.
     max_results: The maximum number of top-scored classification results to
@@ -189,9 +192,9 @@ class ObjectDetectorOptions:
       results whose category name is in this set will be filtered out. Duplicate
       or unknown category names are ignored. Mutually exclusive with
       `category_allowlist`.
-    result_callback: The user-defined result callback for processing live stream
+    result_callback: The user-defined result callback for processing livestream
       data. The result callback should only be specified when the running mode
-      is set to the live stream mode.
+      is set to the livestream mode.
   """
 
   base_options: _BaseOptions
@@ -220,7 +223,7 @@ class ObjectDetector:
     - only RGB inputs are supported (`channels` is required to be 3).
     - if type is kTfLiteFloat32, NormalizationOptions are required to be
       attached to the metadata for input normalization.
-  Output tensors must be the 4 outputs of a `DetectionPostProcess` op, i.e:
+  Output tensors must be the 4 outputs of a `DetectionPostProcess` op, i.e.:
     (kTfLiteFloat32)
     - locations tensor of size `[num_results x 4]`, the inner array
       representing bounding boxes in the form [top, left, right, bottom].
@@ -322,13 +325,13 @@ class ObjectDetector:
     """
 
     running_mode_module.validate_running_mode(
-        options.running_mode, options.result_callback
+        options.running_mode, options.result_callback  # pyrefly: ignore[bad-argument-type]
     )
 
     lib = mediapipe_c_bindings_c_module.load_shared_library(_CTYPES_SIGNATURES)
 
     def convert_result(
-        c_result_ptr: ctypes.POINTER(detections_c_module.MpDetectionResultC),
+        c_result_ptr: ctypes.POINTER(detections_c_module.MpDetectionResultC),  # pyrefly: ignore[invalid-annotation]
         image_ptr: ctypes.c_void_p,
         timestamp_ms: int,
     ) -> Tuple[ObjectDetectorResult, image_module.Image, int]:
@@ -353,7 +356,7 @@ class ObjectDetector:
     )
 
     detector_handle = ctypes.c_void_p()
-    lib.MpObjectDetectorCreate(
+    lib.MpObjectDetectorCreate(  # pyrefly: ignore[missing-attribute]
         ctypes.byref(ctypes_options),
         ctypes.byref(detector_handle),
     )
@@ -399,7 +402,7 @@ class ObjectDetector:
         if image_processing_options
         else None
     )
-    self._lib.MpObjectDetectorDetectImage(
+    self._lib.MpObjectDetectorDetectImage(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         c_image_processing_options,
@@ -407,7 +410,7 @@ class ObjectDetector:
     )
 
     py_result = ObjectDetectorResult.from_ctypes(c_result)
-    self._lib.MpObjectDetectorCloseResult(ctypes.byref(c_result))
+    self._lib.MpObjectDetectorCloseResult(ctypes.byref(c_result))  # pyrefly: ignore[missing-attribute]
     return py_result
 
   def detect_for_video(
@@ -446,7 +449,7 @@ class ObjectDetector:
         if image_processing_options
         else None
     )
-    self._lib.MpObjectDetectorDetectForVideo(
+    self._lib.MpObjectDetectorDetectForVideo(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         c_image_processing_options,
@@ -455,7 +458,7 @@ class ObjectDetector:
     )
 
     py_result = ObjectDetectorResult.from_ctypes(c_result)
-    self._lib.MpObjectDetectorCloseResult(ctypes.byref(c_result))
+    self._lib.MpObjectDetectorCloseResult(ctypes.byref(c_result))  # pyrefly: ignore[missing-attribute]
     return py_result
 
   def detect_async(
@@ -466,17 +469,17 @@ class ObjectDetector:
   ) -> None:
     """Sends live image data (an Image with a unique timestamp) to perform object detection.
 
-    Only use this method when the ObjectDetector is created with the live stream
+    Only use this method when the ObjectDetector is created with the livestream
     running mode. The input timestamps should be monotonically increasing for
     adjacent calls of this method. This method will return immediately after the
     input image is accepted. The results will be available via the
     `result_callback` provided in the `ObjectDetectorOptions`. The
-    `detect_async` method is designed to process live stream data such as camera
+    `detect_async` method is designed to process livestream data such as camera
     input. To lower the overall latency, object detector may drop the input
     images if needed. In other words, it's not guaranteed to have output per
     input image.
 
-    The `result_callback` prvoides:
+    The `result_callback` provides:
       - A detection result object that contains a list of detections, each
         detection has a bounding box that is expressed in the unrotated input
         frame of reference coordinates system, i.e. in `[0,image_width) x [0,
@@ -501,7 +504,7 @@ class ObjectDetector:
         if image_processing_options
         else None
     )
-    self._lib.MpObjectDetectorDetectAsync(
+    self._lib.MpObjectDetectorDetectAsync(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         c_image_processing_options,
@@ -511,10 +514,15 @@ class ObjectDetector:
   def close(self):
     """Shuts down the MediaPipe task instance."""
     if self._handle:
-      self._lib.MpObjectDetectorClose(self._handle)
-      self._handle = None
-      self._dispatcher.close()
-      self._lib.close()
+      # The C library frees the task even if it fails to close, so the handle
+      # must not be used again.
+      handle = self._handle
+      self._handle = None  # pyrefly: ignore[bad-assignment]
+      try:
+        self._lib.MpObjectDetectorClose(handle)  # pyrefly: ignore[missing-attribute]
+      finally:
+        self._dispatcher.close()
+        self._lib.close()
 
   def __enter__(self):
     """Returns `self` upon entering the runtime context."""

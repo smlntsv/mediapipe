@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
+#include "absl/status/status.h"        // from @com_google_absl
+#include "absl/status/statusor.h"      // from @com_google_absl
+#include "absl/strings/string_view.h"  // from @com_google_absl
 #include "mediapipe/tasks/cc/components/containers/classification_result.h"
 #include "mediapipe/tasks/cc/components/processors/classifier_options.h"
 #include "mediapipe/tasks/cc/core/base_options.h"
@@ -89,6 +89,9 @@ class TextClassifier : core::BaseTaskApi {
 
   // Shuts down the TextClassifier when all the work is done.
   absl::Status Close() { return runner_->Close(); }
+
+ private:
+  friend class ::mediapipe::tasks::core::TaskRunnerTestPeer;
 };
 
 }  // namespace text_classifier

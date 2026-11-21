@@ -15,21 +15,32 @@ limitations under the License.
 
 #include "mediapipe/tasks/cc/text/text_embedder/text_embedder.h"
 
-#include <memory>
-#include <utility>
+#include <fcntl.h>
+#include <unistd.h>
 
-#include "absl/flags/flag.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/cord.h"
-#include "absl/strings/str_cat.h"
+#include <cstdint>
+#include <fstream>
+#include <ios>
+#include <iterator>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/flags/flag.h"       // from @com_google_absl
+#include "absl/log/absl_log.h"     // from @com_google_absl
+#include "absl/status/status.h"    // from @com_google_absl
+#include "absl/status/statusor.h"  // from @com_google_absl
+#include "absl/strings/cord.h"     // from @com_google_absl
+#include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "mediapipe/framework/deps/file_path.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
 #include "mediapipe/framework/port/status_matchers.h"
 #include "mediapipe/tasks/cc/common.h"
 #include "mediapipe/tasks/cc/components/containers/embedding_result.h"
-#include "tensorflow/lite/test_util.h"
+#include "mediapipe/tasks/cc/core/embedding_provider.h"
+#include "tflite/test_util.h"  // from @litert
 
 namespace mediapipe::tasks::text::text_embedder {
 namespace {
@@ -298,6 +309,26 @@ TEST_F(EmbedderTest, SucceedsWithEmbeddingGemma) {
   EXPECT_NEAR(similarity1, 0.51f, kSimilarityTolerancy);
   EXPECT_NEAR(similarity2, 0.30f, kSimilarityTolerancy);
   EXPECT_GE(similarity1, similarity2);
+
+  MP_ASSERT_OK(text_embedder->Close());
+}
+
+TEST_F(EmbedderTest, TestGetProviderSucceeds) {
+  auto options = std::make_unique<TextEmbedderOptions>();
+  options->base_options.model_asset_path =
+      JoinPath("./", kTestDataDirectory, kRegexOneEmbeddingModel);
+  MP_ASSERT_OK_AND_ASSIGN(std::unique_ptr<TextEmbedder> text_embedder,
+                          TextEmbedder::Create(std::move(options)));
+
+  auto provider = text_embedder->GetProvider();
+  ASSERT_NE(provider, nullptr);
+
+  std::vector<::mediapipe::tasks::core::TaskPart> content;
+  content.push_back(::mediapipe::tasks::core::TextPart{"hello world"});
+
+  MP_ASSERT_OK_AND_ASSIGN(auto embedding_opt, provider->EmbedContent(content));
+  ASSERT_TRUE(embedding_opt.has_value());
+  EXPECT_FALSE(embedding_opt->empty());
 
   MP_ASSERT_OK(text_embedder->Close());
 }

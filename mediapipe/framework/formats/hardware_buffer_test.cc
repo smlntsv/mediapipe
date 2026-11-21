@@ -4,8 +4,8 @@
 
 #include <memory>
 
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "base/logging.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "testing/base/public/gmock.h"
 #include "testing/base/public/gunit.h"
 

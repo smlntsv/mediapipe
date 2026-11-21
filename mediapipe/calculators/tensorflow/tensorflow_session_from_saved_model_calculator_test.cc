@@ -14,7 +14,8 @@
 
 #include <cstdint>
 
-#include "absl/strings/str_replace.h"
+#include "absl/status/status.h"        // from @com_google_absl
+#include "absl/strings/str_replace.h"  // from @com_google_absl
 #include "google/protobuf/text_format.h"
 #include "mediapipe/calculators/tensorflow/tensorflow_session.h"
 #include "mediapipe/calculators/tensorflow/tensorflow_session_from_saved_model_calculator.pb.h"
@@ -29,7 +30,7 @@
 #include "mediapipe/framework/port/status_matchers.h"
 #include "mediapipe/framework/tool/tag_map_helper.h"
 #include "mediapipe/framework/tool/validate_type.h"
-#include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"  // from @org_tensorflow
 #include "testing/base/public/gunit.h"
 
 namespace mediapipe {

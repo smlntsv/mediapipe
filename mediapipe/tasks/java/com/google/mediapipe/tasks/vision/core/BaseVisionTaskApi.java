@@ -90,7 +90,7 @@ public class BaseVisionTaskApi implements AutoCloseable {
   protected TaskResult processImageData(Map<String, Packet> inputPackets) {
     if (runningMode != RunningMode.IMAGE) {
       throw new MediaPipeException(
-          MediaPipeException.StatusCode.FAILED_PRECONDITION.ordinal(),
+          MediaPipeException.StatusCode.FAILED_PRECONDITION,
           "Task is not initialized with the image mode. Current running mode:"
               + runningMode.name());
     }
@@ -132,7 +132,7 @@ public class BaseVisionTaskApi implements AutoCloseable {
   protected TaskResult processVideoData(Map<String, Packet> inputPackets, long timestampMs) {
     if (runningMode != RunningMode.VIDEO) {
       throw new MediaPipeException(
-          MediaPipeException.StatusCode.FAILED_PRECONDITION.ordinal(),
+          MediaPipeException.StatusCode.FAILED_PRECONDITION,
           "Task is not initialized with the video mode. Current running mode:"
               + runningMode.name());
     }
@@ -140,7 +140,7 @@ public class BaseVisionTaskApi implements AutoCloseable {
   }
 
   /**
-   * An asynchronous method to send live stream data to the {@link TaskRunner}. The results will be
+   * An asynchronous method to send livestream data to the {@link TaskRunner}. The results will be
    * available in the user-defined result listener.
    *
    * @param image a MediaPipe {@link MPImage} object for processing.
@@ -164,7 +164,7 @@ public class BaseVisionTaskApi implements AutoCloseable {
   }
 
   /**
-   * An asynchronous method to send live stream data to the {@link TaskRunner}. The results will be
+   * An asynchronous method to send livestream data to the {@link TaskRunner}. The results will be
    * available in the user-defined result listener.
    *
    * @param inputPackets the maps of input stream names to the input packets.
@@ -174,7 +174,7 @@ public class BaseVisionTaskApi implements AutoCloseable {
   protected void sendLiveStreamData(Map<String, Packet> inputPackets, long timestampMs) {
     if (runningMode != RunningMode.LIVE_STREAM) {
       throw new MediaPipeException(
-          MediaPipeException.StatusCode.FAILED_PRECONDITION.ordinal(),
+          MediaPipeException.StatusCode.FAILED_PRECONDITION,
           "Task is not initialized with the live stream mode. Current running mode:"
               + runningMode.name());
     }

@@ -99,7 +99,7 @@ class ObjectronModel(object):
 
 
 @attr.s(auto_attribs=True, frozen=True)
-class ShoeModel(ObjectronModel):
+class ShoeModel(ObjectronModel):  # pyrefly: ignore[invalid-inheritance]
   # pyrefly: ignore[bad-override]
   model_path: str = ('mediapipe/modules/objectron/'
                      'object_detection_3d_sneakers.tflite')
@@ -107,7 +107,7 @@ class ShoeModel(ObjectronModel):
 
 
 @attr.s(auto_attribs=True, frozen=True)
-class ChairModel(ObjectronModel):
+class ChairModel(ObjectronModel):  # pyrefly: ignore[invalid-inheritance]
   # pyrefly: ignore[bad-override]
   model_path: str = ('mediapipe/modules/objectron/'
                      'object_detection_3d_chair.tflite')
@@ -115,7 +115,7 @@ class ChairModel(ObjectronModel):
 
 
 @attr.s(auto_attribs=True, frozen=True)
-class CameraModel(ObjectronModel):
+class CameraModel(ObjectronModel):  # pyrefly: ignore[invalid-inheritance]
   # pyrefly: ignore[bad-override]
   model_path: str = ('mediapipe/modules/objectron/'
                      'object_detection_3d_camera.tflite')
@@ -123,7 +123,7 @@ class CameraModel(ObjectronModel):
 
 
 @attr.s(auto_attribs=True, frozen=True)
-class CupModel(ObjectronModel):
+class CupModel(ObjectronModel):  # pyrefly: ignore[invalid-inheritance]
   # pyrefly: ignore[bad-override]
   model_path: str = ('mediapipe/modules/objectron/'
                      'object_detection_3d_cup.tflite')
@@ -262,10 +262,10 @@ class Objectron(SolutionBase):
     """
 
     results = super().process(input_data={'image': image})
-    if results.detected_objects:  # pytype: disable=attribute-error
+    if results.detected_objects:  # pyrefly: ignore[missing-attribute]
       results.detected_objects = self._convert_format(results.detected_objects)  # type: ignore
     else:
-      results.detected_objects = None  # pytype: disable=not-writable
+      results.detected_objects = None  # pyrefly: ignore[missing-attribute]
     return results
 
   def _convert_format(

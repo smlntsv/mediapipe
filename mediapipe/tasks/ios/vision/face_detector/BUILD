@@ -12,58 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@rules_cc//cc:objc_library.bzl", "objc_library")
-
 package(default_visibility = ["//mediapipe/tasks:internal"])
 
 licenses(["notice"])
-
-exports_files(glob(["sources/*.h"]))
-
-objc_library(
-    name = "MPPFaceDetectorResult",
-    srcs = ["sources/MPPFaceDetectorResult.m"],
-    hdrs = ["sources/MPPFaceDetectorResult.h"],
-    deps = [
-        "//mediapipe/tasks/ios/components/containers:MPPDetection",
-        "//mediapipe/tasks/ios/core:MPPTaskResult",
-    ],
-)
-
-objc_library(
-    name = "MPPFaceDetectorOptions",
-    srcs = ["sources/MPPFaceDetectorOptions.m"],
-    hdrs = ["sources/MPPFaceDetectorOptions.h"],
-    deps = [
-        ":MPPFaceDetectorResult",
-        "//mediapipe/tasks/ios/core:MPPTaskOptions",
-        "//mediapipe/tasks/ios/vision/core:MPPRunningMode",
-        "//third_party/apple_frameworks:Foundation",
-    ],
-)
-
-objc_library(
-    name = "MPPFaceDetector",
-    srcs = ["sources/MPPFaceDetector.mm"],
-    hdrs = ["sources/MPPFaceDetector.h"],
-    copts = [
-        "-ObjC++",
-        "-std=c++20",
-        "-Xclang=-fno-cxx-modules",
-        "-x objective-c++",
-    ],
-    deps = [
-        ":MPPFaceDetectorOptions",
-        ":MPPFaceDetectorResult",
-        "//mediapipe/tasks/cc/vision/face_detector:face_detector_graph",
-        "//mediapipe/tasks/ios/common/utils:MPPCommonUtils",
-        "//mediapipe/tasks/ios/common/utils:NSStringHelpers",
-        "//mediapipe/tasks/ios/core:MPPTaskInfo",
-        "//mediapipe/tasks/ios/vision/core:MPPImage",
-        "//mediapipe/tasks/ios/vision/core:MPPVisionPacketCreator",
-        "//mediapipe/tasks/ios/vision/core:MPPVisionTaskRunner",
-        "//mediapipe/tasks/ios/vision/face_detector/utils:MPPFaceDetectorOptionsHelpers",
-        "//mediapipe/tasks/ios/vision/face_detector/utils:MPPFaceDetectorResultHelpers",
-        "//third_party/apple_frameworks:Foundation",
-    ],
-)

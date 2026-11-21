@@ -27,6 +27,7 @@ from mediapipe.tasks.python.core import serial_dispatcher
 
 class Mode(enum.IntEnum):
   """The mode of the text summarizer."""
+
   TLDR = 0
   KEYPOINTS = 1
 
@@ -37,6 +38,7 @@ class _MpTextSummarizerOptionsC(ctypes.Structure):
       ("mode", ctypes.c_int),
       ("max_num_tokens", ctypes.c_int),
       ("cache_dir", ctypes.c_char_p),
+      ("min_log_severity", ctypes.c_int),
   ]
 
 
@@ -51,11 +53,16 @@ class TextSummarizerOptions:
       set, the summarization will be truncated if the input and output exceed
       this value. If not set, then the default max_num_tokens is roughly 8k
       tokens due to the model's capacity.
+    cache_dir: Cache directory for the model weight cache and program cache. To
+      disable caching, set this to ":nocache".
+    min_log_severity: Minimum logging severity (default 4 = ERROR).
   """
 
   base_options: base_options_module.BaseOptions
   mode: Mode = Mode.KEYPOINTS
   max_num_tokens: Optional[int] = None
+  cache_dir: Optional[str] = None
+  min_log_severity: Optional[int] = 4
 
   def to_ctypes(self) -> _MpTextSummarizerOptionsC:
     """Generates a ctypes TextSummarizerOptionsC."""
@@ -67,7 +74,14 @@ class TextSummarizerOptions:
         max_num_tokens=(
             self.max_num_tokens if self.max_num_tokens is not None else 0
         ),
-        cache_dir=None,
+        cache_dir=(
+            self.cache_dir.encode("utf-8")
+            if self.cache_dir is not None
+            else None
+        ),
+        min_log_severity=(
+            self.min_log_severity if self.min_log_severity is not None else 4
+        ),
     )
 
 
@@ -161,7 +175,7 @@ class TextSummarizer:
 
     def callback_wrapper(
         unused_user_data: int,
-        result_ptr: ctypes.POINTER(_MpTextSummarizerStreamResultC),
+        result_ptr: ctypes.POINTER(_MpTextSummarizerStreamResultC),  # pyrefly: ignore[invalid-annotation]
         error_msg_ptr: bytes,
     ) -> None:
       if not self._async_result_callback:
@@ -232,7 +246,7 @@ class TextSummarizer:
     ctypes_options = options.to_ctypes()
 
     summarizer_handle = ctypes.c_void_p()
-    lib.MpTextSummarizerCreate(
+    lib.MpTextSummarizerCreate(  # pyrefly: ignore[missing-attribute]
         ctypes.byref(ctypes_options),
         ctypes.byref(summarizer_handle),
     )
@@ -253,7 +267,7 @@ class TextSummarizer:
     """
     ctypes_result = _MpTextSummarizerResultC()
 
-    self._lib.MpTextSummarizerSummarize(
+    self._lib.MpTextSummarizerSummarize(  # pyrefly: ignore[missing-attribute]
         self._summarizer_handle,
         text.encode("utf-8"),
         ctypes.byref(ctypes_result),
@@ -264,7 +278,7 @@ class TextSummarizer:
         else None,
         done=True,
     )
-    self._lib.MpTextSummarizerCloseResult(ctypes.byref(ctypes_result))
+    self._lib.MpTextSummarizerCloseResult(ctypes.byref(ctypes_result))  # pyrefly: ignore[missing-attribute]
     return python_result
 
   def summarize_async(
@@ -294,7 +308,7 @@ class TextSummarizer:
           " supported."
       )
     self._async_result_callback = result_callback
-    self._lib.MpTextSummarizerSummarizeStreaming(
+    self._lib.MpTextSummarizerSummarizeStreaming(  # pyrefly: ignore[missing-attribute]
         self._summarizer_handle,
         text.encode("utf-8"),
         self._c_callback,
@@ -304,10 +318,16 @@ class TextSummarizer:
   def close(self):
     """Shuts down the MediaPipe task instance."""
     if self._summarizer_handle:
-      self._lib.MpTextSummarizerClose(self._summarizer_handle)
-      self._summarizer_handle = None
-      self._async_result_callback = None
-      self._lib.close()
+      # The C library frees the task even if it fails to close, so the handle
+      # must not be used again.
+      handle = self._summarizer_handle
+      self._summarizer_handle = None  # pyrefly: ignore[bad-assignment]
+      try:
+        self._lib.MpTextSummarizerClose(handle)  # pyrefly: ignore[missing-attribute]
+      finally:
+        self._async_result_callback = None
+        self._c_callback = None  # pyrefly: ignore[bad-assignment]
+        self._lib.close()
 
   def __enter__(self):
     """Returns `self` upon entering the runtime context."""

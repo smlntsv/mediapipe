@@ -18,8 +18,8 @@ limitations under the License.
 #include <cstdlib>
 #include <string>
 
-#include "absl/flags/flag.h"
-#include "absl/strings/string_view.h"
+#include "absl/flags/flag.h"           // from @com_google_absl
+#include "absl/strings/string_view.h"  // from @com_google_absl
 #include "mediapipe/framework/deps/file_path.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
@@ -69,6 +69,7 @@ TEST(InteractiveSegmenterLegacyTest,
       .base_options = {.model_asset_buffer = nullptr,
                        .model_asset_buffer_count = 0,
                        .model_asset_path = model_path.c_str()},
+      .display_names_locale = nullptr,
       .output_confidence_masks = false,
       .output_category_mask = true,
   };
@@ -85,7 +86,7 @@ TEST(InteractiveSegmenterLegacyTest,
 
   // Initialize the ROI using brace initialization
   MpRegionOfInterest roi = {.format = MP_REGION_OF_INTEREST_FORMAT_KEYPOINT,
-                            .keypoint = &keypoint,
+                            .keypoint = keypoint,
                             .scribble = nullptr,
                             .scribble_count = 0};
 
@@ -120,6 +121,7 @@ TEST(InteractiveSegmenterLegacyTest,
       .base_options = {.model_asset_buffer = nullptr,
                        .model_asset_buffer_count = 0,
                        .model_asset_path = model_path.c_str()},
+      .display_names_locale = nullptr,
       .output_confidence_masks = false,
       .output_category_mask = true,
   };
@@ -137,7 +139,6 @@ TEST(InteractiveSegmenterLegacyTest,
 
   // Initialize RegionOfInterestC
   MpRegionOfInterest roi = {.format = MP_REGION_OF_INTEREST_FORMAT_SCRIBBLE,
-                            .keypoint = nullptr,
                             .scribble = keypoints,
                             .scribble_count = 3};
 
@@ -170,6 +171,7 @@ TEST(InteractiveSegmenterLegacyTest, ImageModeTestWithRotation) {
       .base_options = {.model_asset_buffer = nullptr,
                        .model_asset_buffer_count = 0,
                        .model_asset_path = model_path.c_str()},
+      .display_names_locale = nullptr,
       .output_confidence_masks = false,
       .output_category_mask = true,
   };
@@ -186,7 +188,7 @@ TEST(InteractiveSegmenterLegacyTest, ImageModeTestWithRotation) {
 
   // Initialize the ROI using brace initialization
   MpRegionOfInterest roi = {.format = MP_REGION_OF_INTEREST_FORMAT_KEYPOINT,
-                            .keypoint = &keypoint,
+                            .keypoint = keypoint,
                             .scribble = nullptr,
                             .scribble_count = 0};
 
@@ -218,6 +220,7 @@ TEST(InteractiveSegmenterLegacyTest, InvalidArgumentHandling) {
       .base_options = {.model_asset_buffer = nullptr,
                        .model_asset_buffer_count = 0,
                        .model_asset_path = nullptr},
+      .display_names_locale = nullptr,
       .output_confidence_masks = false,
       .output_category_mask = true,
   };
@@ -240,6 +243,7 @@ TEST(InteractiveSegmenterLegacyTest, FailedRecognitionHandling) {
       .base_options = {.model_asset_buffer = nullptr,
                        .model_asset_buffer_count = 0,
                        .model_asset_path = model_path.c_str()},
+      .display_names_locale = nullptr,
       .output_confidence_masks = false,
       .output_category_mask = true,
   };
@@ -255,7 +259,7 @@ TEST(InteractiveSegmenterLegacyTest, FailedRecognitionHandling) {
   MpNormalizedKeypoint keypoint = {.x = 0.0f, .y = 0.0f};
 
   MpRegionOfInterest roi = {.format = MP_REGION_OF_INTEREST_FORMAT_KEYPOINT,
-                            .keypoint = &keypoint,
+                            .keypoint = keypoint,
                             .scribble = nullptr,
                             .scribble_count = 0};
 

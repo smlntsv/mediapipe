@@ -23,15 +23,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/log/absl_log.h"
-#include "absl/status/status.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/framework/api2/node.h"
+#include "mediapipe/framework/api2/packet.h"
 #include "mediapipe/framework/api2/port.h"
 #include "mediapipe/framework/calculator_context.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/deps/file_helpers.h"
 #include "mediapipe/framework/formats/image_frame.h"
 #include "mediapipe/framework/formats/tensor.h"
+#include "mediapipe/framework/port/ret_check.h"
 #include "mediapipe/tasks/cc/vision/image_generator/diffuser/diffuser_gpu.h"
 #include "mediapipe/tasks/cc/vision/image_generator/diffuser/stable_diffusion_iterate_calculator.pb.h"
 
@@ -205,7 +207,7 @@ absl::Status StableDiffusionIterateCalculator::Open(CalculatorContext* cc) {
   show_every_n_iteration_ = options.show_every_n_iteration();
   emit_empty_packet_ = options.emit_empty_packet();
 
-  MP_RETURN_IF_ERROR(LoadDiffuser());
+  ABSL_RETURN_IF_ERROR(LoadDiffuser());
 
   DiffuserConfig config;
   config.model_type = ToDiffuserModelType(options.model_type());
@@ -223,7 +225,7 @@ absl::Status StableDiffusionIterateCalculator::Open(CalculatorContext* cc) {
     }
     std::strcpy(config.model_dir, file_folder.c_str());  // NOLINT
   }
-  MP_RETURN_IF_ERROR(mediapipe::file::Exists(config.model_dir))
+  ABSL_RETURN_IF_ERROR(mediapipe::file::Exists(config.model_dir))
       << config.model_dir;
   RET_CHECK(options.lora_file_folder().empty() ||
             options.lora_weights_layer_mapping().empty())

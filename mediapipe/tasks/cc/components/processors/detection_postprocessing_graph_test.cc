@@ -17,11 +17,12 @@ limitations under the License.
 
 #include <vector>
 
-#include "absl/flags/flag.h"
-#include "absl/memory/memory.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
+#include "absl/flags/flag.h"            // from @com_google_absl
+#include "absl/memory/memory.h"         // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
+#include "absl/strings/string_view.h"   // from @com_google_absl
 #include "mediapipe/calculators/util/detection_label_id_to_text_calculator.pb.h"
 #include "mediapipe/framework/api2/builder.h"
 #include "mediapipe/framework/api2/packet.h"
@@ -42,7 +43,7 @@ limitations under the License.
 #include "mediapipe/tasks/cc/components/processors/proto/detector_options.pb.h"
 #include "mediapipe/tasks/cc/core/model_resources.h"
 #include "mediapipe/tasks/cc/core/proto/external_file.pb.h"
-#include "tensorflow/lite/test_util.h"
+#include "tflite/test_util.h"  // from @litert
 
 namespace mediapipe {
 namespace tasks {
@@ -325,14 +326,14 @@ class PostprocessingTest : public tflite::testing::Test {
  protected:
   absl::StatusOr<OutputStreamPoller> BuildGraph(
       absl::string_view model_name, const proto::DetectorOptions& options) {
-    MP_ASSIGN_OR_RETURN(auto model_resources,
-                        CreateModelResourcesForModel(model_name));
+    ABSL_ASSIGN_OR_RETURN(auto model_resources,
+                          CreateModelResourcesForModel(model_name));
 
     Graph graph;
     auto& postprocessing = graph.AddNode(
         "mediapipe.tasks.components.processors."
         "DetectionPostprocessingGraph");
-    MP_RETURN_IF_ERROR(ConfigureDetectionPostprocessingGraph(
+    ABSL_RETURN_IF_ERROR(ConfigureDetectionPostprocessingGraph(
         *model_resources, options,
         postprocessing
             .GetOptions<proto::DetectionPostprocessingGraphOptions>()));
@@ -341,10 +342,10 @@ class PostprocessingTest : public tflite::testing::Test {
         postprocessing.In(kTensorsTag);
     postprocessing.Out(kDetectionsTag).SetName(std::string(kDetectionsName)) >>
         graph[Output<std::vector<Detection>>(kDetectionsTag)];
-    MP_RETURN_IF_ERROR(calculator_graph_.Initialize(graph.GetConfig()));
-    MP_ASSIGN_OR_RETURN(auto poller, calculator_graph_.AddOutputStreamPoller(
-                                         std::string(kDetectionsName)));
-    MP_RETURN_IF_ERROR(calculator_graph_.StartRun(/*extra_side_packets=*/{}));
+    ABSL_RETURN_IF_ERROR(calculator_graph_.Initialize(graph.GetConfig()));
+    ABSL_ASSIGN_OR_RETURN(auto poller, calculator_graph_.AddOutputStreamPoller(
+                                           std::string(kDetectionsName)));
+    ABSL_RETURN_IF_ERROR(calculator_graph_.StartRun(/*extra_side_packets=*/{}));
     return poller;
   }
 
@@ -359,7 +360,7 @@ class PostprocessingTest : public tflite::testing::Test {
   }
 
   absl::Status Run(int timestamp = 0) {
-    MP_RETURN_IF_ERROR(calculator_graph_.AddPacketToInputStream(
+    ABSL_RETURN_IF_ERROR(calculator_graph_.AddPacketToInputStream(
         std::string(kTensorsName),
         Adopt(tensors_.release()).At(Timestamp(timestamp))));
     // Reset tensors for future calls.
@@ -369,15 +370,15 @@ class PostprocessingTest : public tflite::testing::Test {
 
   template <typename T>
   absl::StatusOr<T> GetResult(OutputStreamPoller& poller) {
-    MP_RETURN_IF_ERROR(calculator_graph_.WaitUntilIdle());
-    MP_RETURN_IF_ERROR(calculator_graph_.CloseAllInputStreams());
+    ABSL_RETURN_IF_ERROR(calculator_graph_.WaitUntilIdle());
+    ABSL_RETURN_IF_ERROR(calculator_graph_.CloseAllInputStreams());
 
     Packet packet;
     if (!poller.Next(&packet)) {
       return absl::InternalError("Unable to get output packet");
     }
     auto result = packet.Get<T>();
-    MP_RETURN_IF_ERROR(calculator_graph_.WaitUntilDone());
+    ABSL_RETURN_IF_ERROR(calculator_graph_.WaitUntilDone());
     return result;
   }
 

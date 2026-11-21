@@ -18,10 +18,12 @@
 #include <string>
 #include <vector>
 
-#include "absl/status/statusor.h"
-#include "absl/strings/ascii.h"
-#include "absl/strings/str_format.h"
-#include "absl/strings/string_view.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
+#include "absl/strings/ascii.h"         // from @com_google_absl
+#include "absl/strings/str_format.h"    // from @com_google_absl
+#include "absl/strings/string_view.h"   // from @com_google_absl
 #include "mediapipe/calculators/core/constant_side_packet_calculator.pb.h"
 #include "mediapipe/framework/api2/builder.h"
 #include "mediapipe/framework/calculator_framework.h"
@@ -29,7 +31,6 @@
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status_macros.h"
 
 // Because of portability issues, we include this directly.
 #include "mediapipe/framework/port/parse_text_proto.h"
@@ -148,7 +149,7 @@ class EmitFileStringTestSubgraph : public Subgraph {
  public:
   absl::StatusOr<CalculatorGraphConfig> GetConfig(
       mediapipe::SubgraphContext* sc) override {
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<mediapipe::Resource> data,
         sc->GetResources().Get(
             "mediapipe/framework/testdata/resource_subgraph.data"));

@@ -17,17 +17,16 @@
 #include <string>
 #include <vector>
 
-#include "absl/log/absl_log.h"
-#include "absl/time/clock.h"
-#include "absl/time/time.h"
+#include "absl/log/absl_log.h"   // from @com_google_absl
+#include "absl/status/status.h"  // from @com_google_absl
+#include "absl/time/clock.h"     // from @com_google_absl
+#include "absl/time/time.h"      // from @com_google_absl
 #include "mediapipe/framework/calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
-#include "mediapipe/framework/port/canonical_errors.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
 #include "mediapipe/framework/port/parse_text_proto.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 #include "mediapipe/framework/port/status_matchers.h"
 
 namespace mediapipe {
@@ -371,7 +370,7 @@ TEST(CalculatorGraph, SharePacketGeneratorGraph) {
   // Create a bunch of graphs.
   std::vector<std::unique_ptr<CalculatorGraph>> graphs;
   for (int i = 0; i < 100; ++i) {
-    graphs.emplace_back(absl::make_unique<CalculatorGraph>());
+    graphs.emplace_back(std::make_unique<CalculatorGraph>());
     // Do not pass extra side packets here.
     // Note that validated_calculator_config must outlive the graph.
     MP_ASSERT_OK(graphs.back()->Initialize(calculator_config, {}));
@@ -502,8 +501,8 @@ TEST(CalculatorGraph, OutputSidePacketConsumedBySourceNode) {
 // Returns the first packet of the input stream.
 class FirstPacketFilterCalculator : public CalculatorBase {
  public:
-  FirstPacketFilterCalculator() {}
-  ~FirstPacketFilterCalculator() override {}
+  FirstPacketFilterCalculator() = default;
+  ~FirstPacketFilterCalculator() override = default;
 
   static absl::Status GetContract(CalculatorContract* cc) {
     cc->Inputs().Index(0).SetAny();

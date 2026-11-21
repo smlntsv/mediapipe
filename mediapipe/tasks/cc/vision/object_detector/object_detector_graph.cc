@@ -15,8 +15,9 @@ limitations under the License.
 
 #include <vector>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
 #include "mediapipe/framework/api2/builder.h"
 #include "mediapipe/framework/api2/port.h"
 #include "mediapipe/framework/calculator.pb.h"
@@ -131,10 +132,10 @@ class ObjectDetectorGraph : public core::ModelTaskGraph {
  public:
   absl::StatusOr<CalculatorGraphConfig> GetConfig(
       SubgraphContext* sc) override {
-    MP_ASSIGN_OR_RETURN(const auto* model_resources,
-                        CreateModelResources<ObjectDetectorOptionsProto>(sc));
+    ABSL_ASSIGN_OR_RETURN(const auto* model_resources,
+                          CreateModelResources<ObjectDetectorOptionsProto>(sc));
     Graph graph;
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto output_streams,
         BuildObjectDetectionTask(
             sc->Options<ObjectDetectorOptionsProto>(), *model_resources,
@@ -163,7 +164,7 @@ class ObjectDetectorGraph : public core::ModelTaskGraph {
       const ObjectDetectorOptionsProto& task_options,
       const core::ModelResources& model_resources, Source<Image> image_in,
       Source<NormalizedRect> norm_rect_in, Graph& graph) {
-    MP_RETURN_IF_ERROR(SanityCheckOptions(task_options));
+    ABSL_RETURN_IF_ERROR(SanityCheckOptions(task_options));
     auto& model = *model_resources.GetTfLiteModel();
     if (model.subgraphs()->size() != 1) {
       return CreateStatusWithPayload(
@@ -191,10 +192,11 @@ class ObjectDetectorGraph : public core::ModelTaskGraph {
     bool use_gpu =
         components::processors::DetermineImagePreprocessingGpuBackend(
             task_options.base_options().acceleration());
-    MP_RETURN_IF_ERROR(components::processors::ConfigureImagePreprocessingGraph(
-        model_resources, use_gpu, task_options.base_options().gpu_origin(),
-        &preprocessing.GetOptions<tasks::components::processors::proto::
-                                      ImagePreprocessingGraphOptions>()));
+    ABSL_RETURN_IF_ERROR(
+        components::processors::ConfigureImagePreprocessingGraph(
+            model_resources, use_gpu, task_options.base_options().gpu_origin(),
+            &preprocessing.GetOptions<tasks::components::processors::proto::
+                                          ImagePreprocessingGraphOptions>()));
     image_in >> preprocessing.In(kImageTag);
     norm_rect_in >> preprocessing.In(kNormRectTag);
 
@@ -221,7 +223,7 @@ class ObjectDetectorGraph : public core::ModelTaskGraph {
     detector_options.set_multiclass_nms(task_options.multiclass_nms());
     detector_options.set_min_suppression_threshold(
         task_options.min_suppression_threshold());
-    MP_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         components::processors::ConfigureDetectionPostprocessingGraph(
             model_resources, detector_options,
             postprocessing

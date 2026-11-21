@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "absl/strings/string_view.h"
+#include "absl/status/status.h"        // from @com_google_absl
+#include "absl/strings/string_view.h"  // from @com_google_absl
 #include "mediapipe/examples/desktop/autoflip/autoflip_messages.pb.h"
 #include "mediapipe/examples/desktop/autoflip/calculators/localization_to_region_calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
@@ -22,7 +23,6 @@
 #include "mediapipe/framework/port/gtest.h"
 #include "mediapipe/framework/port/parse_text_proto.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 #include "mediapipe/framework/port/status_matchers.h"
 
 using mediapipe::Detection;
@@ -78,7 +78,7 @@ const char kZebra[] = R"(
 
 void SetInputs(CalculatorRunner* runner,
                const std::vector<std::string>& detections) {
-  auto inputs = ::absl::make_unique<std::vector<Detection>>();
+  auto inputs = std::make_unique<std::vector<Detection>>();
   // A face with landmarks.
   for (const auto& detection : detections) {
     inputs->push_back(ParseTextProtoOrDie<Detection>(detection));
@@ -104,7 +104,7 @@ CalculatorGraphConfig::Node MakeConfig(bool output_standard, bool output_all) {
 
 TEST(LocalizationToRegionCalculatorTest, StandardTypes) {
   // Setup test
-  auto runner = ::absl::make_unique<CalculatorRunner>(MakeConfig(true, false));
+  auto runner = std::make_unique<CalculatorRunner>(MakeConfig(true, false));
   SetInputs(runner.get(), {kCar, kDog, kZebra});
 
   // Run the calculator.
@@ -132,7 +132,7 @@ TEST(LocalizationToRegionCalculatorTest, StandardTypes) {
 
 TEST(LocalizationToRegionCalculatorTest, AllTypes) {
   // Setup test
-  auto runner = ::absl::make_unique<CalculatorRunner>(MakeConfig(false, true));
+  auto runner = std::make_unique<CalculatorRunner>(MakeConfig(false, true));
   SetInputs(runner.get(), {kCar, kDog, kZebra});
 
   // Run the calculator.
@@ -148,7 +148,7 @@ TEST(LocalizationToRegionCalculatorTest, AllTypes) {
 
 TEST(LocalizationToRegionCalculatorTest, BothTypes) {
   // Setup test
-  auto runner = ::absl::make_unique<CalculatorRunner>(MakeConfig(true, true));
+  auto runner = std::make_unique<CalculatorRunner>(MakeConfig(true, true));
   SetInputs(runner.get(), {kCar, kDog, kZebra});
 
   // Run the calculator.

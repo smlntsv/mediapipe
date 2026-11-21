@@ -17,7 +17,7 @@
 #include <memory>
 #include <string>
 
-#include "absl/types/span.h"
+#include "absl/types/span.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/calculator_runner.h"
 #include "mediapipe/framework/port/file_helpers.h"
@@ -26,8 +26,8 @@
 #include "mediapipe/framework/port/parse_text_proto.h"
 #include "mediapipe/framework/port/status_matchers.h"  // NOLINT
 #include "mediapipe/framework/resources.h"
-#include "tensorflow/lite/model_builder.h"
-#include "tensorflow/lite/schema/schema_generated.h"
+#include "tflite/model_builder.h"            // from @litert
+#include "tflite/schema/schema_generated.h"  // from @litert
 
 namespace mediapipe {
 

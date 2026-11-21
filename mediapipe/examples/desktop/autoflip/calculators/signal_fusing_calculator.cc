@@ -18,12 +18,13 @@
 #include <utility>
 #include <vector>
 
-#include "absl/container/btree_map.h"
+#include "absl/container/btree_map.h"   // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/examples/desktop/autoflip/autoflip_messages.pb.h"
 #include "mediapipe/examples/desktop/autoflip/calculators/signal_fusing_calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 
 using mediapipe::Packet;
 using mediapipe::PacketTypeSet;
@@ -169,7 +170,7 @@ absl::Status SignalFusingCalculator::Open(mediapipe::CalculatorContext* cc) {
 
 absl::Status SignalFusingCalculator::Close(mediapipe::CalculatorContext* cc) {
   if (!scene_frames_.empty()) {
-    MP_RETURN_IF_ERROR(ProcessScene(cc));
+    ABSL_RETURN_IF_ERROR(ProcessScene(cc));
     scene_frames_.clear();
   }
   return absl::OkStatus();
@@ -269,7 +270,7 @@ absl::Status SignalFusingCalculator::Process(mediapipe::CalculatorContext* cc) {
   }
 
   if (is_boundary) {
-    MP_RETURN_IF_ERROR(ProcessScene(cc));
+    ABSL_RETURN_IF_ERROR(ProcessScene(cc));
     scene_frames_.clear();
   }
 
@@ -294,7 +295,7 @@ absl::Status SignalFusingCalculator::Process(mediapipe::CalculatorContext* cc) {
   // Flush buffer on same input if it exceeds max_scene_size or if there is not
   // shot input information.
   if (scene_frames_.size() > options_.max_scene_size() || !process_by_scene_) {
-    MP_RETURN_IF_ERROR(ProcessScene(cc));
+    ABSL_RETURN_IF_ERROR(ProcessScene(cc));
     scene_frames_.clear();
   }
 

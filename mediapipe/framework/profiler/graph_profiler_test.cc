@@ -18,11 +18,12 @@
 #include <memory>
 #include <queue>
 
-#include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
-#include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
-#include "absl/time/time.h"
+#include "absl/log/absl_check.h"         // from @com_google_absl
+#include "absl/log/absl_log.h"           // from @com_google_absl
+#include "absl/status/status.h"          // from @com_google_absl
+#include "absl/status/statusor.h"        // from @com_google_absl
+#include "absl/synchronization/mutex.h"  // from @com_google_absl
+#include "absl/time/time.h"              // from @com_google_absl
 #include "file/base/helpers.h"
 #include "file/base/options.h"
 #include "file/memfile/mutable_memfile.h"
@@ -33,7 +34,6 @@
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
 #include "mediapipe/framework/port/status_matchers.h"
-#include "mediapipe/framework/port/statusor.h"
 #include "mediapipe/framework/profiler/test_context_builder.h"
 #include "mediapipe/framework/tool/simulation_clock.h"
 #include "mediapipe/framework/tool/tag_map_helper.h"
@@ -189,7 +189,7 @@ class GraphProfilerTestPeer : public testing::Test {
     validated_graph_ptr_ = std::make_unique<mediapipe::ValidatedGraphConfig>();
     ABSL_QCHECK_OK(validated_graph_ptr_->Initialize(graph_config));
     profiler_.Initialize(*validated_graph_ptr_);
-    QCHECK_OK(profiler_.Start(nullptr));
+    ABSL_QCHECK_OK(profiler_.Start(nullptr));
   }
 
   void SetOpenRuntime(const CalculatorContext& calculator_context,
@@ -492,7 +492,7 @@ TEST_F(GraphProfilerTestPeer, InitializeMultipleProfilers) {
         std::make_shared<ProfilingContext>();
     auto graph_config = CreateGraphConfig(raw_graph_config);
     mediapipe::ValidatedGraphConfig validated_graph;
-    QCHECK_OK(validated_graph.Initialize(graph_config));
+    ABSL_QCHECK_OK(validated_graph.Initialize(graph_config));
     profiler->Initialize(validated_graph);
 
     int id = profiler->GetGraphId();

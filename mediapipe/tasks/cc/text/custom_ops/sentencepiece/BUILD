@@ -82,11 +82,13 @@ cc_test(
         "double_array_trie_test.cc",
     ],
     deps = [
+        ":config",
         ":double_array_trie",
         ":double_array_trie_builder",
         ":encoder_config",
         ":utils",
         "//mediapipe/framework/port:gtest_main",
+        "@flatbuffers",
     ],
 )
 
@@ -123,9 +125,11 @@ cc_library(
         "optimized_encoder.h",
     ],
     deps = [
+        ":config",
         ":double_array_trie",
         ":encoder_config",
         ":utils",
+        "@flatbuffers",
     ],
 )
 
@@ -137,12 +141,12 @@ cc_library(
         [
             ":optimized_encoder",
             "@flatbuffers",
-            "@org_tensorflow//tensorflow/lite:framework",
-            "@org_tensorflow//tensorflow/lite:string_util",
-            "@org_tensorflow//tensorflow/lite/c:common",
-            "@org_tensorflow//tensorflow/lite/kernels:builtin_ops",
-            "@org_tensorflow//tensorflow/lite/kernels:kernel_util",
-            "@org_tensorflow//tensorflow/lite/kernels/internal:tensor",
+            "@litert//tflite:framework",
+            "@litert//tflite:string_util",
+            "@litert//tflite/c:common",
+            "@litert//tflite/kernels:builtin_ops",
+            "@litert//tflite/kernels:kernel_util",
+            "@litert//tflite/kernels/internal:tensor",
         ],
 )
 

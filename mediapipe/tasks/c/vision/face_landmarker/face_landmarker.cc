@@ -21,13 +21,14 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
-#include "absl/log/absl_check.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "absl/log/absl_check.h"   // from @com_google_absl
+#include "absl/status/status.h"    // from @com_google_absl
+#include "absl/status/statusor.h"  // from @com_google_absl
 #include "mediapipe/framework/formats/image.h"
 #include "mediapipe/tasks/c/core/base_options_converter.h"
 #include "mediapipe/tasks/c/core/mp_status.h"
 #include "mediapipe/tasks/c/core/mp_status_converter.h"
+#include "mediapipe/tasks/c/core/result_callback.h"
 #include "mediapipe/tasks/c/vision/core/image.h"
 #include "mediapipe/tasks/c/vision/core/image_frame_util.h"
 #include "mediapipe/tasks/c/vision/core/image_processing_options.h"
@@ -55,7 +56,7 @@ using ::mediapipe::tasks::c::components::containers::
 using ::mediapipe::tasks::c::components::containers::
     CppConvertToFaceLandmarkerResult;
 using ::mediapipe::tasks::c::core::CppConvertToBaseOptions;
-using ::mediapipe::tasks::c::core::ToMpStatus;
+using ::mediapipe::tasks::c::core::ResultCallback;
 using ::mediapipe::tasks::c::vision::core::CppConvertToImageProcessingOptions;
 using ::mediapipe::tasks::vision::CreateImageFromBuffer;
 using ::mediapipe::tasks::vision::core::RunningMode;
@@ -106,21 +107,21 @@ absl::Status CppFaceLandmarkerCreate(const MpFaceLandmarkerOptions& options,
           "Provided null pointer to callback function.");
     }
 
-    MpFaceLandmarkerOptions::result_callback_fn result_callback =
-        options.result_callback;
+    const ResultCallback result_callback(options.result_callback,
+                                         options.result_callback_user_data);
     cpp_options->result_callback =
         [result_callback](absl::StatusOr<CppFaceLandmarkerResult> cpp_result,
                           const Image& image, int64_t timestamp) {
           MpImageInternal mp_image({.image = image});
           if (!cpp_result.ok()) {
-            result_callback(ToMpStatus(cpp_result.status()), nullptr, &mp_image,
-                            timestamp);
+            result_callback.InvokeWithError(cpp_result.status(), &mp_image,
+                                            timestamp);
             return;
           }
 
           MpFaceLandmarkerResult result;
           CppConvertToFaceLandmarkerResult(*cpp_result, &result);
-          result_callback(kMpOk, &result, &mp_image, timestamp);
+          result_callback.InvokeWithResult(&result, &mp_image, timestamp);
           CppCloseFaceLandmarkerResult(&result);
         };
   }
@@ -196,12 +197,12 @@ void CppFaceLandmarkerCloseResult(MpFaceLandmarkerResult* result) {
 
 absl::Status CppFaceLandmarkerClose(MpFaceLandmarkerPtr landmarker) {
   auto* cpp_landmarker = GetCppLandmarker(landmarker);
-  auto result = cpp_landmarker->Close();
-  if (!result.ok()) {
-    return result;
-  }
+  absl::Status status = cpp_landmarker->Close();
+  // The landmarker is freed even if it fails to close: once this function
+  // returns, the result callback is not invoked anymore, so that the caller
+  // can release `result_callback_user_data`.
   delete landmarker;
-  return absl::OkStatus();
+  return status;
 }
 
 }  // namespace mediapipe::tasks::c::vision::face_landmarker

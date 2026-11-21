@@ -17,9 +17,10 @@
 #include <memory>
 #include <vector>
 
-#include "absl/base/macros.h"
-#include "absl/log/absl_check.h"
-#include "absl/memory/memory.h"
+#include "absl/base/macros.h"     // from @com_google_absl
+#include "absl/log/absl_check.h"  // from @com_google_absl
+#include "absl/memory/memory.h"   // from @com_google_absl
+#include "absl/status/status.h"   // from @com_google_absl
 #include "mediapipe/framework/calculator_context.h"
 #include "mediapipe/framework/calculator_context_manager.h"
 #include "mediapipe/framework/calculator_state.h"
@@ -68,7 +69,7 @@ class ImmediateInputStreamHandlerTest : public ::testing::Test {
          id < input_tag_map->EndId(); ++id) {
       const std::string& stream_name = names[id.value()];
       name_to_id_[stream_name] = id;
-      MEDIAPIPE_CHECK_OK(input_stream_managers_[id.value()].Initialize(
+      ABSL_CHECK_OK(input_stream_managers_[id.value()].Initialize(
           stream_name, &packet_type_, /*back_edge=*/false));
     }
     SetupInputStreamHandler(input_tag_map);

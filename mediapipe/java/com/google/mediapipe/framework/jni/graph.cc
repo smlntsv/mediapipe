@@ -25,16 +25,16 @@
 #include <utility>
 #include <vector>
 
-#include "absl/log/absl_log.h"
-#include "absl/memory/memory.h"
-#include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
-#include "absl/synchronization/mutex.h"
+#include "absl/log/absl_log.h"           // from @com_google_absl
+#include "absl/memory/memory.h"          // from @com_google_absl
+#include "absl/status/status.h"          // from @com_google_absl
+#include "absl/status/status_macros.h"   // from @com_google_absl
+#include "absl/strings/str_cat.h"        // from @com_google_absl
+#include "absl/strings/str_format.h"     // from @com_google_absl
+#include "absl/synchronization/mutex.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/graph_service.h"
 #include "mediapipe/framework/port/logging.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/framework/port/threadpool.h"
 #include "mediapipe/framework/tool/executor_util.h"
 #include "mediapipe/framework/tool/name_util.h"
@@ -600,9 +600,9 @@ absl::Status Graph::SetParentGlContext(int64_t java_gl_context) {
         "trying to set the parent GL context, but the gpu shared "
         "data has already been set up.");
   }
-  MP_ASSIGN_OR_RETURN(gpu_resources_,
-                      mediapipe::GpuResources::Create(
-                          reinterpret_cast<EGLContext>(java_gl_context)));
+  ABSL_ASSIGN_OR_RETURN(gpu_resources_,
+                        mediapipe::GpuResources::Create(
+                            reinterpret_cast<EGLContext>(java_gl_context)));
 #endif  // MEDIAPIPE_DISABLE_GPU
   return absl::OkStatus();
 }

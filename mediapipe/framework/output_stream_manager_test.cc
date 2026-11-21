@@ -18,7 +18,8 @@
 #include <memory>
 #include <string>
 
-#include "absl/memory/memory.h"
+#include "absl/memory/memory.h"  // from @com_google_absl
+#include "absl/status/status.h"  // from @com_google_absl
 #include "mediapipe/framework/input_stream_handler.h"
 #include "mediapipe/framework/input_stream_manager.h"
 #include "mediapipe/framework/output_stream_shard.h"
@@ -54,7 +55,7 @@ class OutputStreamManagerTest : public ::testing::Test {
         std::bind(&OutputStreamManagerTest::ReportQueueNoOp, this,
                   std::placeholders::_1, std::placeholders::_2);
 
-    output_stream_manager_ = absl::make_unique<OutputStreamManager>();
+    output_stream_manager_ = std::make_unique<OutputStreamManager>();
     MP_ASSERT_OK(output_stream_manager_->Initialize("a_test", &packet_type_));
     output_stream_manager_->PrepareForRun(error_callback_);
     output_stream_shard_.SetSpec(output_stream_manager_->Spec());

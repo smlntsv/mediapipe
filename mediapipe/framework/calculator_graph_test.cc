@@ -26,20 +26,20 @@
 #include <utility>
 #include <vector>
 
-#include "absl/container/fixed_array.h"
-#include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
-#include "absl/memory/memory.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
-#include "absl/strings/string_view.h"
-#include "absl/strings/substitute.h"
-#include "absl/synchronization/barrier.h"
-#include "absl/synchronization/notification.h"
-#include "absl/time/clock.h"
-#include "absl/time/time.h"
+#include "absl/container/fixed_array.h"         // from @com_google_absl
+#include "absl/log/absl_check.h"                // from @com_google_absl
+#include "absl/log/absl_log.h"                  // from @com_google_absl
+#include "absl/memory/memory.h"                 // from @com_google_absl
+#include "absl/status/status.h"                 // from @com_google_absl
+#include "absl/status/statusor.h"               // from @com_google_absl
+#include "absl/strings/str_cat.h"               // from @com_google_absl
+#include "absl/strings/str_format.h"            // from @com_google_absl
+#include "absl/strings/string_view.h"           // from @com_google_absl
+#include "absl/strings/substitute.h"            // from @com_google_absl
+#include "absl/synchronization/barrier.h"       // from @com_google_absl
+#include "absl/synchronization/notification.h"  // from @com_google_absl
+#include "absl/time/clock.h"                    // from @com_google_absl
+#include "absl/time/time.h"                     // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/collection_item_id.h"
 #include "mediapipe/framework/counter_factory.h"
@@ -1696,7 +1696,7 @@ TEST(CalculatorGraph, LayerOrdering) {
   tool::AddVectorSink("count_layer_1_node_1", &config, &dump_layer_1_node_1);
   tool::AddVectorSink("count_layer_2_node_0", &config, &dump_layer_2_node_0);
 
-  auto graph = absl::make_unique<CalculatorGraph>();
+  auto graph = std::make_unique<CalculatorGraph>();
 
   std::atomic<int> global_counter(0);
   std::map<std::string, Packet> input_side_packets;
@@ -1748,7 +1748,7 @@ TEST(CalculatorGraph, LayerOrdering) {
 // Tests for status handler input verification.
 TEST(CalculatorGraph, StatusHandlerInputVerification) {
   // Status handlers with all inputs present should be OK.
-  auto graph = absl::make_unique<CalculatorGraph>();
+  auto graph = std::make_unique<CalculatorGraph>();
   CalculatorGraphConfig config =
       ParseTextProtoOrDie<CalculatorGraphConfig>(R"pb(
         packet_generator {
@@ -4385,7 +4385,7 @@ TEST(CalculatorGraph, RunWithNumThreadsInExecutorConfig) {
   ThreadPoolExecutorOptions* default_executor_options =
       config.mutable_executor(0)->mutable_options()->MutableExtension(
           ThreadPoolExecutorOptions::ext);
-  for (int i = 0; i < ABSL_ARRAYSIZE(cases); ++i) {
+  for (int i = 0; i < std::size(cases); ++i) {
     default_executor_options->set_num_threads(cases[i].num_threads);
     config.mutable_executor(0)->clear_type();
     if (cases[i].executor_type != "<None>") {
@@ -4530,8 +4530,8 @@ TEST(CalculatorGraph, GraphInputStreamBeforeStartRun) {
 // Returns the first packet of the input stream.
 class FirstPacketFilterCalculator : public CalculatorBase {
  public:
-  FirstPacketFilterCalculator() {}
-  ~FirstPacketFilterCalculator() override {}
+  FirstPacketFilterCalculator() = default;
+  ~FirstPacketFilterCalculator() override = default;
 
   static absl::Status GetContract(CalculatorContract* cc) {
     cc->Inputs().Index(0).SetAny();

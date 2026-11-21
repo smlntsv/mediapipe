@@ -21,9 +21,9 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
-#include "absl/log/absl_check.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "absl/log/absl_check.h"   // from @com_google_absl
+#include "absl/status/status.h"    // from @com_google_absl
+#include "absl/status/statusor.h"  // from @com_google_absl
 #include "mediapipe/framework/formats/image.h"
 #include "mediapipe/tasks/c/components/containers/embedding_result.h"
 #include "mediapipe/tasks/c/components/containers/embedding_result_converter.h"
@@ -32,19 +32,16 @@ limitations under the License.
 #include "mediapipe/tasks/c/core/common.h"
 #include "mediapipe/tasks/c/core/mp_status.h"
 #include "mediapipe/tasks/c/core/mp_status_converter.h"
+#include "mediapipe/tasks/c/core/result_callback.h"
 #include "mediapipe/tasks/c/vision/core/image.h"
 #include "mediapipe/tasks/c/vision/core/image_frame_util.h"
 #include "mediapipe/tasks/c/vision/core/image_processing_options.h"
 #include "mediapipe/tasks/c/vision/core/image_processing_options_converter.h"
+#include "mediapipe/tasks/c/vision/image_embedder/image_embedder_internal.h"
 #include "mediapipe/tasks/cc/components/containers/embedding_result.h"
 #include "mediapipe/tasks/cc/vision/core/image_processing_options.h"
 #include "mediapipe/tasks/cc/vision/core/running_mode.h"
 #include "mediapipe/tasks/cc/vision/image_embedder/image_embedder.h"
-
-struct MpImageEmbedderInternal {
-  std::unique_ptr<::mediapipe::tasks::vision::image_embedder::ImageEmbedder>
-      instance;
-};
 
 namespace mediapipe::tasks::c::vision::image_embedder {
 
@@ -57,7 +54,7 @@ using ::mediapipe::tasks::c::components::containers::
 using ::mediapipe::tasks::c::components::processors::
     CppConvertToEmbedderOptions;
 using ::mediapipe::tasks::c::core::CppConvertToBaseOptions;
-using ::mediapipe::tasks::c::core::ToMpStatus;
+using ::mediapipe::tasks::c::core::ResultCallback;
 using ::mediapipe::tasks::c::vision::core::CppConvertToImageProcessingOptions;
 using ::mediapipe::tasks::vision::core::RunningMode;
 using ::mediapipe::tasks::vision::image_embedder::ImageEmbedder;
@@ -76,7 +73,7 @@ ImageEmbedder* GetCppEmbedder(MpImageEmbedderPtr embedder) {
 
 }  // namespace
 
-absl::Status CppImageEmbedderCreate(const ImageEmbedderOptions& options,
+absl::Status CppImageEmbedderCreate(const MpImageEmbedderOptions& options,
                                     MpImageEmbedderPtr* embedder) {
   auto cpp_options = std::make_unique<
       ::mediapipe::tasks::vision::image_embedder::ImageEmbedderOptions>();
@@ -94,20 +91,20 @@ absl::Status CppImageEmbedderCreate(const ImageEmbedderOptions& options,
           "Provided null pointer to callback function.");
     }
 
-    ImageEmbedderOptions::result_callback_fn result_callback =
-        options.result_callback;
+    const ResultCallback result_callback(options.result_callback,
+                                         options.result_callback_user_data);
     cpp_options->result_callback =
         [result_callback](absl::StatusOr<CppImageEmbedderResult> cpp_result,
                           const Image& image, int64_t timestamp) {
           MpImageInternal mp_image({.image = image});
           if (!cpp_result.ok()) {
-            result_callback(ToMpStatus(cpp_result.status()), nullptr, &mp_image,
-                            timestamp);
+            result_callback.InvokeWithError(cpp_result.status(), &mp_image,
+                                            timestamp);
             return;
           }
           ImageEmbedderResult result;
           CppConvertToEmbeddingResult(*cpp_result, &result);
-          result_callback(kMpOk, &result, &mp_image, timestamp);
+          result_callback.InvokeWithResult(&result, &mp_image, timestamp);
           CppCloseEmbeddingResult(&result);
         };
   }
@@ -181,21 +178,25 @@ void CppImageEmbedderCloseResult(ImageEmbedderResult* result) {
 
 absl::Status CppImageEmbedderClose(MpImageEmbedderPtr embedder) {
   auto cpp_embedder = GetCppEmbedder(embedder);
-  auto result = cpp_embedder->Close();
-  if (!result.ok()) {
-    return result;
-  }
+  absl::Status status = cpp_embedder->Close();
+  // The embedder is freed even if it fails to close: once this function
+  // returns, the result callback is not invoked anymore, so that the caller
+  // can release `result_callback_user_data`.
   delete embedder;
-  return absl::OkStatus();
+  return status;
 }
 
-absl::Status CppImageEmbedderCosineSimilarity(const MpEmbedding& u,
-                                              const MpEmbedding& v,
+absl::Status CppImageEmbedderCosineSimilarity(const MpEmbedding* u,
+                                              const MpEmbedding* v,
                                               double* similarity) {
+  if (u == nullptr || v == nullptr || similarity == nullptr) {
+    return absl::InvalidArgumentError(
+        "Provided null pointer to embedding or similarity output.");
+  }
   CppEmbedding cpp_u;
-  CppConvertToCppEmbedding(u, &cpp_u);
+  CppConvertToCppEmbedding(*u, &cpp_u);
   CppEmbedding cpp_v;
-  CppConvertToCppEmbedding(v, &cpp_v);
+  CppConvertToCppEmbedding(*v, &cpp_v);
   auto status_or_similarity =
       mediapipe::tasks::vision::image_embedder::ImageEmbedder::CosineSimilarity(
           cpp_u, cpp_v);
@@ -210,7 +211,7 @@ absl::Status CppImageEmbedderCosineSimilarity(const MpEmbedding& u,
 
 extern "C" {
 
-MP_EXPORT MpStatus MpImageEmbedderCreate(struct ImageEmbedderOptions* options,
+MP_EXPORT MpStatus MpImageEmbedderCreate(struct MpImageEmbedderOptions* options,
                                          MpImageEmbedderPtr* embedder_out,
                                          char** error_msg) {
   absl::Status status =
@@ -262,8 +263,8 @@ MP_EXPORT MpStatus MpImageEmbedderClose(MpImageEmbedderPtr embedder,
   return mediapipe::tasks::c::core::HandleStatus(status, error_msg);
 }
 
-MP_EXPORT MpStatus MpImageEmbedderCosineSimilarity(const MpEmbedding& u,
-                                                   const MpEmbedding& v,
+MP_EXPORT MpStatus MpImageEmbedderCosineSimilarity(const struct MpEmbedding* u,
+                                                   const struct MpEmbedding* v,
                                                    double* similarity_out,
                                                    char** error_msg) {
   absl::Status status = mediapipe::tasks::c::vision::image_embedder::

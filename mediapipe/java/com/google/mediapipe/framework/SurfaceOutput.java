@@ -73,6 +73,7 @@ public class SurfaceOutput {
    * different output, first call {@code setSurface(null)} on the old output.
    *
    * @param surface The surface to connect. Can be {@code null}.
+   * @throws MediaPipeException if the surface cannot be connected or window creation fails.
    */
   public void setSurface(@Nullable Object surface) {
     nativeSetSurface(
@@ -88,6 +89,7 @@ public class SurfaceOutput {
    * EGL_BAD_MATCH}.
    *
    * @param nativeEglSurface Native handle to the egl surface.
+   * @throws MediaPipeException if the surface cannot be connected.
    */
   public void setEglSurface(long nativeEglSurface) {
     nativeSetEglSurface(

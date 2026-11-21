@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <fstream>
+#include <string>
 
-#include "absl/flags/flag.h"
-#include "absl/status/statusor.h"
+#include "absl/flags/flag.h"       // from @com_google_absl
+#include "absl/status/status.h"    // from @com_google_absl
+#include "absl/status/statusor.h"  // from @com_google_absl
+#include "absl/strings/match.h"    // from @com_google_absl
 #include "mediapipe/framework/deps/file_path.h"
 #include "mediapipe/framework/port/file_helpers.h"
 
@@ -38,10 +40,10 @@ absl::Status DefaultGetResourceContents(const std::string& path,
 }
 }  // namespace internal
 
-absl::StatusOr<std::string> PathToResourceAsFile(const std::string& path,
+absl::StatusOr<std::string> PathToResourceAsFile(absl::string_view path,
                                                  bool /*shadow_copy*/) {
   if (absl::StartsWith(path, "/")) {
-    return path;
+    return std::string(path);
   }
 
   // Try to load the file from bazel-bin. If it does not exist, fall back to the

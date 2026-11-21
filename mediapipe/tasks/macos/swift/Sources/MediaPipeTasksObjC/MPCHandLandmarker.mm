@@ -21,6 +21,15 @@
 #include "mediapipe/tasks/c/vision/core/image_processing_options.h"
 #include "mediapipe/tasks/c/vision/hand_landmarker/hand_landmarker.h"
 
+// Swift passes the C enum values as plain integers (MediaPipeDelegate.cValue
+// and RunningMode.cValue in Modes.swift). Upstream has renumbered these enums
+// before, so fail the build instead of silently selecting the wrong delegate.
+static_assert(MP_DELEGATE_CPU == 1, "Update MediaPipeDelegate.cValue");
+static_assert(MP_DELEGATE_GPU == 2, "Update MediaPipeDelegate.cValue");
+static_assert(MP_DELEGATE_COREML == 100, "Update MediaPipeDelegate.cValue");
+static_assert(MP_RUNNING_MODE_IMAGE == 1, "Update RunningMode.cValue");
+static_assert(MP_RUNNING_MODE_VIDEO == 2, "Update RunningMode.cValue");
+
 namespace {
 
 // Builds the native image-processing options. Only rotation is exposed; the

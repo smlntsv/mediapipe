@@ -20,13 +20,15 @@ limitations under the License.
 #include <optional>
 #include <string>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
+#include "absl/status/status.h"        // from @com_google_absl
+#include "absl/status/statusor.h"      // from @com_google_absl
+#include "absl/strings/string_view.h"  // from @com_google_absl
 #include "mediapipe/tasks/cc/components/containers/embedding_result.h"
 #include "mediapipe/tasks/cc/components/processors/embedder_options.h"
 #include "mediapipe/tasks/cc/core/base_options.h"
 #include "mediapipe/tasks/cc/core/base_task_api.h"
+#include "mediapipe/tasks/cc/core/embedding_provider.h"
+#include "mediapipe/tasks/cc/text/text_embedder/text_embedder_executor.h"
 
 namespace mediapipe::tasks::text::text_embedder {
 
@@ -134,8 +136,19 @@ class TextEmbedder : core::BaseTaskApi {
   absl::StatusOr<TextEmbedderResult> Embed(
       absl::string_view text, const TextFormatContext& format_context);
 
+  ~TextEmbedder();
+
   // Shuts down the TextEmbedder when all the work is done.
-  absl::Status Close() { return runner_->Close(); }
+  absl::Status Close() {
+    if (executor_ != nullptr) {
+      return executor_->Close();
+    }
+    return absl::OkStatus();
+  }
+
+  // Returns an implementation of the package-neutral EmbeddingProvider
+  // interface.
+  std::unique_ptr<::mediapipe::tasks::core::EmbeddingProvider> GetProvider();
 
   // Utility function to compute cosine similarity [1] between two embeddings.
   // May return an InvalidArgumentError if e.g. the embeddings are of different
@@ -146,6 +159,9 @@ class TextEmbedder : core::BaseTaskApi {
   static absl::StatusOr<double> CosineSimilarity(
       const components::containers::Embedding& u,
       const components::containers::Embedding& v);
+
+ private:
+  std::unique_ptr<TextEmbedderExecutor> executor_;
 };
 
 }  // namespace mediapipe::tasks::text::text_embedder

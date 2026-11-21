@@ -12,14 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <utility>
+#include <cmath>
+#include <cstdint>
+#include <memory>
+#include <vector>
 
-#include "absl/memory/memory.h"
+#include "absl/status/status.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/port/opencv_core_inc.h"
-#include "mediapipe/framework/port/opencv_imgproc_inc.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 #include "mediapipe/modules/objectron/calculators/annotation_data.pb.h"
 #include "mediapipe/modules/objectron/calculators/box_util.h"
 #include "mediapipe/util/tracking/box_tracker.pb.h"
@@ -81,7 +82,7 @@ absl::Status FrameAnnotationToTimedBoxListCalculator::Process(
       !cc->Inputs().Tag(kInputStreamTag).IsEmpty()) {
     const auto& frame_annotation =
         cc->Inputs().Tag(kInputStreamTag).Get<FrameAnnotation>();
-    auto output_objects = absl::make_unique<TimedBoxProtoList>();
+    auto output_objects = std::make_unique<TimedBoxProtoList>();
     for (const auto& annotation : frame_annotation.annotations()) {
       std::vector<cv::Point2f> key_points;
       for (const auto& keypoint : annotation.keypoints()) {

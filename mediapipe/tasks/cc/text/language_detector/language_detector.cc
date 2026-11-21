@@ -18,11 +18,13 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
 #include "mediapipe/framework/api2/builder.h"
 #include "mediapipe/tasks/cc/components/containers/category.h"
 #include "mediapipe/tasks/cc/components/containers/classification_result.h"
+#include "mediapipe/tasks/cc/core/base_options.h"
 #include "mediapipe/tasks/cc/core/running_mode.h"
 #include "mediapipe/tasks/cc/core/task_api_factory.h"
 #include "mediapipe/tasks/cc/core/task_runner.h"
@@ -68,7 +70,8 @@ std::unique_ptr<TextClassifierGraphOptions>
 ConvertLanguageDetectorOptionsToProto(LanguageDetectorOptions* options) {
   auto options_proto = std::make_unique<TextClassifierGraphOptions>();
   auto base_options_proto = std::make_unique<tasks::core::proto::BaseOptions>(
-      tasks::core::ConvertBaseOptionsToProto(&(options->base_options)));
+      tasks::core::ConvertBaseOptionsToProto(&(options->base_options),
+                                             /*use_litert=*/true));
   options_proto->mutable_base_options()->Swap(base_options_proto.get());
   auto classifier_options_proto =
       std::make_unique<tasks::components::processors::proto::ClassifierOptions>(
@@ -117,12 +120,14 @@ absl::StatusOr<std::unique_ptr<LanguageDetector>> LanguageDetector::Create(
           .host_environment = options->base_options.host_environment,
           .host_system = options->base_options.host_system,
           .host_version = options->base_options.host_version,
+          .app_id = options->base_options.app_id,
+          .app_version = options->base_options.app_version,
           .ca_bundle_path = options->base_options.ca_bundle_path});
 }
 
 absl::StatusOr<LanguageDetectorResult> LanguageDetector::Detect(
     absl::string_view text) {
-  MP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto output_packets,
       runner_->Process(
           {{kTextStreamName, MakePacket<std::string>(std::string(text))}}));

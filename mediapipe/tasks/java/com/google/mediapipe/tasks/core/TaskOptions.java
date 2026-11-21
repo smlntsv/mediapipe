@@ -32,7 +32,7 @@ public abstract class TaskOptions {
     return null;
   }
 
-  /** Converts a MediaPipe Tasks task-specific options to an proto3 {@link Any} message. */
+  /** Converts a MediaPipe Tasks task-specific options to a proto3 {@link Any} message. */
   public Any convertToAnyProto() {
     return null;
   }
@@ -43,5 +43,17 @@ public abstract class TaskOptions {
    */
   protected BaseOptionsProto.BaseOptions convertBaseOptionsToProto(BaseOptions options) {
     return BaseOptionsUtils.convertBaseOptionsToProto(options);
+  }
+
+  /**
+   * Converts a {@link BaseOptions} instance to a {@link BaseOptionsProto.BaseOptions} protobuf
+   * message, optionally routing inference through the LiteRT backend.
+   *
+   * <p>{@code useLiteRt} is an internal execution-engine choice made per task, not a user-facing
+   * option: callers still select CPU or GPU via {@link Delegate}.
+   */
+  protected BaseOptionsProto.BaseOptions convertBaseOptionsToProto(
+      BaseOptions options, boolean useLiteRt) {
+    return BaseOptionsUtils.convertBaseOptionsToProto(options, useLiteRt);
   }
 }

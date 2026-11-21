@@ -16,7 +16,7 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@rules_cc//cc:objc_library.bzl", "objc_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@bazel_skylib//lib:selects.bzl", "selects")  # buildifier: disable=out-of-order-load
-load("//mediapipe/gpu:metal.bzl", "metal_library")
+load("@build_bazel_rules_apple//apple:resources.bzl", metal_library = "apple_metal_library")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
 load("//mediapipe/framework/port:build_config.bzl", "mediapipe_proto_library")  # buildifier: disable=out-of-order-load
 load("//mediapipe/framework:mediapipe_cc_test.bzl", "mediapipe_cc_test")  # buildifier: disable=out-of-order-load
@@ -25,6 +25,14 @@ load("//mediapipe/framework:more_selects.bzl", "more_selects")
 licenses(["notice"])
 
 package(default_visibility = ["//visibility:public"])
+
+selects.config_setting_group(
+    name = "build_for_3p_on_linux-google",
+    match_all = [
+        "//mediapipe/tasks:build_for_3p",
+        "//tools/cc_target_os:linux-google",
+    ],
+)
 
 # Disabling GPU support is sometimes useful on desktop Linux because SwiftShader can
 # interfere with desktop GL. b/73494271
@@ -236,27 +244,28 @@ cc_library(
         ":gl_base",
         ":gl_thread_collector",
         ":gpu_buffer_format",
-        "//mediapipe/framework:executor",
         "//mediapipe/framework:mediapipe_profiling",
         "//mediapipe/framework:port",
         "//mediapipe/framework:timestamp",
         "//mediapipe/framework/port:logging",
         "//mediapipe/framework/port:ret_check",
         "//mediapipe/framework/port:status",
-        "//mediapipe/framework/port:statusor",
-        "//mediapipe/framework/port:threadpool",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/debugging:leak_check",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
     ] + select({
         "//conditions:default": [],
         "//mediapipe:apple": [
@@ -377,6 +386,8 @@ cc_library(
         ":gpu_buffer_storage_image_frame",
         "//mediapipe/framework/formats:image_frame",
         "//mediapipe/framework/port:logging",
+        "//mediapipe/framework/tool:type_util",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/strings",
@@ -412,9 +423,9 @@ cc_library(
     hdrs = ["gpu_buffer_format.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//mediapipe/framework/deps:no_destructor",
         "//mediapipe/framework/formats:image_format_cc_proto",
         "//mediapipe/framework/port:logging",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:absl_check",
     ] + select({
@@ -442,9 +453,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":gpu_buffer_format",
-        "//mediapipe/framework/deps:no_destructor",
         "//mediapipe/framework/formats:image_frame",
         "//mediapipe/framework/tool:type_util",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -458,6 +469,7 @@ cc_library(
         ":gl_base",
         ":gl_context",
         ":gl_texture_view",
+        ":gpu_buffer_format",
         ":gpu_buffer_storage",
         ":gpu_buffer_storage_image_frame",
         ":image_frame_view",
@@ -579,9 +591,10 @@ cc_library(
         "//mediapipe/framework/formats:image_frame",
         "//mediapipe/framework/formats:yuv_image",
         "//mediapipe/util/frame_buffer:frame_buffer_util",
-        "//third_party/libyuv",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/types:span",
+        "@libyuv",
     ],
 )
 
@@ -591,8 +604,16 @@ cc_library(
     hdrs = ["gpu_buffer_storage_ahwb.h"],
     linkopts = select({
         "//conditions:default": [],
+        # Option for vendor binaries to avoid linking libandroid.so.
+        "//mediapipe/framework:android_no_jni": [],
         "//mediapipe:android": [
             "-landroid",
+        ],
+        # Vendor binaries on Android API >= 26 link libnativewindow for
+        # <android/hardware_buffer.h> (AHardwareBuffer_*) instead of
+        # libandroid.so, which is not available in the vendor linker namespace.
+        "//mediapipe/framework/formats:android_link_native_window": [
+            "-lnativewindow",
         ],
     }),
     deps = [
@@ -610,13 +631,13 @@ cc_library(
         "//mediapipe/framework/formats:shared_fd",
         "//mediapipe/framework/formats:unique_fd",
         "//mediapipe/framework/port:ret_check",
-        "//mediapipe/framework/port:status",
         "//mediapipe/util:sync_wait",
         "//third_party/GL:EGL_headers",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
@@ -677,10 +698,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//mediapipe/framework/port:ret_check",
-        "@google_toolbox_for_mac//:GTM_Defines",
-    ] + [
         "//third_party/apple_frameworks:CoreVideo",
         "//third_party/apple_frameworks:Metal",
+        "@google_toolbox_for_mac//:GTM_Defines",
     ],
     alwayslink = 1,
 )
@@ -720,8 +740,8 @@ cc_library(
         "//mediapipe/framework:calculator_graph",
         "//mediapipe/framework:executor",
         "//mediapipe/framework/port:ret_check",
-        "//mediapipe/framework/port:status",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
     ],
 )
@@ -747,6 +767,10 @@ cc_library(
     deps = [
         ":gl_base",
         ":gl_context",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -769,8 +793,9 @@ cc_library(
         "//mediapipe/framework:calculator_node",
         "//mediapipe/framework:executor",
         "//mediapipe/framework:port",
-        "//mediapipe/framework/deps:no_destructor",
         "//mediapipe/framework/port:ret_check",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/log:absl_check",
     ],
 )
 
@@ -794,6 +819,7 @@ cc_library(
         ":gl_base",
         ":gl_context",
         ":gl_context_options_cc_proto",
+        ":gpu_buffer_format",
         ":gpu_buffer_multi_pool",
         ":gpu_shared_data_header",
         ":graph_support",
@@ -802,20 +828,23 @@ cc_library(
         "//mediapipe/framework:calculator_node",
         "//mediapipe/framework:executor",
         "//mediapipe/framework:graph_service",
-        "//mediapipe/framework/deps:no_destructor",
         "//mediapipe/framework/port:map_util",
         "//mediapipe/framework/port:ret_check",
-        "//mediapipe/framework/port:status",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
     ] + select({
         "//conditions:default": [],
         "//mediapipe:apple": [
             ":cv_texture_cache_manager",
+            ":gpu_buffer_storage_cv_pixel_buffer",
             ":metal_shared_resources",
         ],
     }),
@@ -823,7 +852,6 @@ cc_library(
 
 cc_library(
     name = "gl_texture_buffer_pool",
-    srcs = ["gl_texture_buffer_pool.cc"],
     hdrs = ["gl_texture_buffer_pool.h"],
     visibility = ["//visibility:public"],
     deps = [
@@ -834,7 +862,6 @@ cc_library(
         "//mediapipe/framework/port:ret_check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -844,10 +871,11 @@ cc_library(
     deps = [
         ":multi_pool",
         "//mediapipe/framework/port:ret_check",
-        "//mediapipe/framework/port:status",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
@@ -858,10 +886,11 @@ cc_library(
     name = "multi_pool",
     hdrs = ["multi_pool.h"],
     deps = [
-        "//mediapipe/framework/port:status",
         "//mediapipe/util:resource_cache",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
     ],
@@ -946,14 +975,14 @@ cc_library(
     deps = [
         ":egl_base",
         ":egl_errors",
-        "//mediapipe/framework/deps:no_destructor",
         "//mediapipe/framework/formats:shared_fd",
         "//mediapipe/framework/formats:unique_fd",
         "//mediapipe/framework/port:ret_check",
-        "//mediapipe/framework/port:status",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
@@ -1039,6 +1068,7 @@ cc_library(
         ":gl_base",
         ":gl_context",
         ":gl_texture_buffer_pool",
+        ":gl_texture_view",
         ":gpu_buffer",
         ":gpu_buffer_format",
         ":gpu_buffer_multi_pool",
@@ -1053,7 +1083,6 @@ cc_library(
         "//mediapipe/framework:calculator_node",
         "//mediapipe/framework:demangle",
         "//mediapipe/framework:legacy_calculator_support",
-        "//mediapipe/framework:packet",
         "//mediapipe/framework:packet_set",
         "//mediapipe/framework:packet_type",
         "//mediapipe/framework:timestamp",
@@ -1062,11 +1091,9 @@ cc_library(
         "//mediapipe/framework/formats:image_frame",
         "//mediapipe/framework/port:map_util",
         "//mediapipe/framework/port:ret_check",
-        "//mediapipe/framework/port:status",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
@@ -1141,8 +1168,11 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":gl_calculator_helper",
+        ":gpu_buffer",
+        ":gpu_buffer_format",
         "//mediapipe/framework:calculator_framework",
-        "//mediapipe/framework/port:status",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
     ],
 )
 
@@ -1167,8 +1197,8 @@ cc_library(
         "//mediapipe/framework/api3:one_of",
         "//mediapipe/framework/formats:image_frame",
         "//mediapipe/framework/port:ret_check",
-        "//mediapipe/framework/port:status",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
     ] + select({
         "//conditions:default": [],
         "//mediapipe:apple": ["//mediapipe/objc:util"],
@@ -1222,8 +1252,8 @@ cc_library(
         "//mediapipe/framework/api3:node",
         "//mediapipe/framework/formats:image_frame",
         "//mediapipe/framework/port:ret_check",
-        "//mediapipe/framework/port:status",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
     ] + select({
         "//conditions:default": [],
         "//mediapipe:apple": ["//mediapipe/objc:util"],
@@ -1290,12 +1320,14 @@ cc_library(
         ":gl_simple_shaders",
         ":gpu_buffer",
         ":gpu_buffer_format",
-        ":shader_util",
+        ":gpu_buffer_storage_ahwb",
         "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework:port",
         "//mediapipe/framework/formats:image",
         "//mediapipe/framework/port:ret_check",
-        "//mediapipe/framework/port:status",
         "//mediapipe/framework/tool:options_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
     ],
     alwayslink = 1,
@@ -1333,13 +1365,13 @@ cc_library(
         "//mediapipe/framework/api3:contract",
         "//mediapipe/framework/api3:node",
         "//mediapipe/framework/port:ret_check",
-        "//mediapipe/framework/port:status",
         "//mediapipe/util:resource_util",
         "//third_party/GL:GLES2_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = 1,
@@ -1369,13 +1401,13 @@ cc_test(
         "//mediapipe/framework/api3:stream",
         "//mediapipe/framework/formats:image_frame",
         "//mediapipe/framework/port:gtest",
-        "//mediapipe/framework/port:status",
         "//mediapipe/framework/tool:test_util",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1398,9 +1430,9 @@ cc_library(
         "//mediapipe/framework/api2:port",
         "//mediapipe/framework/formats:image",
         "//mediapipe/framework/port:ret_check",
-        "//mediapipe/framework/port:status",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/synchronization",
     ],
     alwayslink = 1,
@@ -1460,6 +1492,7 @@ objc_library(
         "//third_party/apple_frameworks:Metal",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
     ],
     alwayslink = 1,
 )
@@ -1482,6 +1515,7 @@ objc_library(
         "//third_party/apple_frameworks:Metal",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
     ],
     alwayslink = 1,
 )
@@ -1504,6 +1538,7 @@ objc_library(
         "//third_party/apple_frameworks:Metal",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
     ],
     alwayslink = 1,
 )
@@ -1526,6 +1561,7 @@ objc_library(
         "//third_party/apple_frameworks:Metal",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
     ],
     alwayslink = 1,
 )
@@ -1548,6 +1584,7 @@ objc_library(
         "//third_party/apple_frameworks:MetalPerformanceShaders",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
     ],
     alwayslink = 1,
 )
@@ -1569,6 +1606,7 @@ objc_library(
         "//third_party/apple_frameworks:MetalPerformanceShaders",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
     ],
     alwayslink = 1,
 )
@@ -1676,7 +1714,8 @@ mediapipe_cc_test(
         "//mediapipe/framework/formats:image_frame",
         "//mediapipe/framework/formats:yuv_image",
         "//mediapipe/framework/port:gtest_main",
-        "//third_party/libyuv",
         "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/types:span",
+        "@libyuv",
     ],
 )

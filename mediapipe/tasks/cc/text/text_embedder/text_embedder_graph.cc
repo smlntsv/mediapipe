@@ -16,18 +16,18 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/log/absl_check.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/match.h"
-#include "absl/strings/string_view.h"
+#include "absl/container/flat_hash_map.h"  // from @com_google_absl
+#include "absl/log/absl_check.h"           // from @com_google_absl
+#include "absl/status/status.h"            // from @com_google_absl
+#include "absl/status/status_macros.h"     // from @com_google_absl
+#include "absl/status/statusor.h"          // from @com_google_absl
+#include "absl/strings/match.h"            // from @com_google_absl
+#include "absl/strings/string_view.h"      // from @com_google_absl
 #include "mediapipe/calculators/tensor/inference_calculator.pb.h"
 #include "mediapipe/framework/api2/builder.h"
 #include "mediapipe/framework/api2/port.h"
 #include "mediapipe/framework/calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/tasks/cc/components/calculators/tensors_to_embeddings_calculator.pb.h"
 #include "mediapipe/tasks/cc/components/containers/proto/embeddings.pb.h"
 #include "mediapipe/tasks/cc/components/processors/embedding_postprocessing_graph.h"
@@ -105,16 +105,16 @@ class TextEmbedderGraph : public core::ModelTaskGraph {
     ABSL_CHECK(sc != nullptr);
 
     const ModelResources* model_resources = nullptr;
-    MP_RETURN_IF_ERROR(MaybeHandleModelBundle(sc, &model_resources));
+    ABSL_RETURN_IF_ERROR(MaybeHandleModelBundle(sc, &model_resources));
 
     if (model_resources == nullptr) {
-      MP_ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           model_resources,
           CreateModelResources<proto::TextEmbedderGraphOptions>(sc));
     }
 
     Graph graph;
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         Source<EmbeddingResult> embedding_result_out,
         BuildTextEmbedderTask(sc->Options<proto::TextEmbedderGraphOptions>(),
                               *model_resources,
@@ -163,12 +163,12 @@ class TextEmbedderGraph : public core::ModelTaskGraph {
     }
 
     if (is_model_bundle) {
-      MP_ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           const auto* bundle_resources,
           CreateModelAssetBundleResources<proto::TextEmbedderGraphOptions>(sc));
       // Extract tflite model
-      MP_ASSIGN_OR_RETURN(auto tflite_model_file,
-                          bundle_resources->GetFile(tflite_model_name));
+      ABSL_ASSIGN_OR_RETURN(auto tflite_model_file,
+                            bundle_resources->GetFile(tflite_model_name));
       // Create ModelResources for the tflite model
       auto tflite_external_file =
           std::make_unique<tasks::core::proto::ExternalFile>();
@@ -179,7 +179,7 @@ class TextEmbedderGraph : public core::ModelTaskGraph {
       std::string model_id = tflite_model_name == kGeckoTFLiteName
                                  ? "gecko_tflite"
                                  : "gemma_tflite";
-      MP_ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           *model_resources,
           CreateModelResources(sc, std::move(tflite_external_file), model_id));
 
@@ -221,8 +221,9 @@ class TextEmbedderGraph : public core::ModelTaskGraph {
       preproc_options->mutable_sentence_piece_model()->CopyFrom(
           task_options.sentence_piece_model());
     }
-    MP_RETURN_IF_ERROR(components::processors::ConfigureTextPreprocessingGraph(
-        model_resources, *preproc_options));
+    ABSL_RETURN_IF_ERROR(
+        components::processors::ConfigureTextPreprocessingGraph(
+            model_resources, *preproc_options));
     text_in >> preprocessing.In(kTextTag);
 
     // Adds both InferenceCalculator and ModelResourcesCalculator.
@@ -243,14 +244,14 @@ class TextEmbedderGraph : public core::ModelTaskGraph {
 
     // The UniversalSentenceEncoder model has an extraneous output head.
     std::vector<absl::string_view> filtered_head_names;
-    MP_ASSIGN_OR_RETURN(TextModelType::ModelType model_type,
-                        GetModelType(model_resources));
+    ABSL_ASSIGN_OR_RETURN(TextModelType::ModelType model_type,
+                          GetModelType(model_resources));
     if (model_type == TextModelType::USE_MODEL) {
       postprocessing_options->mutable_tensors_to_embeddings_options()
           ->add_ignored_head_names(kUSEQueryTensorName);
     }
 
-    MP_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         components::processors::ConfigureEmbeddingPostprocessingGraph(
             model_resources, task_options.embedder_options(),
             postprocessing_options));

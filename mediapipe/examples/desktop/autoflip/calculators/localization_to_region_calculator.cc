@@ -15,14 +15,14 @@
 #include <memory>
 #include <string>
 
-#include "absl/memory/memory.h"
+#include "absl/memory/memory.h"  // from @com_google_absl
+#include "absl/status/status.h"  // from @com_google_absl
 #include "mediapipe/examples/desktop/autoflip/autoflip_messages.pb.h"
 #include "mediapipe/examples/desktop/autoflip/calculators/localization_to_region_calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/detection.pb.h"
 #include "mediapipe/framework/formats/location_data.pb.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 
 namespace mediapipe {
 namespace autoflip {
@@ -105,7 +105,7 @@ absl::Status LocalizationToRegionCalculator::Process(
     mediapipe::CalculatorContext* cc) {
   const auto& annotations =
       cc->Inputs().Tag(kDetectionsTag).Get<std::vector<mediapipe::Detection>>();
-  auto regions = ::absl::make_unique<DetectionSet>();
+  auto regions = std::make_unique<DetectionSet>();
   for (const auto& detection : annotations) {
     RET_CHECK_EQ(detection.label().size(), 1)
         << "Number of labels not equal to one.";

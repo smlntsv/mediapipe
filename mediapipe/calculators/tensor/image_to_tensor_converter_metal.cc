@@ -17,24 +17,25 @@
 #if MEDIAPIPE_METAL_ENABLED
 
 #import <Metal/Metal.h>
+#include <TargetConditionals.h>
 
 #include <array>
 #include <memory>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
+#include "absl/strings/str_cat.h"       // from @com_google_absl
 #include "mediapipe/calculators/tensor/image_to_tensor_converter.h"
 #include "mediapipe/calculators/tensor/image_to_tensor_utils.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/image.h"
 #include "mediapipe/framework/formats/tensor.h"
-#include "mediapipe/framework/port/canonical_errors.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
-#include "mediapipe/framework/port/statusor.h"
 #include "mediapipe/gpu/MPPMetalHelper.h"
-#include "tensorflow/lite/delegates/gpu/common/shape.h"
-#include "tensorflow/lite/delegates/gpu/common/types.h"
+#include "tflite/delegates/gpu/common/shape.h"  // from @litert
+#include "tflite/delegates/gpu/common/types.h"  // from @litert
 
 #if MEDIAPIPE_METAL_ENABLED
 #include "mediapipe/framework/formats/tensor_mtl_buffer_view.h"
@@ -154,7 +155,7 @@ class SubRectExtractorMetal {
       id<MTLDevice> device, OutputFormat output_format,
       BorderMode border_mode) {
     id<MTLRenderPipelineState> pipeline_state;
-    MP_RETURN_IF_ERROR(SubRectExtractorMetal::MakePipelineState(
+    ABSL_RETURN_IF_ERROR(SubRectExtractorMetal::MakePipelineState(
         device, output_format, border_mode, &pipeline_state));
 
     return absl::make_unique<SubRectExtractorMetal>(device, pipeline_state,
@@ -186,6 +187,11 @@ class SubRectExtractorMetal {
                        const tflite::gpu::HW& destination_size,
                        id<MTLCommandBuffer> command_buffer,
                        id<MTLBuffer> destination) {
+#if TARGET_OS_SIMULATOR
+    return InternalExecuteSimulator(input_texture, sub_rect, flip_horizontally,
+                                    alpha, beta, destination_size,
+                                    command_buffer, destination);
+#else
     if (renders_to_buffer_textures_) {
       auto output_texture = MTLTextureWithBuffer(destination_size, destination);
       return InternalExecute(input_texture, sub_rect, flip_horizontally, alpha,
@@ -198,10 +204,10 @@ class SubRectExtractorMetal {
     // result is driver-dependent. Render into a regular texture and blit it
     // into the buffer instead (same values, same bytes per row).
     id<MTLTexture> output_texture = RenderTargetTexture(destination_size);
-    MP_RETURN_IF_ERROR(InternalExecute(input_texture, sub_rect,
-                                       flip_horizontally, alpha, beta,
-                                       destination_size, command_buffer,
-                                       output_texture));
+    ABSL_RETURN_IF_ERROR(InternalExecute(input_texture, sub_rect,
+                                         flip_horizontally, alpha, beta,
+                                         destination_size, command_buffer,
+                                         output_texture));
     const NSUInteger bytes_per_row =
         GetBytesPerRaw(output_format_, destination_size);
     id<MTLBlitCommandEncoder> blit_encoder =
@@ -218,9 +224,11 @@ class SubRectExtractorMetal {
          destinationBytesPerImage:bytes_per_row * destination_size.h];
     [blit_encoder endEncoding];
     return absl::OkStatus();
+#endif  // TARGET_OS_SIMULATOR
   }
 
  private:
+#if !TARGET_OS_SIMULATOR
   // Private render target for the non-Apple-GPU path, reused while the output
   // size stays the same. Reuse across frames is safe: textures are
   // hazard-tracked and the command buffers share one queue.
@@ -256,6 +264,7 @@ class SubRectExtractorMetal {
                              bytesPerRow:output_bytes_per_row];
     return texture;
   }
+#endif  // !TARGET_OS_SIMULATOR
 
   absl::Status InternalExecute(id<MTLTexture> input_texture,
                                const RotatedRect& sub_rect,
@@ -307,6 +316,43 @@ class SubRectExtractorMetal {
 
     return absl::OkStatus();
   }
+
+#if TARGET_OS_SIMULATOR
+  absl::Status InternalExecuteSimulator(id<MTLTexture> input_texture,
+                                        const RotatedRect& sub_rect,
+                                        bool flip_horizontally, float alpha,
+                                        float beta,
+                                        const tflite::gpu::HW& destination_size,
+                                        id<MTLCommandBuffer> command_buffer,
+                                        id<MTLBuffer> destination) {
+    MTLTextureDescriptor* texture_desc = [MTLTextureDescriptor
+        texture2DDescriptorWithPixelFormat:GetPixelFormat(output_format_)
+                                     width:destination_size.w
+                                    height:destination_size.h
+                                 mipmapped:NO];
+    texture_desc.usage = MTLTextureUsageRenderTarget;
+    id<MTLTexture> output_texture =
+        [device_ newTextureWithDescriptor:texture_desc];
+    ABSL_RETURN_IF_ERROR(
+        InternalExecute(input_texture, sub_rect, flip_horizontally, alpha, beta,
+                        destination_size, command_buffer, output_texture));
+    id<MTLBlitCommandEncoder> blit_encoder =
+        [command_buffer blitCommandEncoder];
+    NSUInteger bytes_per_row = GetBytesPerRaw(output_format_, destination_size);
+    [blit_encoder copyFromTexture:output_texture
+                      sourceSlice:0
+                      sourceLevel:0
+                     sourceOrigin:MTLOriginMake(0, 0, 0)
+                       sourceSize:MTLSizeMake(destination_size.w,
+                                              destination_size.h, 1)
+                         toBuffer:destination
+                destinationOffset:0
+           destinationBytesPerRow:bytes_per_row
+         destinationBytesPerImage:bytes_per_row * destination_size.h];
+    [blit_encoder endEncoding];
+    return absl::OkStatus();
+  }
+#endif  // TARGET_OS_SIMULATOR
 
   static absl::Status MakePipelineState(
       id<MTLDevice> device, OutputFormat output_format, BorderMode border_mode,
@@ -396,9 +442,9 @@ class ImageToTensorMetalConverter : public ImageToTensorConverter {
   absl::Status Init(CalculatorContext* cc, BorderMode border_mode) {
     metal_helper_ = [[MPPMetalHelper alloc] initWithCalculatorContext:cc];
     RET_CHECK(metal_helper_);
-    MP_ASSIGN_OR_RETURN(extractor_, SubRectExtractorMetal::Make(
-                                        metal_helper_.mtlDevice,
-                                        OutputFormat::kF32C4, border_mode));
+    ABSL_ASSIGN_OR_RETURN(extractor_, SubRectExtractorMetal::Make(
+                                          metal_helper_.mtlDevice,
+                                          OutputFormat::kF32C4, border_mode));
     return absl::OkStatus();
   }
 
@@ -409,14 +455,14 @@ class ImageToTensorMetalConverter : public ImageToTensorConverter {
     if (input.format() != mediapipe::GpuBufferFormat::kBGRA32 &&
         input.format() != mediapipe::GpuBufferFormat::kRGBAHalf64 &&
         input.format() != mediapipe::GpuBufferFormat::kRGBAFloat128) {
-      return InvalidArgumentError(absl::StrCat(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Only 4-channel texture input formats are supported, passed format: ",
           static_cast<uint32_t>(input.format())));
     }
     RET_CHECK_EQ(tensor_buffer_offset, 0)
         << "The non-zero tensor_buffer_offset input is not supported yet.";
     const auto& output_shape = output_tensor.shape();
-    MP_RETURN_IF_ERROR(ValidateTensorShape(output_shape));
+    ABSL_RETURN_IF_ERROR(ValidateTensorShape(output_shape));
 
     @autoreleasepool {
       id<MTLTexture> texture =
@@ -424,7 +470,7 @@ class ImageToTensorMetalConverter : public ImageToTensorConverter {
 
       constexpr float kInputImageRangeMin = 0.0f;
       constexpr float kInputImageRangeMax = 1.0f;
-      MP_ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           auto transform,
           GetValueRangeTransformation(kInputImageRangeMin, kInputImageRangeMax,
                                       range_min, range_max));
@@ -432,7 +478,7 @@ class ImageToTensorMetalConverter : public ImageToTensorConverter {
       id<MTLCommandBuffer> command_buffer = [metal_helper_ commandBuffer];
       const auto& buffer_view =
           MtlBufferView::GetWriteView(output_tensor, command_buffer);
-      MP_RETURN_IF_ERROR(extractor_->Execute(
+      ABSL_RETURN_IF_ERROR(extractor_->Execute(
           texture, roi,
           /*flip_horizontally=*/false, transform.scale, transform.offset,
           tflite::gpu::HW(output_shape.dims[1], output_shape.dims[2]),
@@ -463,7 +509,7 @@ class ImageToTensorMetalConverter : public ImageToTensorConverter {
 absl::StatusOr<std::unique_ptr<ImageToTensorConverter>> CreateMetalConverter(
     CalculatorContext* cc, BorderMode border_mode) {
   auto result = absl::make_unique<ImageToTensorMetalConverter>();
-  MP_RETURN_IF_ERROR(result->Init(cc, border_mode));
+  ABSL_RETURN_IF_ERROR(result->Init(cc, border_mode));
 
   return result;
 }

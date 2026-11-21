@@ -12,25 +12,28 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <array>
+#include <cstdint>
 #include <memory>
-#include <optional>
-#include <string>
+#include <vector>
 
-#include "absl/status/status.h"
-#include "absl/strings/string_view.h"
-#include "mediapipe/calculators/core/get_vector_item_calculator.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/strings/string_view.h"   // from @com_google_absl
+#include "absl/types/span.h"            // from @com_google_absl
 #include "mediapipe/calculators/core/get_vector_item_calculator.pb.h"
 #include "mediapipe/calculators/util/flat_color_image_calculator.pb.h"
-#include "mediapipe/calculators/util/landmarks_to_render_data_calculator.h"
 #include "mediapipe/calculators/util/landmarks_to_render_data_calculator.pb.h"
 #include "mediapipe/framework/api2/builder.h"
+#include "mediapipe/framework/api2/node.h"
+#include "mediapipe/framework/api2/port.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/image.h"
 #include "mediapipe/framework/formats/image_format.pb.h"
+#include "mediapipe/framework/formats/image_frame.h"
 #include "mediapipe/framework/formats/image_frame_opencv.h"
 #include "mediapipe/framework/formats/landmark.pb.h"
 #include "mediapipe/framework/port/opencv_core_inc.h"
-#include "mediapipe/framework/port/opencv_imgcodecs_inc.h"
 #include "mediapipe/framework/port/opencv_imgproc_inc.h"
 #include "mediapipe/tasks/cc/core/model_task_graph.h"
 #include "mediapipe/tasks/cc/vision/face_detector/proto/face_detector_graph_options.pb.h"
@@ -423,7 +426,7 @@ class ConditionedImageGraph : public core::ModelTaskGraph {
             "Conditioned type options is not set.");
         break;
       case proto::ConditionedImageGraphOptions::kFaceConditionTypeOptions: {
-        MP_ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             auto face_landmarks_image,
             GetFaceLandmarksImage(conditioned_image,
                                   graph_options.face_condition_type_options(),
@@ -431,14 +434,14 @@ class ConditionedImageGraph : public core::ModelTaskGraph {
         face_landmarks_image >> graph.Out(kImageTag);
       } break;
       case proto::ConditionedImageGraphOptions::kDepthConditionTypeOptions: {
-        MP_ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             auto depth_image,
             GetDepthImage(conditioned_image,
                           graph_options.depth_condition_type_options(), graph));
         depth_image >> graph.Out(kImageTag);
       } break;
       case proto::ConditionedImageGraphOptions::kEdgeConditionTypeOptions: {
-        MP_ASSIGN_OR_RETURN(
+        ABSL_ASSIGN_OR_RETURN(
             auto edges_image,
             GetEdgeImage(conditioned_image,
                          graph_options.edge_condition_type_options(), graph));

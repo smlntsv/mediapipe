@@ -27,28 +27,28 @@
 #include <memory>
 #include <utility>
 
-#include "absl/base/attributes.h"
-#include "absl/base/dynamic_annotations.h"
-#include "absl/base/thread_annotations.h"
-#include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
-#include "absl/memory/memory.h"
-#include "absl/status/status.h"
-#include "absl/strings/numbers.h"
-#include "absl/strings/str_format.h"
-#include "absl/strings/str_split.h"
-#include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
-#include "mediapipe/framework/port.h"  // IWYU pragma: keep
+#include "absl/base/attributes.h"           // from @com_google_absl
+#include "absl/base/dynamic_annotations.h"  // from @com_google_absl
+#include "absl/base/thread_annotations.h"   // from @com_google_absl
+#include "absl/log/absl_check.h"            // from @com_google_absl
+#include "absl/log/absl_log.h"              // from @com_google_absl
+#include "absl/memory/memory.h"             // from @com_google_absl
+#include "absl/status/status.h"             // from @com_google_absl
+#include "absl/status/status_macros.h"      // from @com_google_absl
+#include "absl/strings/match.h"             // from @com_google_absl
+#include "absl/strings/numbers.h"           // from @com_google_absl
+#include "absl/strings/str_format.h"        // from @com_google_absl
+#include "absl/strings/str_split.h"         // from @com_google_absl
+#include "absl/strings/string_view.h"       // from @com_google_absl
+#include "absl/synchronization/mutex.h"     // from @com_google_absl
+#include "mediapipe/framework/port.h"       // IWYU pragma: keep
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status_builder.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/gpu/gl_base.h"
 #include "mediapipe/gpu/gl_context_internal.h"
 #include "mediapipe/gpu/gpu_buffer_format.h"
 
 #ifndef __EMSCRIPTEN__
-#include "absl/debugging/leak_check.h"
+#include "absl/debugging/leak_check.h"  // from @com_google_absl
 #include "mediapipe/gpu/gl_thread_collector.h"
 #endif
 
@@ -318,12 +318,13 @@ absl::Status GlContext::GetGlExtensionsCompat() {
 
 absl::Status GlContext::FinishInitialization(bool create_thread) {
   if (create_thread) {
-    thread_ = absl::make_unique<GlContext::DedicatedThread>();
+    thread_ = std::make_unique<GlContext::DedicatedThread>();
 #ifdef MEDIAPIPE_HAS_GOOGLE_THREAD
-    MP_RETURN_IF_ERROR(thread_->Run(util::functional::WithCurrentContext(
+    ABSL_RETURN_IF_ERROR(thread_->Run(util::functional::WithCurrentContext(
         [this] { return EnterContext(nullptr); })));
 #else
-    MP_RETURN_IF_ERROR(thread_->Run([this] { return EnterContext(nullptr); }));
+    ABSL_RETURN_IF_ERROR(
+        thread_->Run([this] { return EnterContext(nullptr); }));
 #endif
   }
 
@@ -391,7 +392,7 @@ absl::Status GlContext::FinishInitialization(bool create_thread) {
       if (!status.ok()) {
         status = GetGlExtensionsCompat();
       }
-      MP_RETURN_IF_ERROR(status);
+      ABSL_RETURN_IF_ERROR(status);
     }
 
 #if GL_ES_VERSION_2_0  // This actually means "is GLES available".
@@ -468,10 +469,11 @@ void GlContext::SetProfilingContext(
 
 absl::Status GlContext::SwitchContextAndRun(GlStatusFunction gl_func) {
   ContextBinding saved_context;
-  MP_RETURN_IF_ERROR(EnterContext(&saved_context)) << " (entering GL context)";
+  ABSL_RETURN_IF_ERROR(EnterContext(&saved_context))
+      << " (entering GL context)";
   auto status = gl_func();
   LogUncheckedGlErrors(CheckForGlErrors());
-  MP_RETURN_IF_ERROR(ExitContext(&saved_context)) << " (exiting GL context)";
+  ABSL_RETURN_IF_ERROR(ExitContext(&saved_context)) << " (exiting GL context)";
   return status;
 }
 
@@ -576,7 +578,7 @@ absl::Status GlContext::SwitchContext(ContextBinding* saved_context,
     // old one (we may be deliberately trying to exit it).
     // 2. We need to unset the old context before we unlock the old mutex,
     // Therefore, we first unset the old one before setting the new one.
-    MP_RETURN_IF_ERROR(SetCurrentContextBinding({}));
+    ABSL_RETURN_IF_ERROR(SetCurrentContextBinding({}));
     old_context_obj->context_use_mutex_.unlock();
     CurrentContext().reset();
   }

@@ -46,7 +46,11 @@ _LiveStreamPacket = async_result_dispatcher.LiveStreamPacket
 
 
 class Blendshapes(enum.IntEnum):
-  """The 52 blendshape coefficients."""
+  """The 52 blendshape coefficients.
+
+  Note: *Left and *Right blendshapes correspond to the subject's face, not the
+  viewer. Passing a horizontally mirrored image will invert these outputs.
+  """
 
   NEUTRAL = 0
   BROW_DOWN_LEFT = 1
@@ -2883,7 +2887,9 @@ class MpFaceLandmarkerResultC(ctypes.Structure):
 
 _C_TYPES_RESULT_CALLBACK = ctypes.CFUNCTYPE(
     None,
+    ctypes.c_void_p,  # user_data
     ctypes.c_int32,  # MpStatus
+    ctypes.c_char_p,  # error_msg
     ctypes.POINTER(MpFaceLandmarkerResultC),
     ctypes.c_void_p,  # MpImage
     ctypes.c_int64,  # timestamp_ms
@@ -2947,6 +2953,7 @@ class MpFaceLandmarkerOptionsC(ctypes.Structure):
       ('output_face_blendshapes', ctypes.c_bool),
       ('output_facial_transformation_matrixes', ctypes.c_bool),
       ('result_callback', _C_TYPES_RESULT_CALLBACK),
+      ('result_callback_user_data', ctypes.c_void_p),
   ]
 
   @classmethod
@@ -2986,8 +2993,8 @@ class FaceLandmarkerOptions:
     running_mode: The running mode of the task. Default to the image mode.
       FaceLandmarker has three running modes: 1) The image mode for detecting
       face landmarks on single image inputs. 2) The video mode for detecting
-      face landmarks on the decoded frames of a video. 3) The live stream mode
-      for detecting face landmarks on the live stream of input data, such as
+      face landmarks on the decoded frames of a video. 3) The livestream mode
+      for detecting face landmarks on the livestream of input data, such as
       from camera. In this mode, the "result_callback" below must be specified
       to receive the detection results asynchronously.
     num_faces: The maximum number of faces that can be detected by the
@@ -3004,9 +3011,9 @@ class FaceLandmarkerOptions:
       transformation_matrix. Facial transformation matrix is used to transform
       the face landmarks in canonical face to the detected face, so that users
       can apply face effects on the detected landmarks.
-    result_callback: The user-defined result callback for processing live stream
+    result_callback: The user-defined result callback for processing livestream
       data. The result callback should only be specified when the running mode
-      is set to the live stream mode.
+      is set to the livestream mode.
   """
 
   base_options: _BaseOptions
@@ -3147,13 +3154,13 @@ class FaceLandmarker:
       RuntimeError: If other types of error occurred.
     """
     running_mode_lib.validate_running_mode(
-        options.running_mode, options.result_callback
+        options.running_mode, options.result_callback  # pyrefly: ignore[bad-argument-type]
     )
 
     lib = mediapipe_c_bindings_lib.load_shared_library(_CTYPES_SIGNATURES)
 
     def convert_result(
-        c_result_ptr: ctypes.POINTER(MpFaceLandmarkerResultC),
+        c_result_ptr: ctypes.POINTER(MpFaceLandmarkerResultC),  # pyrefly: ignore[invalid-annotation]
         image_ptr: ctypes.c_void_p,
         timestamp_ms: int,
     ) -> Tuple[FaceLandmarkerResult, image_lib.Image, int]:
@@ -3179,7 +3186,7 @@ class FaceLandmarker:
     )
 
     landmarker = ctypes.c_void_p()
-    lib.MpFaceLandmarkerCreate(
+    lib.MpFaceLandmarkerCreate(  # pyrefly: ignore[missing-attribute]
         ctypes.byref(options_c), ctypes.byref(landmarker)
     )
     return FaceLandmarker(
@@ -3215,7 +3222,7 @@ class FaceLandmarker:
         if image_processing_options
         else None
     )
-    self._lib.MpFaceLandmarkerDetectImage(
+    self._lib.MpFaceLandmarkerDetectImage(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         c_image_processing_options,
@@ -3224,7 +3231,7 @@ class FaceLandmarker:
     try:
       result = FaceLandmarkerResult.from_ctypes(result_c)
     finally:
-      self._lib.MpFaceLandmarkerCloseResult(ctypes.byref(result_c))
+      self._lib.MpFaceLandmarkerCloseResult(ctypes.byref(result_c))  # pyrefly: ignore[missing-attribute]
     return result
 
   def detect_for_video(
@@ -3262,7 +3269,7 @@ class FaceLandmarker:
         if image_processing_options
         else None
     )
-    self._lib.MpFaceLandmarkerDetectForVideo(
+    self._lib.MpFaceLandmarkerDetectForVideo(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         c_image_processing_options,
@@ -3272,7 +3279,7 @@ class FaceLandmarker:
     try:
       py_result = FaceLandmarkerResult.from_ctypes(result_c)
     finally:
-      self._lib.MpFaceLandmarkerCloseResult(ctypes.byref(result_c))
+      self._lib.MpFaceLandmarkerCloseResult(ctypes.byref(result_c))  # pyrefly: ignore[missing-attribute]
     return py_result
 
   def detect_async(
@@ -3285,14 +3292,14 @@ class FaceLandmarker:
 
     The results will be available via the "result_callback" provided in the
     FaceLandmarkerOptions. Only use this method when the FaceLandmarker is
-    created with the live stream running mode.
+    created with the livestream running mode.
 
-    Only use this method when the FaceLandmarker is created with the live
-    stream running mode. The input timestamps should be monotonically increasing
+    Only use this method when the FaceLandmarker is created with the livestream
+    running mode. The input timestamps should be monotonically increasing
     for adjacent calls of this method. This method will return immediately after
     the input image is accepted. The results will be available via the
     `result_callback` provided in the `FaceLandmarkerOptions`. The
-    `detect_async` method is designed to process live stream data such as
+    `detect_async` method is designed to process livestream data such as
     camera input. To lower the overall latency, face landmarker may drop the
     input images if needed. In other words, it's not guaranteed to have output
     per input image.
@@ -3318,7 +3325,7 @@ class FaceLandmarker:
         if image_processing_options
         else None
     )
-    self._lib.MpFaceLandmarkerDetectAsync(
+    self._lib.MpFaceLandmarkerDetectAsync(  # pyrefly: ignore[missing-attribute]
         self._handle,
         c_image,
         c_image_processing_options,
@@ -3329,10 +3336,15 @@ class FaceLandmarker:
     """Closes the FaceLandmarker."""
     if not self._handle:
       return
-    self._lib.MpFaceLandmarkerClose(self._handle)
-    self._handle = None
-    self._dispatcher.close()
-    self._lib.close()
+    # The C library frees the task even if it fails to close, so the handle
+    # must not be used again.
+    handle = self._handle
+    self._handle = None  # pyrefly: ignore[bad-assignment]
+    try:
+      self._lib.MpFaceLandmarkerClose(handle)  # pyrefly: ignore[missing-attribute]
+    finally:
+      self._dispatcher.close()
+      self._lib.close()
 
   def __enter__(self):
     """Returns `self` upon entering the runtime context."""

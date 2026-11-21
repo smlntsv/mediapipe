@@ -1,0 +1,127 @@
+// swift-tools-version: 5.8
+
+import PackageDescription
+
+let package = Package(
+    name: "MediaPipeTasks",
+    platforms: [
+        .iOS(.v15)
+    ],
+    products: [
+        .library(
+            name: "MediaPipeTasksCommon",
+            targets: [
+                "MediaPipeTasksCommonBinary",
+                "MediaPipeTasksLinker",
+            ]
+        ),
+        .library(
+            name: "MediaPipeTasksVision",
+            targets: [
+                "MediaPipeTasksVision",
+                "MediaPipeTasksCommonBinary",
+                "MediaPipeTasksLinker",
+            ]
+        ),
+        .library(
+            name: "MediaPipeTasksText",
+            targets: [
+                "MediaPipeTasksText",
+                "MediaPipeTasksCommonBinary",
+                "MediaPipeTasksLinker",
+            ]
+        ),
+        .library(
+            name: "MediaPipeTasksAudio",
+            targets: [
+                "MediaPipeTasksAudio",
+                "MediaPipeTasksCommonBinary",
+                "MediaPipeTasksLinker",
+            ]
+        ),
+        .library(
+            name: "MediaPipeTasksRetrieval",
+            targets: [
+                "MediaPipeTasksRetrieval",
+                "MediaPipeTasksCommonBinary",
+                "MediaPipeTasksLinker",
+            ]
+        ),
+        .library(
+            name: "MediaPipeTasksDecision",
+            targets: [
+                "MediaPipeTasksDecision",
+                "MediaPipeTasksCommonBinary",
+                "MediaPipeTasksLinker",
+            ]
+        ),
+    ],
+    dependencies: [],
+    targets: [
+        .binaryTarget(
+            name: "MediaPipeTasksCommonBinary",
+            ${MPP_COMMON_TARGET_ARG}
+        ),
+        .binaryTarget(
+            name: "MediaPipeTaskGraphsBinary",
+            ${MPP_GRAPHS_TARGET_ARG}
+        ),
+        .binaryTarget(
+            name: "MediaPipeTasksVision",
+            ${MPP_VISION_TARGET_ARG}
+        ),
+        .binaryTarget(
+            name: "MediaPipeTasksText",
+            ${MPP_TEXT_TARGET_ARG}
+        ),
+        .binaryTarget(
+            name: "MediaPipeTasksAudio",
+            ${MPP_AUDIO_TARGET_ARG}
+        ),
+        .binaryTarget(
+            name: "MediaPipeTasksRetrieval",
+            ${MPP_RETRIEVAL_TARGET_ARG}
+        ),
+        .binaryTarget(
+            name: "MediaPipeTasksDecision",
+            ${MPP_DECISION_TARGET_ARG}
+        ),
+        .target(
+            name: "MediaPipeTasksLinker",
+            dependencies: [
+                "MediaPipeTasksCommonBinary",
+                "MediaPipeTaskGraphsBinary",
+                "MediaPipeTasksVision",
+                "MediaPipeTasksText",
+                "MediaPipeTasksAudio",
+                "MediaPipeTasksRetrieval",
+                "MediaPipeTasksDecision",
+            ],
+            path: "Sources/MediaPipeTasksCommon",
+            resources: [
+                .copy("PrivacyInfo.xcprivacy"),
+            ],
+            linkerSettings: [
+                // Note: -all_load is required to prevent the Apple linker
+                // from stripping C++ static calculator registration
+                // constructors (REGISTER_CALCULATOR) in
+                // MediaPipeTaskGraphsBinary. Downstream libraries wrapping
+                // MediaPipeTasks in a remote SPM package must reference this
+                // package by branch/revision or local path due to Apple's
+                // .unsafeFlags restriction.
+                .unsafeFlags(["-Xlinker", "-all_load"]),
+                .linkedLibrary("c++"),
+                // Required by the SQLite vector store behind SemanticRetriever.
+                .linkedLibrary("sqlite3"),
+                .linkedFramework("Accelerate"),
+                .linkedFramework("AVFoundation"),
+                .linkedFramework("CoreMedia"),
+                .linkedFramework("AudioToolbox"),
+                .linkedFramework("CoreGraphics"),
+                .linkedFramework("CoreImage"),
+                .linkedFramework("CoreVideo"),
+                .linkedFramework("QuartzCore"),
+            ]
+        ),
+    ]
+)

@@ -21,12 +21,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/strings/string_view.h"
+#include "absl/container/flat_hash_map.h"  // from @com_google_absl
+#include "absl/strings/string_view.h"      // from @com_google_absl
 #include "mediapipe/tasks/cc/text/tokenizers/tokenizer.h"
 #include "mediapipe/tasks/cc/text/utils/vocab_utils.h"
-#include "re2/re2.h"
-#include "tensorflow_text/core/kernels/wordpiece_tokenizer.h"
+#include "re2/re2.h"  // from @com_googlesource_code_re2
+#include "tensorflow_text/core/kernels/wordpiece_tokenizer.h"  // from @org_tensorflow_text
 
 namespace mediapipe {
 namespace tasks {
@@ -98,7 +98,7 @@ class BertTokenizer : public mediapipe::tasks::text::tokenizers::Tokenizer {
         include_delim_re_{options.include_delim_str} {}
 
   // Initialize the tokenizer from file path to vocab and tokenizer configs.
-  explicit BertTokenizer(const std::string& path_to_vocab,
+  explicit BertTokenizer(absl::string_view path_to_vocab,
                          const BertTokenizerOptions& options = {})
       : BertTokenizer(mediapipe::tasks::text::LoadVocabFromFile(path_to_vocab),
                       options) {}

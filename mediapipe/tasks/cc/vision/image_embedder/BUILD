@@ -19,6 +19,70 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
+cc_library(
+    name = "image_embedder_executor",
+    hdrs = ["image_embedder_executor.h"],
+    deps = [
+        "//mediapipe/framework/formats:image",
+        "//mediapipe/framework/formats:rect_cc_proto",
+        "//mediapipe/tasks/cc/components/containers:embedding_result",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
+    name = "graph_image_embedder_executor",
+    srcs = ["graph_image_embedder_executor.cc"],
+    hdrs = ["graph_image_embedder_executor.h"],
+    deps = [
+        ":image_embedder_executor",
+        "//mediapipe/framework:packet",
+        "//mediapipe/framework:timestamp",
+        "//mediapipe/framework/formats:image",
+        "//mediapipe/framework/formats:rect_cc_proto",
+        "//mediapipe/tasks/cc/components/containers:embedding_result",
+        "//mediapipe/tasks/cc/components/containers/proto:embeddings_cc_proto",
+        "//mediapipe/tasks/cc/core:task_runner",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
+    name = "litert_lm_image_embedder_executor",
+    srcs = ["litert_lm_image_embedder_executor.cc"],
+    hdrs = ["litert_lm_image_embedder_executor.h"],
+    deps = [
+        ":image_embedder_executor",
+        "//mediapipe/framework:timestamp",
+        "//mediapipe/framework/formats:image",
+        "//mediapipe/framework/formats:image_frame",
+        "//mediapipe/framework/formats:rect_cc_proto",
+        "//mediapipe/tasks/cc/components/containers:embedding_result",
+        "//mediapipe/tasks/cc/components/processors:embedder_options",
+        "//mediapipe/tasks/cc/core:base_options",
+        "//mediapipe/tasks/cc/core:running_mode",
+        "//mediapipe/tasks/cc/core:tasks_logging_factory",  # build_cleaner: keep
+        "//mediapipe/tasks/cc/core/logging:tasks_logger",
+        "//mediapipe/tasks/cc/core/logging/factory:logging_factory_hdr",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@litert_lm//runtime/core:embedding_engine_impl",
+        "@litert_lm//runtime/engine:embedding_engine",
+        "@litert_lm//runtime/engine:embedding_engine_settings",
+        "@litert_lm//runtime/engine:io_types",
+        "@litert_lm//runtime/executor:executor_settings_base",
+        "@litert_lm//runtime/util:memory_mapped_file",
+        "@litert_lm//support/util:io_types",
+    ],
+)
+
 # Docs for Mediapipe Tasks Image Embedder
 # https://developers.google.com/mediapipe/solutions/vision/image_embedder
 cc_library(
@@ -26,18 +90,23 @@ cc_library(
     srcs = ["image_embedder.cc"],
     hdrs = ["image_embedder.h"],
     deps = [
-        ":image_embedder_graph",
+        ":graph_image_embedder_executor",
+        ":image_embedder_executor",
+        ":image_embedder_graph",  # buildcleaner: keep
+        ":litert_lm_image_embedder_executor",
         "//mediapipe/framework/api2:builder",
         "//mediapipe/framework/formats:image",
+        "//mediapipe/framework/formats:image_frame",
         "//mediapipe/framework/formats:rect_cc_proto",
         "//mediapipe/framework/tool:options_map",
+        "//mediapipe/tasks/cc:common",
         "//mediapipe/tasks/cc/components/containers:embedding_result",
         "//mediapipe/tasks/cc/components/containers/proto:embeddings_cc_proto",
         "//mediapipe/tasks/cc/components/processors:embedder_options",
         "//mediapipe/tasks/cc/components/processors/proto:embedder_options_cc_proto",
         "//mediapipe/tasks/cc/components/utils:cosine_similarity",
         "//mediapipe/tasks/cc/core:base_options",
-        "//mediapipe/tasks/cc/core:task_runner",
+        "//mediapipe/tasks/cc/core:embedding_provider",
         "//mediapipe/tasks/cc/core:utils",
         "//mediapipe/tasks/cc/core/proto:base_options_cc_proto",
         "//mediapipe/tasks/cc/vision/core:base_vision_task_api",
@@ -45,7 +114,11 @@ cc_library(
         "//mediapipe/tasks/cc/vision/core:running_mode",
         "//mediapipe/tasks/cc/vision/core:vision_task_api_factory",
         "//mediapipe/tasks/cc/vision/image_embedder/proto:image_embedder_graph_options_cc_proto",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@stblib//:stb_image",
     ],
 )
 
@@ -53,7 +126,14 @@ cc_library(
     name = "image_embedder_graph",
     srcs = ["image_embedder_graph.cc"],
     deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
         "//mediapipe/calculators/tensor:inference_calculator",
+        # Registers InferenceCalculatorLiteRt, which this graph runs inference
+        # on. Without it InferenceCalculatorSelectorImpl silently falls back to
+        # the GL/CPU implementations.
+        "//mediapipe/calculators/tensor:inference_calculator_litert",  # buildcleaner: keep
         "//mediapipe/framework:calculator_framework",
         "//mediapipe/framework/api2:builder",
         "//mediapipe/framework/api2:port",
@@ -67,7 +147,6 @@ cc_library(
         "//mediapipe/tasks/cc/components/processors/proto:image_preprocessing_graph_options_cc_proto",
         "//mediapipe/tasks/cc/core:model_task_graph",
         "//mediapipe/tasks/cc/vision/image_embedder/proto:image_embedder_graph_options_cc_proto",
-        "@com_google_absl//absl/status:statusor",
     ],
     alwayslink = 1,
 )

@@ -46,9 +46,8 @@ cc_library(
     deps = [
         ":sticker_buffer_cc_proto",
         "//mediapipe/framework:calculator_framework",
-        "//mediapipe/framework:timestamp",
         "//mediapipe/framework/port:ret_check",
-        "//mediapipe/framework/port:status",
+        "@com_google_absl//absl/status",
     ],
     alwayslink = 1,
 )
@@ -59,16 +58,11 @@ cc_library(
     hdrs = ["transformations.h"],
     deps = [
         "//mediapipe/framework:calculator_framework",
-        "//mediapipe/framework:timestamp",
-        "//mediapipe/framework/formats:image_frame",
-        "//mediapipe/framework/port:opencv_imgproc",
+        "//mediapipe/framework:collection_item_id",
         "//mediapipe/framework/port:ret_check",
-        "//mediapipe/framework/port:status",
         "//mediapipe/graphs/object_detection_3d/calculators:model_matrix_cc_proto",
-        "//mediapipe/modules/objectron/calculators:box",
         "@com_google_absl//absl/log:absl_log",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/status",
         "@eigen//:eigen3",
     ],
     alwayslink = 1,
@@ -81,8 +75,8 @@ cc_library(
     deps = [
         "//mediapipe/framework:calculator_framework",
         "//mediapipe/framework/port:ret_check",
-        "//mediapipe/framework/port:status",
         "//mediapipe/util/tracking:box_tracker_cc_proto",
+        "@com_google_absl//absl/status",
     ],
     alwayslink = 1,
 )

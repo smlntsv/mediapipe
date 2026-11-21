@@ -14,14 +14,15 @@
 
 #include "mediapipe/examples/desktop/autoflip/quality/polynomial_regression_path_solver.h"
 
-#include "ceres/autodiff_cost_function.h"
-#include "ceres/cost_function.h"
-#include "ceres/loss_function.h"
-#include "ceres/solver.h"
+#include "absl/log/log.h"                  // from @com_google_absl
+#include "absl/status/status.h"            // from @com_google_absl
+#include "ceres/autodiff_cost_function.h"  // from @ceres_solver
+#include "ceres/cost_function.h"           // from @ceres_solver
+#include "ceres/loss_function.h"           // from @ceres_solver
+#include "ceres/solver.h"                  // from @ceres_solver
 #include "mediapipe/examples/desktop/autoflip/quality/focus_point.pb.h"
 #include "mediapipe/framework/port/opencv_core_inc.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 
 namespace mediapipe {
 namespace autoflip {

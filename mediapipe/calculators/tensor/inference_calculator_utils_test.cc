@@ -25,22 +25,22 @@
 #include <utility>
 #include <vector>
 
-#include "absl/flags/flag.h"
-#include "absl/log/absl_check.h"
-#include "absl/log/log.h"
-#include "absl/status/status.h"
-#include "absl/types/span.h"
+#include "absl/flags/flag.h"      // from @com_google_absl
+#include "absl/log/absl_check.h"  // from @com_google_absl
+#include "absl/log/log.h"         // from @com_google_absl
+#include "absl/status/status.h"   // from @com_google_absl
+#include "absl/types/span.h"      // from @com_google_absl
 #include "mediapipe/calculators/tensor/inference_calculator.pb.h"
 #include "mediapipe/framework/formats/tensor.h"
 #include "mediapipe/framework/port/gmock.h"
 #include "mediapipe/framework/port/gtest.h"
 #include "mediapipe/framework/port/status_matchers.h"
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/cast_test_common.h"
-#include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/string_util.h"
-#include "tensorflow/lite/util.h"
+#include "tflite/c/common.h"                  // from @litert
+#include "tflite/interpreter.h"               // from @litert
+#include "tflite/kernels/cast_test_common.h"  // from @litert
+#include "tflite/schema/schema_generated.h"   // from @litert
+#include "tflite/string_util.h"               // from @litert
+#include "tflite/util.h"                      // from @litert
 
 namespace mediapipe {
 namespace {

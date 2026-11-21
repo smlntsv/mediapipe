@@ -1,0 +1,275 @@
+// Copyright 2024 The MediaPipe Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include "mediapipe/calculators/tensor/litert/litert_utils.h"
+
+#include <cstring>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/status/status.h"                   // from @com_google_absl
+#include "absl/strings/string_view.h"             // from @com_google_absl
+#include "litert/c/litert_tensor_buffer_types.h"  // from @litert
+#include "litert/cc/litert_element_type.h"        // from @litert
+#include "litert/cc/litert_environment.h"         // from @litert
+#include "litert/cc/litert_layout.h"              // from @litert
+#include "litert/cc/litert_ranked_tensor_type.h"  // from @litert
+#include "litert/cc/litert_string_util.h"         // from @litert
+#include "litert/cc/litert_tensor_buffer.h"       // from @litert
+#include "mediapipe/calculators/tensor/litert/litert_service.h"
+#include "mediapipe/framework/formats/tensor.h"
+#include "mediapipe/framework/port/gmock.h"
+#include "mediapipe/framework/port/gtest.h"
+#include "mediapipe/framework/port/status_matchers.h"
+
+namespace mediapipe {
+namespace {
+
+struct TensorTypePair {
+  std::string name;
+  litert::ElementType litert_type;
+  Tensor::ElementType mp_type;
+};
+
+std::vector<TensorTypePair> GetTensorTypePairs() {
+  return {
+      {"Float16", litert::ElementType::Float16, Tensor::ElementType::kFloat16},
+      {"Float32", litert::ElementType::Float32, Tensor::ElementType::kFloat32},
+      {"UInt8", litert::ElementType::UInt8, Tensor::ElementType::kUInt8},
+      {"Int8", litert::ElementType::Int8, Tensor::ElementType::kInt8},
+      {"Int32", litert::ElementType::Int32, Tensor::ElementType::kInt32},
+      {"Int64", litert::ElementType::Int64, Tensor::ElementType::kInt64},
+      {"Bool", litert::ElementType::Bool, Tensor::ElementType::kBool}};
+}
+
+TEST(LiteRtUtilsTest, ShouldSuccessfullyCompareTensorTypes) {
+  const auto tensor_type_pairs = GetTensorTypePairs();
+  for (int i = 0; i < tensor_type_pairs.size(); ++i) {
+    for (int j = 0; j < tensor_type_pairs.size(); ++j) {
+      const auto& config_i = tensor_type_pairs[i];
+      const auto& config_j = tensor_type_pairs[j];
+
+      litert::RankedTensorType litert_tensor_type(
+          config_i.litert_type, litert::Layout(litert::Dimensions{1, 1}));
+      Tensor mp_tensor(config_j.mp_type, Tensor::Shape({1, 1}),
+                       /*memory_manager=*/nullptr,
+                       /*alignment=*/0);
+      const bool are_equal = i == j;
+      const auto status = AreTensorSpecsEqual(litert_tensor_type, mp_tensor);
+      if (are_equal) {
+        MP_EXPECT_OK(status);
+      } else {
+        EXPECT_THAT(status,
+                    absl_testing::StatusIs(absl::StatusCode::kInternal));
+      }
+    }
+  }
+}
+
+TEST(LiteRtUtilsTest, ShouldDetectEqualTensorShapes) {
+  constexpr int kNumElements = 1;
+  litert::RankedTensorType litert_tensor_type(
+      litert::ElementType::Float32,
+      litert::Layout(litert::Dimensions{1, kNumElements}));
+  Tensor mp_tensor(Tensor::ElementType::kFloat32,
+                   Tensor::Shape({1, kNumElements}),
+                   /*memory_manager=*/nullptr,
+                   /*alignment=*/0);
+  MP_EXPECT_OK(AreTensorSpecsEqual(litert_tensor_type, mp_tensor));
+}
+
+TEST(LiteRtUtilsTest,
+     ShouldDetectEqualTensorShapesWithTrailingSingletonDimension) {
+  constexpr int kHeight = 2001;
+  constexpr int kWidth = 128;
+  litert::RankedTensorType litert_tensor_type(
+      litert::ElementType::Float32,
+      litert::Layout(litert::Dimensions{kHeight, kWidth}));
+  Tensor mp_tensor(Tensor::ElementType::kFloat32,
+                   Tensor::Shape({1, kHeight, kWidth, 1}),
+                   /*memory_manager=*/nullptr,
+                   /*alignment=*/0);
+  MP_EXPECT_OK(AreTensorSpecsEqual(litert_tensor_type, mp_tensor));
+
+  litert::RankedTensorType litert_tensor_type_with_trailing(
+      litert::ElementType::Float32,
+      litert::Layout(litert::Dimensions{1, kHeight, kWidth, 1}));
+  Tensor mp_tensor_without_trailing(Tensor::ElementType::kFloat32,
+                                    Tensor::Shape({kHeight, kWidth}),
+                                    /*memory_manager=*/nullptr,
+                                    /*alignment=*/0);
+  MP_EXPECT_OK(AreTensorSpecsEqual(litert_tensor_type_with_trailing,
+                                   mp_tensor_without_trailing));
+}
+
+TEST(LiteRtUtilsTest, ShouldDetectScalarTensorShapes) {
+  // Scalar input in TensorFlow is described by an empty shape.
+  // In MediaPipe, we represent it as a shape with a single dimension of size 1.
+  litert::Dimensions empty_dimensions;
+  litert::RankedTensorType litert_tensor_type(
+      litert::ElementType::Float32,
+      litert::Layout(std::move(empty_dimensions)));
+  Tensor mp_tensor(Tensor::ElementType::kFloat32, Tensor::Shape({1, 1}),
+                   /*memory_manager=*/nullptr,
+                   /*alignment=*/0);
+  MP_EXPECT_OK(AreTensorSpecsEqual(litert_tensor_type, mp_tensor));
+}
+
+TEST(LiteRtUtilsTest, ShouldDetectDifferentTensorShapes) {
+  litert::RankedTensorType litert_tensor_type(
+      litert::ElementType::Float32, litert::Layout(litert::Dimensions{1, 2}));
+  Tensor mp_tensor(Tensor::ElementType::kFloat32, Tensor::Shape({1, 1}),
+                   /*memory_manager=*/nullptr,
+                   /*alignment=*/0);
+  EXPECT_THAT(AreTensorSpecsEqual(litert_tensor_type, mp_tensor),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInternal,
+                  testing::HasSubstr("LiteRt [2] and MediaPipe [1]")));
+}
+
+class CreateTensorFromLiteRtRankedTensorTypeTest
+    : public ::testing::TestWithParam<TensorTypePair> {};
+
+TEST_P(CreateTensorFromLiteRtRankedTensorTypeTest,
+       ShouldAllocateTensorWithLiteRtTensorSpecs) {
+  const int kNumElements = 4;
+  const auto& config = GetParam();
+
+  litert::RankedTensorType litert_tensor_type(
+      config.litert_type, litert::Layout(litert::Dimensions{1, kNumElements}));
+
+  MP_ASSERT_OK_AND_ASSIGN(
+      Tensor mp_tensor,
+      CreateTensorFromLiteRtRankedTensorType(
+          litert_tensor_type,
+          /*memory_manager=*/nullptr, LITERT_HOST_MEMORY_BUFFER_ALIGNMENT));
+  EXPECT_EQ(mp_tensor.element_type(), config.mp_type);
+  EXPECT_EQ(mp_tensor.shape().num_elements(), kNumElements);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    AllocateTensorWithLiteRtTensorSpecsParamTest,
+    CreateTensorFromLiteRtRankedTensorTypeTest,
+    ::testing::ValuesIn(GetTensorTypePairs()),
+    [](const testing::TestParamInfo<
+        CreateTensorFromLiteRtRankedTensorTypeTest::ParamType>& info) {
+      return info.param.name;
+    });
+
+TEST(CreateLiteRtEnvironmentTest, MissingRuntimeHandleFails) {
+  EXPECT_THAT(CreateLiteRtEnvironment(LiteRtSystemHandles{}),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(LiteRtUtilsTest, CreateTensorFromLiteRtRankedTensorTypeKeepsQuantization) {
+  litert::RankedTensorType litert_tensor_type(
+      litert::ElementType::UInt8, litert::Layout(litert::Dimensions{1, 4}));
+  MP_ASSERT_OK_AND_ASSIGN(
+      Tensor tensor,
+      CreateTensorFromLiteRtRankedTensorType(
+          litert_tensor_type, /*memory_manager=*/nullptr, /*alignment=*/0,
+          Tensor::QuantizationParameters{0.5f, 3}));
+  EXPECT_EQ(tensor.element_type(), Tensor::ElementType::kUInt8);
+  EXPECT_FLOAT_EQ(tensor.quantization_parameters().scale, 0.5f);
+  EXPECT_EQ(tensor.quantization_parameters().zero_point, 3);
+}
+
+TEST(LiteRtUtilsTest,
+     CreateTensorFromLiteRtRankedTensorTypeDefaultQuantization) {
+  litert::RankedTensorType litert_tensor_type(
+      litert::ElementType::Float32, litert::Layout(litert::Dimensions{1, 4}));
+  MP_ASSERT_OK_AND_ASSIGN(
+      Tensor tensor,
+      CreateTensorFromLiteRtRankedTensorType(
+          litert_tensor_type, /*memory_manager=*/nullptr, /*alignment=*/0));
+  EXPECT_FLOAT_EQ(tensor.quantization_parameters().scale, 1.0f);
+  EXPECT_EQ(tensor.quantization_parameters().zero_point, 0);
+}
+
+Tensor MakeCharTensor(absl::string_view text) {
+  Tensor tensor(Tensor::ElementType::kChar,
+                Tensor::Shape({static_cast<int>(text.size())}));
+  if (!text.empty()) {
+    auto write_view = tensor.GetCpuWriteView();
+    std::memcpy(write_view.buffer<char>(), text.data(), text.size());
+  }
+  return tensor;
+}
+
+TEST(CreateStringInputTensorBufferTest, SerializesNonEmptyAndEmptyCharTensors) {
+  auto env = litert::Environment::Create({});
+  ASSERT_TRUE(env);
+  const litert::RankedTensorType model_type(
+      litert::ElementType::TfString, litert::Layout(litert::Dimensions{1}));
+
+  MP_ASSERT_OK_AND_ASSIGN(
+      litert::TensorBuffer buffer,
+      CreateStringInputTensorBuffer(*env, model_type, MakeCharTensor("hello")));
+  auto strings = litert::util::GetStringsFromTensorBuffer(buffer);
+  ASSERT_TRUE(strings);
+  EXPECT_THAT(*strings, testing::ElementsAre("hello"));
+
+  // Empty MP tensor (shape [0], 0 bytes) becomes one empty string.
+  MP_ASSERT_OK_AND_ASSIGN(
+      litert::TensorBuffer empty_buffer,
+      CreateStringInputTensorBuffer(*env, model_type, MakeCharTensor("")));
+  auto empty_strings = litert::util::GetStringsFromTensorBuffer(empty_buffer);
+  ASSERT_TRUE(empty_strings);
+  EXPECT_THAT(*empty_strings, testing::ElementsAre(""));
+}
+
+TEST(CreateStringInputTensorBufferTest, ResolvesDynamicModelDimensionToOne) {
+  auto env = litert::Environment::Create({});
+  ASSERT_TRUE(env);
+  const litert::RankedTensorType dynamic_model_type(
+      litert::ElementType::TfString, litert::Layout(litert::Dimensions{-1}));
+
+  MP_ASSERT_OK_AND_ASSIGN(litert::TensorBuffer buffer,
+                          CreateStringInputTensorBuffer(
+                              *env, dynamic_model_type, MakeCharTensor("abc")));
+  auto tensor_type = buffer.TensorType();
+  ASSERT_TRUE(tensor_type);
+  EXPECT_THAT(tensor_type->Layout().Dimensions(), testing::ElementsAre(1));
+  auto strings = litert::util::GetStringsFromTensorBuffer(buffer);
+  ASSERT_TRUE(strings);
+  EXPECT_THAT(*strings, testing::ElementsAre("abc"));
+}
+
+TEST(CreateStringInputTensorBufferTest, FailsWithNonStringModelTensor) {
+  auto env = litert::Environment::Create({});
+  ASSERT_TRUE(env);
+  const litert::RankedTensorType float_model_type(
+      litert::ElementType::Float32, litert::Layout(litert::Dimensions{1}));
+
+  EXPECT_THAT(CreateStringInputTensorBuffer(*env, float_model_type,
+                                            MakeCharTensor("abc")),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     testing::HasSubstr("not TfString")));
+}
+
+TEST(CreateStringInputTensorBufferTest, FailsWithNonCharTensor) {
+  auto env = litert::Environment::Create({});
+  ASSERT_TRUE(env);
+  const litert::RankedTensorType model_type(
+      litert::ElementType::TfString, litert::Layout(litert::Dimensions{1}));
+  Tensor float_tensor(Tensor::ElementType::kFloat32, Tensor::Shape({1}));
+
+  EXPECT_THAT(CreateStringInputTensorBuffer(*env, model_type, float_tensor),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     testing::HasSubstr("kChar")));
+}
+
+}  // namespace
+}  // namespace mediapipe

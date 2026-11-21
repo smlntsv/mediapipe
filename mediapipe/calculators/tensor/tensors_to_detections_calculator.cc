@@ -12,11 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <algorithm>
+#include <cmath>
 #include <unordered_map>
 #include <vector>
 
-#include "absl/strings/str_format.h"
-#include "absl/types/span.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/strings/str_format.h"    // from @com_google_absl
+#include "absl/types/span.h"            // from @com_google_absl
 #include "mediapipe/calculators/tensor/tensors_to_detections_calculator.pb.h"
 #include "mediapipe/framework/api2/node.h"
 #include "mediapipe/framework/calculator_framework.h"
@@ -27,6 +31,7 @@
 #include "mediapipe/framework/formats/tensor.h"
 #include "mediapipe/framework/port.h"
 #include "mediapipe/framework/port/ret_check.h"
+#include "mediapipe/gpu/gpu_service.h"
 
 // Note: On Apple platforms MEDIAPIPE_DISABLE_GL_COMPUTE is automatically
 // defined in mediapipe/framework/port.h. Therefore,
@@ -268,10 +273,10 @@ absl::Status TensorsToDetectionsCalculator::UpdateContract(
     CalculatorContract* cc) {
   if (CanUseGpu()) {
 #ifndef MEDIAPIPE_DISABLE_GL_COMPUTE
-    MP_RETURN_IF_ERROR(mediapipe::GlCalculatorHelper::UpdateContract(
+    ABSL_RETURN_IF_ERROR(mediapipe::GlCalculatorHelper::UpdateContract(
         cc, /*request_gpu_as_optional=*/true));
 #elif MEDIAPIPE_METAL_ENABLED
-    MP_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         [MPPMetalHelper updateContract:cc requestGpuAsOptional:true]);
 #endif  // !defined(MEDIAPIPE_DISABLE_GL_COMPUTE)
   }
@@ -280,9 +285,9 @@ absl::Status TensorsToDetectionsCalculator::UpdateContract(
 }
 
 absl::Status TensorsToDetectionsCalculator::Open(CalculatorContext* cc) {
-  MP_RETURN_IF_ERROR(LoadOptions(cc));
+  ABSL_RETURN_IF_ERROR(LoadOptions(cc));
 
-  if (CanUseGpu()) {
+  if (CanUseGpu() && cc->Service(mediapipe::kGpuService).IsAvailable()) {
 #ifndef MEDIAPIPE_DISABLE_GL_COMPUTE
 #elif MEDIAPIPE_METAL_ENABLED
     // The GPU service is requested as optional (see UpdateContract). When its
@@ -302,22 +307,29 @@ absl::Status TensorsToDetectionsCalculator::Open(CalculatorContext* cc) {
 
 absl::Status TensorsToDetectionsCalculator::Process(CalculatorContext* cc) {
   auto output_detections = std::make_unique<std::vector<Detection>>();
+  const auto& input_tensors = *kInTensors(cc);
+  for (const auto& tensor : input_tensors) {
+    RET_CHECK(tensor.element_type() == Tensor::ElementType::kFloat32);
+  }
+  const int num_input_tensors = input_tensors.size();
+  // Models with in-model post-processing output 4 tensors: boxes, classes,
+  // scores and the number of detections. Only ProcessCPU decodes this format.
+  const bool has_in_model_postprocessing = num_input_tensors == 4;
   bool gpu_processing = false;
-  if (CanUseGpu() && gpu_has_enough_work_groups_) {
-    // Use GPU processing only if at least one input tensor is already on GPU
-    // (to avoid CPU->GPU overhead).
-    for (const auto& tensor : *kInTensors(cc)) {
+  if (!has_in_model_postprocessing && CanUseGpu() &&
+      cc->Service(mediapipe::kGpuService).IsAvailable() &&
+      gpu_has_enough_work_groups_) {
+    // Decode raw box and score tensors on GPU only if at least one input
+    // tensor is already on GPU (to avoid CPU->GPU overhead). Post-processed
+    // tensors are read back on CPU even when they are GPU-resident, e.g.
+    // zero-copy OpenGL buffers from a fully GPU-delegated model.
+    for (const auto& tensor : input_tensors) {
       if (tensor.ready_on_gpu()) {
         gpu_processing = true;
         break;
       }
     }
   }
-  const auto& input_tensors = *kInTensors(cc);
-  for (const auto& tensor : input_tensors) {
-    RET_CHECK(tensor.element_type() == Tensor::ElementType::kFloat32);
-  }
-  const int num_input_tensors = input_tensors.size();
   if (!scores_tensor_index_is_set_) {
     if (num_input_tensors == 2 ||
         num_input_tensors == kNumInputTensorsWithAnchors) {
@@ -327,9 +339,9 @@ absl::Status TensorsToDetectionsCalculator::Process(CalculatorContext* cc) {
     }
     scores_tensor_index_is_set_ = true;
   }
-  if (gpu_processing || num_input_tensors != 4) {
-    // Allows custom bounding box indices when receiving 4 cpu tensors.
-    // Uses the default bbox indices in other cases.
+  if (!has_in_model_postprocessing) {
+    // Allows custom bounding box indices only for models with in-model
+    // post-processing. Uses the default bbox indices in other cases.
     RET_CHECK(!has_custom_box_indices_);
   }
 
@@ -347,9 +359,9 @@ absl::Status TensorsToDetectionsCalculator::Process(CalculatorContext* cc) {
     }
   }
   if (gpu_processing && gpu_inited_) {
-    MP_RETURN_IF_ERROR(ProcessGPU(cc, output_detections.get()));
+    ABSL_RETURN_IF_ERROR(ProcessGPU(cc, output_detections.get()));
   } else {
-    MP_RETURN_IF_ERROR(ProcessCPU(cc, output_detections.get()));
+    ABSL_RETURN_IF_ERROR(ProcessCPU(cc, output_detections.get()));
   }
 
   kOutDetections(cc).Send(std::move(output_detections));
@@ -426,7 +438,7 @@ absl::Status TensorsToDetectionsCalculator::ProcessCPU(
       anchors_init_ = true;
     }
     std::vector<float> boxes(num_boxes_ * num_coords_);
-    MP_RETURN_IF_ERROR(DecodeBoxes(raw_boxes, anchors_, &boxes));
+    ABSL_RETURN_IF_ERROR(DecodeBoxes(raw_boxes, anchors_, &boxes));
 
     std::vector<float> detection_scores(num_boxes_);
     std::vector<int> detection_classes(num_boxes_);
@@ -460,7 +472,7 @@ absl::Status TensorsToDetectionsCalculator::ProcessCPU(
       detection_classes[i] = class_id;
     }
 
-    MP_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         ConvertToDetections(boxes.data(), detection_scores.data(),
                             detection_classes.data(), output_detections));
   } else {
@@ -491,9 +503,16 @@ absl::Status TensorsToDetectionsCalculator::ProcessCPU(
     RET_CHECK_EQ(detection_scores_tensor->shape().dims[0], 1);
     RET_CHECK_EQ(detection_scores_tensor->shape().dims[1], max_detections);
 
-    auto num_boxes_view = num_boxes_tensor->GetCpuReadView();
-    auto num_boxes = num_boxes_view.buffer<float>();
-    num_boxes_ = num_boxes[0];
+    // Holds at most one tensor view at a time: the tensors can be in any order
+    // (see tensor_mapping), while their producer may hold the views of all of
+    // them in the output order. Requesting several views here in a different
+    // order causes 'Potential mutex deadlock' when compiled without '-c opt'.
+    float raw_num_boxes = 0.0f;
+    {
+      const Tensor::CpuReadView num_boxes_view =
+          num_boxes_tensor->GetCpuReadView();
+      raw_num_boxes = num_boxes_view.buffer<float>()[0];
+    }
     // The detection model with Detection_PostProcess op may output duplicate
     // boxes with different classes, in the following format:
     //   num_boxes_tensor = [num_boxes]
@@ -503,22 +522,38 @@ absl::Status TensorsToDetectionsCalculator::ProcessCPU(
     // Each box repeats classes_per_detection_ times.
     // Note Detection_PostProcess op is only supported in CPU.
     classes_per_detection_ = options_.max_classes_per_detection();
+    RET_CHECK_GT(classes_per_detection_, 0);
+    RET_CHECK_GE(max_detections, 0);
+    RET_CHECK(std::isfinite(raw_num_boxes));
+    RET_CHECK_GE(raw_num_boxes, 0.0f);
+    RET_CHECK_LE(static_cast<double>(raw_num_boxes),
+                 static_cast<double>(max_detections / classes_per_detection_));
+    num_boxes_ = static_cast<int>(raw_num_boxes);
 
-    auto detection_boxes_view = detection_boxes_tensor->GetCpuReadView();
-    auto detection_boxes = detection_boxes_view.buffer<float>();
-
-    auto detection_scores_view = detection_scores_tensor->GetCpuReadView();
-    auto detection_scores = detection_scores_view.buffer<float>();
-
-    auto detection_classes_view = detection_classes_tensor->GetCpuReadView();
-    auto detection_classes_ptr = detection_classes_view.buffer<float>();
-    std::vector<int> detection_classes(num_boxes_ * classes_per_detection_);
-    for (int i = 0; i < detection_classes.size(); ++i) {
-      detection_classes[i] = static_cast<int>(detection_classes_ptr[i]);
+    const int num_values = num_boxes_ * classes_per_detection_;
+    std::vector<float> detection_scores(num_values);
+    {
+      const Tensor::CpuReadView detection_scores_view =
+          detection_scores_tensor->GetCpuReadView();
+      const float* detection_scores_ptr = detection_scores_view.buffer<float>();
+      std::copy(detection_scores_ptr, detection_scores_ptr + num_values,
+                detection_scores.begin());
     }
-    MP_RETURN_IF_ERROR(ConvertToDetections(detection_boxes, detection_scores,
-                                           detection_classes.data(),
-                                           output_detections));
+    std::vector<int> detection_classes(num_values);
+    {
+      const Tensor::CpuReadView detection_classes_view =
+          detection_classes_tensor->GetCpuReadView();
+      const float* detection_classes_ptr =
+          detection_classes_view.buffer<float>();
+      for (int i = 0; i < num_values; ++i) {
+        detection_classes[i] = static_cast<int>(detection_classes_ptr[i]);
+      }
+    }
+    const Tensor::CpuReadView detection_boxes_view =
+        detection_boxes_tensor->GetCpuReadView();
+    ABSL_RETURN_IF_ERROR(ConvertToDetections(
+        detection_boxes_view.buffer<float>(), detection_scores.data(),
+        detection_classes.data(), output_detections));
   }
   return absl::OkStatus();
 }
@@ -530,9 +565,9 @@ absl::Status TensorsToDetectionsCalculator::ProcessGPU(
   RET_CHECK_GT(num_boxes_, 0) << "Please set num_boxes in calculator options";
 #ifndef MEDIAPIPE_DISABLE_GL_COMPUTE
 
-  MP_RETURN_IF_ERROR(gpu_helper_.RunInGlContext([this, &input_tensors, &cc,
-                                                 &output_detections]()
-                                                    -> absl::Status {
+  ABSL_RETURN_IF_ERROR(gpu_helper_.RunInGlContext([this, &input_tensors, &cc,
+                                                   &output_detections]()
+                                                      -> absl::Status {
     if (!anchors_init_) {
       if (input_tensors.size() == kNumInputTensorsWithAnchors) {
         auto read_view = input_tensors[tensor_mapping_.anchors_tensor_index()]
@@ -596,9 +631,9 @@ absl::Status TensorsToDetectionsCalculator::ProcessGPU(
   }
   auto decoded_boxes_view = decoded_boxes_buffer_->GetCpuReadView();
   auto boxes = decoded_boxes_view.buffer<float>();
-  MP_RETURN_IF_ERROR(ConvertToDetections(boxes, detection_scores.data(),
-                                         detection_classes.data(),
-                                         output_detections));
+  ABSL_RETURN_IF_ERROR(ConvertToDetections(boxes, detection_scores.data(),
+                                           detection_classes.data(),
+                                           output_detections));
 #elif MEDIAPIPE_METAL_ENABLED
   // GPU-resident input tensors with no Metal helper means the optional GPU
   // service was unavailable at Open; fail recoverably instead of silently
@@ -688,9 +723,9 @@ absl::Status TensorsToDetectionsCalculator::ProcessGPU(
   }
   auto decoded_boxes_view = decoded_boxes_buffer_->GetCpuReadView();
   auto boxes = decoded_boxes_view.buffer<float>();
-  MP_RETURN_IF_ERROR(ConvertToDetections(boxes, detection_scores.data(),
-                                         detection_classes.data(),
-                                         output_detections));
+  ABSL_RETURN_IF_ERROR(ConvertToDetections(boxes, detection_scores.data(),
+                                           detection_classes.data(),
+                                           output_detections));
 
 #else
   ABSL_LOG(ERROR) << "GPU input on non-Android not supported yet.";
@@ -979,9 +1014,9 @@ absl::Status TensorsToDetectionsCalculator::GpuInit(CalculatorContext* cc) {
       break;
   }
 #ifndef MEDIAPIPE_DISABLE_GL_COMPUTE
-  MP_RETURN_IF_ERROR(gpu_helper_.Open(cc));
-  MP_RETURN_IF_ERROR(gpu_helper_.RunInGlContext([this, output_format_flag]()
-                                                    -> absl::Status {
+  ABSL_RETURN_IF_ERROR(gpu_helper_.Open(cc));
+  ABSL_RETURN_IF_ERROR(gpu_helper_.RunInGlContext([this, output_format_flag]()
+                                                      -> absl::Status {
     // A shader to decode detection boxes.
     const std::string decode_src = absl::Substitute(
         R"( #version 310 es

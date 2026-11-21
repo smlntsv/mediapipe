@@ -21,14 +21,15 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
-#include "absl/log/absl_check.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "absl/log/absl_check.h"   // from @com_google_absl
+#include "absl/status/status.h"    // from @com_google_absl
+#include "absl/status/statusor.h"  // from @com_google_absl
 #include "mediapipe/framework/formats/image.h"
 #include "mediapipe/tasks/c/core/base_options_converter.h"
 #include "mediapipe/tasks/c/core/common.h"
 #include "mediapipe/tasks/c/core/mp_status.h"
 #include "mediapipe/tasks/c/core/mp_status_converter.h"
+#include "mediapipe/tasks/c/core/result_callback.h"
 #include "mediapipe/tasks/c/vision/core/image.h"
 #include "mediapipe/tasks/c/vision/core/image_frame_util.h"
 #include "mediapipe/tasks/c/vision/core/image_processing_options.h"
@@ -54,7 +55,7 @@ using ::mediapipe::tasks::c::components::containers::
 using ::mediapipe::tasks::c::components::containers::
     CppConvertToImageSegmenterResult;
 using ::mediapipe::tasks::c::core::CppConvertToBaseOptions;
-using ::mediapipe::tasks::c::core::ToMpStatus;
+using ::mediapipe::tasks::c::core::ResultCallback;
 using ::mediapipe::tasks::c::vision::core::CppConvertToImageProcessingOptions;
 using ::mediapipe::tasks::vision::core::RunningMode;
 using ::mediapipe::tasks::vision::image_segmenter::ImageSegmenter;
@@ -98,20 +99,20 @@ absl::Status CppImageSegmenterCreate(const MpImageSegmenterOptions& options,
           "Provided null pointer to callback function.");
     }
 
-    MpImageSegmenterOptions::result_callback_fn result_callback =
-        options.result_callback;
+    const ResultCallback result_callback(options.result_callback,
+                                         options.result_callback_user_data);
     cpp_options->result_callback =
         [result_callback](absl::StatusOr<CppImageSegmenterResult> cpp_result,
                           const Image& image, int64_t timestamp) {
           MpImageInternal mp_image({.image = image});
           if (!cpp_result.ok()) {
-            result_callback(ToMpStatus(cpp_result.status()), nullptr, &mp_image,
-                            timestamp);
+            result_callback.InvokeWithError(cpp_result.status(), &mp_image,
+                                            timestamp);
             return;
           }
           MpImageSegmenterResult result;
           CppConvertToImageSegmenterResult(*cpp_result, &result);
-          result_callback(kMpOk, &result, &mp_image, timestamp);
+          result_callback.InvokeWithResult(&result, &mp_image, timestamp);
           CppCloseImageSegmenterResult(&result);
         };
   }
@@ -186,12 +187,12 @@ void CppImageSegmenterCloseResult(MpImageSegmenterResult* result) {
 
 absl::Status CppImageSegmenterClose(MpImageSegmenterPtr segmenter) {
   auto cpp_segmenter = GetCppSegmenter(segmenter);
-  auto result = cpp_segmenter->Close();
-  if (!result.ok()) {
-    return result;
-  }
+  absl::Status status = cpp_segmenter->Close();
+  // The segmenter is freed even if it fails to close: once this function
+  // returns, the result callback is not invoked anymore, so that the caller
+  // can release `result_callback_user_data`.
   delete segmenter;
-  return absl::OkStatus();
+  return status;
 }
 
 absl::Status CppImageSegmenterGetLabels(MpImageSegmenterPtr segmenter,
