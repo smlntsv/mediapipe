@@ -215,3 +215,33 @@ alias(
     }),
     visibility = ["//visibility:public"],
 )
+
+# Fork addition: the C API library shipped as MediaPipeTasksC.xcframework by
+# the MediaPipeTasks Swift package (mediapipe/tasks/macos/build_*_xcframework.sh).
+# Vision tasks only: the monolithic :mediapipe_source also links the audio, text
+# and retrieval domains (LiteRT-LM, SQLite, ...), none of which the Swift package
+# exposes. Symbols keep default visibility, as with :mediapipe_source on Apple.
+cc_binary(
+    name = "mediapipe_tasks_c_apple",
+    linkshared = True,
+    linkstatic = True,
+    tags = [
+        "manual",
+        "nobuilder",
+        "notap",
+    ],
+    deps = MEDIAPIPE_TASKS_C_CORE_DEPS + MEDIAPIPE_TASKS_C_VISION_DEPS,
+)
+
+# Copies the library to a fixed bazel-bin path for the build scripts.
+genrule(
+    name = "mediapipe_tasks_c_apple_dylib",
+    srcs = [":mediapipe_tasks_c_apple"],
+    outs = ["MediaPipeTasksC.dylib"],
+    cmd = "cp $< $@",
+    tags = [
+        "manual",
+        "nobuilder",
+        "notap",
+    ],
+)

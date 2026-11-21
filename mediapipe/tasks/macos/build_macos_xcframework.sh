@@ -83,9 +83,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-BAZEL_TARGET="//mediapipe/tasks/c:mediapipe_macos"
-# `mediapipe_macos` genrule emits libmediapipe.dylib next to the target package.
-DYLIB_BAZEL_PATH="bazel-bin/mediapipe/tasks/c/libmediapipe.dylib"
+BAZEL_TARGET="//mediapipe/tasks/c:mediapipe_tasks_c_apple_dylib"
+# Vision-only C API library (see the target in mediapipe/tasks/c/BUILD).
+DYLIB_BAZEL_PATH="bazel-bin/mediapipe/tasks/c/MediaPipeTasksC.dylib"
 
 if [[ "$(uname)" != "Darwin" ]]; then
   echo "error: this script only runs on macOS." >&2

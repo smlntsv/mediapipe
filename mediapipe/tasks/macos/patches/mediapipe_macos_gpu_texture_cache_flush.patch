@@ -43,10 +43,10 @@
 # deterministically.
 #
 diff --git a/mediapipe/gpu/MPPMetalHelper.cc b/mediapipe/gpu/MPPMetalHelper.cc
-index c0a131fc2..6195f946e 100644
+index eabcc3079..35d222f87 100644
 --- a/mediapipe/gpu/MPPMetalHelper.cc
 +++ b/mediapipe/gpu/MPPMetalHelper.cc
-@@ -204,11 +204,26 @@ class MetalHelperLegacySupport {
+@@ -211,11 +211,26 @@ class MetalHelperLegacySupport {
        break;
    }
  
@@ -77,10 +77,10 @@ index c0a131fc2..6195f946e 100644
    return texture;
  }
 diff --git a/mediapipe/gpu/gpu_buffer_storage_cv_pixel_buffer.cc b/mediapipe/gpu/gpu_buffer_storage_cv_pixel_buffer.cc
-index 5983758f9..ccd713bf2 100644
+index 89740cc3e..645216164 100644
 --- a/mediapipe/gpu/gpu_buffer_storage_cv_pixel_buffer.cc
 +++ b/mediapipe/gpu/gpu_buffer_storage_cv_pixel_buffer.cc
-@@ -33,6 +33,21 @@ GlTextureView GpuBufferStorageCvPixelBuffer::GetTexture(
+@@ -167,6 +167,21 @@ GlTextureView GpuBufferStorageCvPixelBuffer::GetTexture(
    auto gl_context = GlContext::GetCurrent();
    ABSL_CHECK(gl_context);
  #if TARGET_OS_OSX
@@ -100,5 +100,5 @@ index 5983758f9..ccd713bf2 100644
 +  CVOpenGLTextureCacheFlush(gl_context->cv_texture_cache(), 0);
 +
    CVTextureType cv_texture_temp;
-   err = CVOpenGLTextureCacheCreateTextureFromImage(
+   CVReturn err = CVOpenGLTextureCacheCreateTextureFromImage(
        kCFAllocatorDefault, gl_context->cv_texture_cache(), **this, NULL,

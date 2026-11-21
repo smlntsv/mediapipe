@@ -62,8 +62,9 @@ WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "${WORK_DIR}"' EXIT
 
 # The C dynamic library target (shared by every platform).
-BAZEL_TARGET="//mediapipe/tasks/c:mediapipe_source"
-DYLIB_BAZEL_PATH="bazel-bin/mediapipe/tasks/c/libmediapipe_source.dylib"
+BAZEL_TARGET="//mediapipe/tasks/c:mediapipe_tasks_c_apple_dylib"
+# Vision-only C API library (see the target in mediapipe/tasks/c/BUILD).
+DYLIB_BAZEL_PATH="bazel-bin/mediapipe/tasks/c/MediaPipeTasksC.dylib"
 
 if [[ "$(uname)" != "Darwin" ]]; then
   echo "error: this script only runs on macOS." >&2
