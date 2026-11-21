@@ -23,7 +23,7 @@ import CoreGraphics
 import CryptoKit
 import Foundation
 import ImageIO
-import MediaPipeTasksMac
+import MediaPipeTasks
 
 // MARK: - Config
 
@@ -70,7 +70,7 @@ struct CategoryJSON: Codable {
     let score: Float
     let categoryName: String?
     let displayName: String?
-    init(_ c: MediaPipeTasksMac.Category) {
+    init(_ c: MediaPipeTasks.Category) {
         index = c.index; score = c.score
         categoryName = c.categoryName; displayName = c.displayName
     }

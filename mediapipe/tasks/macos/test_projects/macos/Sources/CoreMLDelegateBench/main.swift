@@ -30,7 +30,7 @@ import CoreGraphics
 import CoreVideo
 import Foundation
 import ImageIO
-import MediaPipeTasksMac
+import MediaPipeTasks
 
 let sharedDir = CommandLine.arguments.count > 1
     ? CommandLine.arguments[1]

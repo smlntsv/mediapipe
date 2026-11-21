@@ -1,6 +1,6 @@
 // swift-tools-version:5.9
 // Minimal native macOS smoke-test app that depends on the local root
-// MediaPipeTasksMac package (by relative path) and exports parity JSON.
+// MediaPipeTasks package (by relative path) and exports parity JSON.
 import PackageDescription
 
 let package = Package(
@@ -13,21 +13,21 @@ let package = Package(
         .executable(name: "CoreMLDelegateBench", targets: ["CoreMLDelegateBench"]),
     ],
     dependencies: [
-        // Repo root (where the MediaPipeTasksMac Package.swift lives).
+        // Repo root (where the MediaPipeTasks Package.swift lives).
         .package(path: "../../../../..")
     ],
     targets: [
         .executableTarget(
             name: "ParitySmokeTest",
             dependencies: [
-                .product(name: "MediaPipeTasksMac", package: "mediapipe")
+                .product(name: "MediaPipeTasks", package: "mediapipe")
             ],
             path: "Sources/ParitySmokeTest"
         ),
         .executableTarget(
             name: "CoreMLDelegateBench",
             dependencies: [
-                .product(name: "MediaPipeTasksMac", package: "mediapipe")
+                .product(name: "MediaPipeTasks", package: "mediapipe")
             ],
             path: "Sources/CoreMLDelegateBench"
         ),
