@@ -99,6 +99,16 @@ CalculatorGraphConfig CreateGraphConfig(
   return graph.GetConfig();
 }
 
+// Fork addition: on Apple platforms keep the TFLite path (Metal delegate on
+// GPU, XNNPACK on CPU). LiteRT's GPU accelerator is a closed-source prebuilt
+// that the fork does not ship, so with LiteRT a GPU request fails with "No GPU
+// accelerator is registered in the LiteRT environment".
+#if defined(__APPLE__)
+constexpr bool kUseLiteRt = false;
+#else
+constexpr bool kUseLiteRt = true;
+#endif  // defined(__APPLE__)
+
 // Converts the user-facing HandLandmarkerOptions struct to the internal
 // HandLandmarkerGraphOptions proto.
 std::unique_ptr<HandLandmarkerGraphOptionsProto>
@@ -106,7 +116,7 @@ ConvertHandLandmarkerGraphOptionsProto(HandLandmarkerOptions* options) {
   auto options_proto = std::make_unique<HandLandmarkerGraphOptionsProto>();
   auto base_options_proto = std::make_unique<tasks::core::proto::BaseOptions>(
       tasks::core::ConvertBaseOptionsToProto(&(options->base_options),
-                                             /*use_litert=*/true));
+                                             /*use_litert=*/kUseLiteRt));
   options_proto->mutable_base_options()->Swap(base_options_proto.get());
   options_proto->mutable_base_options()->set_use_stream_mode(
       options->running_mode != core::RunningMode::IMAGE);

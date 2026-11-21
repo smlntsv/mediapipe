@@ -19,9 +19,11 @@
 #include "mediapipe/framework/port/logging.h"
 
 // Fork addition: the macOS build links OpenCV 3.4, which has no CV_16F (added
-// in OpenCV 4). There, half-float frames are exposed as 16-bit unsigned Mats,
-// which keeps their element size and memory layout; no vision task produces
-// half-float frames.
+// in OpenCV 4). There, half-float frames are exposed as 16-bit unsigned Mats:
+// element size and memory layout are right, so copies and views are safe, but
+// OpenCV arithmetic or conversions would read the halves as integers. No
+// vision task shipped by the fork produces half-float frames. Remove once the
+// macOS build moves to OpenCV 4.
 #ifndef CV_16F
 #define CV_16F CV_16U
 #define CV_16FC2 CV_16UC2
