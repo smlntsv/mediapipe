@@ -1,0 +1,70 @@
+baseline : native-x86_64 | MacBookPro16,1 | Intel(R) Core(TM) i9-9880H CPU @ 2.30GHz | macOS 26.7.1 | GPU AMD Radeon Pro 5500M
+candidate: native-x86_64 | MacBookPro16,1 | Intel(R) Core(TM) i9-9880H CPU @ 2.30GHz | macOS 26.7.1 | GPU AMD Radeon Pro 5500M
+
+## image_coreml.json
+  test_image.jpg                 hands 2/2 [Left,Right]/[Left,Right] max|dxy|=0.00000 max|dz|=0.00000 max|dworld|=0.00000m d_score=0.0000 PASS
+                                 latency mean 15.68 / 15.77 ms (p90 17.22 / 17.91)
+  two-hands-only_12000ms.png     hands 1/1 [Left]/[Left] max|dxy|=0.00000 max|dz|=0.00000 max|dworld|=0.00000m d_score=0.0000 PASS
+                                 latency mean 17.16 / 16.59 ms (p90 19.49 / 17.42)
+  two-hands-only_1500ms.png      hands 1/1 [Left]/[Left] max|dxy|=0.00000 max|dz|=0.00000 max|dworld|=0.00000m d_score=0.0000 PASS
+                                 latency mean 16.94 / 16.68 ms (p90 18.12 / 17.53)
+  two-hands-only_8000ms.png      hands 2/2 [Left,Right]/[Left,Right] max|dxy|=0.00000 max|dz|=0.00000 max|dworld|=0.00000m d_score=0.0000 PASS
+                                 latency mean 21.42 / 21.56 ms (p90 21.75 / 22.59)
+  => PASS
+
+## image_cpu.json
+  test_image.jpg                 hands 2/2 [Left,Right]/[Left,Right] max|dxy|=0.00000 max|dz|=0.00000 max|dworld|=0.00000m d_score=0.0000 PASS
+                                 latency mean 35.68 / 35.71 ms (p90 35.97 / 36.45)
+  two-hands-only_12000ms.png     hands 1/1 [Left]/[Left] max|dxy|=0.00000 max|dz|=0.00000 max|dworld|=0.00000m d_score=0.0000 PASS
+                                 latency mean 28.92 / 28.97 ms (p90 29.72 / 29.81)
+  two-hands-only_1500ms.png      hands 1/1 [Left]/[Left] max|dxy|=0.00000 max|dz|=0.00000 max|dworld|=0.00000m d_score=0.0000 PASS
+                                 latency mean 35.05 / 28.49 ms (p90 46.43 / 29.00)
+  two-hands-only_8000ms.png      hands 2/2 [Left,Right]/[Left,Right] max|dxy|=0.00000 max|dz|=0.00000 max|dworld|=0.00000m d_score=0.0000 PASS
+                                 latency mean 40.09 / 38.04 ms (p90 41.49 / 39.11)
+  => PASS
+
+## image_gpu.json
+  test_image.jpg                 hands 2/2 [Left,Right]/[Left,Right] max|dxy|=0.00000 max|dz|=0.00000 max|dworld|=0.00000m d_score=0.0000 PASS
+                                 latency mean 23.03 / 22.86 ms (p90 23.53 / 23.52)
+  two-hands-only_12000ms.png     hands 1/1 [Left]/[Left] max|dxy|=0.00000 max|dz|=0.00000 max|dworld|=0.00000m d_score=0.0000 PASS
+                                 latency mean 24.20 / 23.26 ms (p90 26.67 / 24.84)
+  two-hands-only_1500ms.png      hands 1/1 [Left]/[Left] max|dxy|=0.00000 max|dz|=0.00000 max|dworld|=0.00000m d_score=0.0000 PASS
+                                 latency mean 26.39 / 23.70 ms (p90 28.23 / 24.77)
+  two-hands-only_8000ms.png      hands 2/2 [Left,Right]/[Left,Right] max|dxy|=0.00000 max|dz|=0.00000 max|dworld|=0.00000m d_score=0.0000 PASS
+                                 latency mean 31.74 / 30.16 ms (p90 33.49 / 31.69)
+  => PASS
+
+## video_coreml.json
+  loop 0: hand-rate 77.5% / 77.5%  two-hands 42.2% / 42.2%
+  loop 1: hand-rate 77.5% / 77.5%  two-hands 42.2% / 42.2%
+  loop 2: hand-rate 77.5% / 77.5%  two-hands 42.2% / 42.2%
+  loop 3: hand-rate 77.5% / 77.5%  two-hands 42.2% / 42.2%
+  loop 4: hand-rate 77.5% / 77.5%  two-hands 42.2% / 42.2%
+  first loop: hand-count agreement 100.0%; per-frame max|dxy| p50 0.0000 p90 0.0000 max 0.0000
+  baseline : 3225 frames, latency mean 14.10 p50 14.20 p90 16.62 p99 21.65 max 111.1 ms; 70.3 fps; first frame 423.9 ms; footprint 106->106 MB (peak 110, slope +0.56 MB/1k frames)
+  candidate: 3225 frames, latency mean 13.92 p50 14.03 p90 16.65 p99 21.97 max 113.0 ms; 71.3 fps; first frame 345.0 ms; footprint 105->106 MB (peak 108, slope +0.45 MB/1k frames)
+  => PASS
+
+## video_cpu.json
+  loop 0: hand-rate 77.7% / 77.7%  two-hands 42.5% / 42.5%
+  loop 1: hand-rate 77.7% / 77.7%  two-hands 42.5% / 42.5%
+  loop 2: hand-rate 77.7% / 77.7%  two-hands 42.5% / 42.5%
+  loop 3: hand-rate 77.7% / 77.7%  two-hands 42.5% / 42.5%
+  loop 4: hand-rate 77.7% / 77.7%  two-hands 42.5% / 42.5%
+  first loop: hand-count agreement 100.0%; per-frame max|dxy| p50 0.0000 p90 0.0000 max 0.0000
+  baseline : 3225 frames, latency mean 24.03 p50 23.63 p90 28.29 p99 38.37 max 41.0 ms; 41.6 fps; first frame 23.8 ms; footprint 61->60 MB (peak 64, slope +0.46 MB/1k frames)
+  candidate: 3225 frames, latency mean 24.16 p50 23.84 p90 28.44 p99 38.57 max 44.0 ms; 41.4 fps; first frame 24.1 ms; footprint 59->59 MB (peak 62, slope +0.49 MB/1k frames)
+  => PASS
+
+## video_gpu.json
+  loop 0: hand-rate 77.8% / 77.8%  two-hands 42.9% / 42.9%
+  loop 1: hand-rate 77.8% / 77.8%  two-hands 42.9% / 42.9%
+  loop 2: hand-rate 77.8% / 77.8%  two-hands 42.9% / 42.9%
+  loop 3: hand-rate 77.8% / 77.8%  two-hands 42.9% / 42.9%
+  loop 4: hand-rate 77.8% / 77.8%  two-hands 42.9% / 42.9%
+  first loop: hand-count agreement 100.0%; per-frame max|dxy| p50 0.0000 p90 0.0000 max 0.0000
+  baseline : 3225 frames, latency mean 20.38 p50 19.90 p90 24.27 p99 31.27 max 38.8 ms; 49.1 fps; first frame 27.2 ms; footprint 501->509 MB (peak 518, slope +3.28 MB/1k frames)
+  candidate: 3225 frames, latency mean 20.30 p50 19.69 p90 24.40 p99 30.95 max 36.3 ms; 49.3 fps; first frame 26.3 ms; footprint 500->502 MB (peak 525, slope +3.45 MB/1k frames)
+  => PASS
+
+OVERALL: PASS (6 report pair(s))

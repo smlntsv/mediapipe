@@ -1,5 +1,9 @@
 # Validation report: Intel (x86_64) macOS support, universal macOS slice
 
+> Newer: the upstream merge release `v1.3.0-apple.1` (2026-11-21) is validated
+> against apple.3 and apple.4 on native arm64 and native Intel in
+> [`results/2026-11-21/`](results/2026-11-21/README.md).
+
 Date: 2026-10-26 · Source: `b55fb6819` + this change. Every file compiled
 into the binary is identical to `6cecfe31b`, the revision StaxelPointer pins
 (the only commit in between adds `bump_package_pin.sh`) · Artifact: local,
