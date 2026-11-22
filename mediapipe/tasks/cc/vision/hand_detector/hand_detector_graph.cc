@@ -326,35 +326,24 @@ class HandDetectorGraph : public core::ModelTaskGraph {
     if (subgraph_options.debug_palm_candidates() > 0) {
       detections >> graph.Out(kPalmThresholdedDetectionsTag);
 
-      // The same decoder without a score threshold...
-      auto& all_candidates = graph.AddNode("TensorsToDetectionsCalculator");
-      auto& all_candidates_options =
-          all_candidates
-              .GetOptions<mediapipe::TensorsToDetectionsCalculatorOptions>();
-      ConfigureTensorsToDetectionsCalculator(subgraph_options,
-                                             &all_candidates_options);
-      all_candidates_options.clear_min_score_thresh();
-      model_output_tensors >> all_candidates.In("TENSORS");
-      anchors >> all_candidates.SideIn("ANCHORS");
-
-      // ...sorted by score and cut to the requested count. The suppression
-      // threshold of 1 suppresses nothing: no overlap exceeds it.
-      auto& top_candidates = graph.AddNode("NonMaxSuppressionCalculator");
+      // The same decoder without a score threshold, asked for the highest
+      // scored boxes only.
+      auto& top_candidates = graph.AddNode("TensorsToDetectionsCalculator");
       auto& top_candidates_options =
           top_candidates
-              .GetOptions<mediapipe::NonMaxSuppressionCalculatorOptions>();
-      top_candidates_options.set_min_suppression_threshold(1.0);
-      top_candidates_options.set_overlap_type(
-          mediapipe::NonMaxSuppressionCalculatorOptions::
-              INTERSECTION_OVER_UNION);
-      top_candidates_options.set_max_num_detections(
+              .GetOptions<mediapipe::TensorsToDetectionsCalculatorOptions>();
+      ConfigureTensorsToDetectionsCalculator(subgraph_options,
+                                             &top_candidates_options);
+      top_candidates_options.clear_min_score_thresh();
+      top_candidates_options.set_top_k_by_score(
           subgraph_options.debug_palm_candidates());
-      top_candidates_options.set_return_empty_detections(true);
-      all_candidates.Out("DETECTIONS") >> top_candidates.In("");
+      model_output_tensors >> top_candidates.In("TENSORS");
+      anchors >> top_candidates.SideIn("ANCHORS");
 
       auto& candidate_projection =
           graph.AddNode("DetectionProjectionCalculator");
-      top_candidates.Out("") >> candidate_projection.In("DETECTIONS");
+      top_candidates.Out("DETECTIONS") >>
+          candidate_projection.In("DETECTIONS");
       matrix >> candidate_projection.In("PROJECTION_MATRIX");
       candidate_projection.Out("DETECTIONS") >> graph.Out(kPalmCandidatesTag);
     }

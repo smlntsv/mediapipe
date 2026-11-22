@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numeric>
 #include <unordered_map>
 #include <vector>
 
@@ -922,9 +923,27 @@ absl::Status TensorsToDetectionsCalculator::DecodeBoxes(
 absl::Status TensorsToDetectionsCalculator::ConvertToDetections(
     const float* detection_boxes, const float* detection_scores,
     const int* detection_classes, std::vector<Detection>* output_detections) {
-  for (int i = 0; i < num_boxes_ * classes_per_detection_;
-       i += classes_per_detection_) {
+  // Fork addition (`top_k_by_score`): visit the boxes by descending score and
+  // stop after the requested number of detections.
+  const int top_k = options_.top_k_by_score();
+  std::vector<int> boxes_by_score;
+  if (top_k > 0) {
+    RET_CHECK_EQ(classes_per_detection_, 1)
+        << "top_k_by_score needs one class per detection";
+    boxes_by_score.resize(num_boxes_);
+    std::iota(boxes_by_score.begin(), boxes_by_score.end(), 0);
+    std::stable_sort(boxes_by_score.begin(), boxes_by_score.end(),
+                     [detection_scores](int a, int b) {
+                       return detection_scores[a] > detection_scores[b];
+                     });
+  }
+  for (int box = 0; box < num_boxes_; ++box) {
+    const int i =
+        (top_k > 0 ? boxes_by_score[box] : box) * classes_per_detection_;
     if (max_results_ > 0 && output_detections->size() == max_results_) {
+      break;
+    }
+    if (top_k > 0 && output_detections->size() == top_k) {
       break;
     }
     const int box_offset = i * num_coords_;

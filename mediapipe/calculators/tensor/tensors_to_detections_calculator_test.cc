@@ -162,6 +162,101 @@ TEST(TensorsToDetectionsCalculatorTest, DecodesInModelNmsCpuTensors) {
               IsOkAndHolds(IsSingleClass1Detection()));
 }
 
+// Fork addition: `top_k_by_score`.
+// Five boxes for BuildInModelNmsGraph(). The box with the highest score has a
+// negative width, which the calculator drops.
+std::vector<Tensor> MakeFiveBoxTensors() {
+  const std::vector<TensorData> outputs = {
+      {.shape = {1, 5}, .values = {0.2f, 0.9f, 0.99f, 0.5f, 0.7f}},
+      {.shape = {1, 5, 4},
+       .values = {0.0f, 0.0f, 0.1f, 0.1f,  //
+                  0.1f, 0.1f, 0.2f, 0.2f,  //
+                  0.9f, 0.2f, 0.3f, 0.3f,  // xmax < xmin
+                  0.3f, 0.3f, 0.4f, 0.4f,  //
+                  0.4f, 0.4f, 0.5f, 0.5f}},
+      {.shape = {1}, .values = {5.0f}},
+      {.shape = {1, 5}, .values = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f}},
+  };
+  std::vector<Tensor> tensors;
+  for (const TensorData& data : outputs) {
+    Tensor& tensor =
+        tensors.emplace_back(Tensor::ElementType::kFloat32, data.shape);
+    Tensor::CpuWriteView view = tensor.GetCpuWriteView();
+    std::copy(data.values.begin(), data.values.end(), view.buffer<float>());
+  }
+  return tensors;
+}
+
+std::vector<float> Scores(const std::vector<Detection>& detections) {
+  std::vector<float> scores;
+  for (const Detection& detection : detections) {
+    scores.push_back(detection.score(0));
+  }
+  return scores;
+}
+
+TEST(TensorsToDetectionsCalculatorTest, TopKByScoreKeepsTheBestInScoreOrder) {
+  auto build = [](api3::GenericGraph& graph,
+                  api3::Stream<std::vector<Tensor>> tensors) {
+    auto& node = graph.AddNode<TensorsToDetectionsNode>();
+    node.tensors.Set(tensors);
+    auto& options = *node.options.Mutable();
+    options.set_num_classes(1);
+    options.set_num_coords(4);
+    options.set_top_k_by_score(2);
+    auto& tensor_mapping = *options.mutable_tensor_mapping();
+    tensor_mapping.set_scores_tensor_index(0);
+    tensor_mapping.set_detections_tensor_index(1);
+    tensor_mapping.set_num_detections_tensor_index(2);
+    tensor_mapping.set_classes_tensor_index(3);
+    auto& box_indices = *options.mutable_box_boundaries_indices();
+    box_indices.set_xmin(0);
+    box_indices.set_ymin(1);
+    box_indices.set_xmax(2);
+    box_indices.set_ymax(3);
+    return node.detections.Get();
+  };
+  MP_ASSERT_OK_AND_ASSIGN(auto runner, api3::Runner::For(build).Create());
+
+  MP_ASSERT_OK_AND_ASSIGN(std::vector<Detection> detections,
+                          Decode(runner, MakeFiveBoxTensors()));
+  // No score threshold: the two best valid boxes, best first. The invalid box
+  // (0.99) does not use up one of the two places.
+  EXPECT_THAT(Scores(detections),
+              ElementsAre(FloatNear(0.9f, 1e-6f), FloatNear(0.7f, 1e-6f)));
+  EXPECT_NEAR(detections[1].location_data().relative_bounding_box().xmin(),
+              0.4f, 1e-6f);
+}
+
+TEST(TensorsToDetectionsCalculatorTest, WithoutTopKAllBoxesComeInBoxOrder) {
+  auto build = [](api3::GenericGraph& graph,
+                  api3::Stream<std::vector<Tensor>> tensors) {
+    auto& node = graph.AddNode<TensorsToDetectionsNode>();
+    node.tensors.Set(tensors);
+    auto& options = *node.options.Mutable();
+    options.set_num_classes(1);
+    options.set_num_coords(4);
+    auto& tensor_mapping = *options.mutable_tensor_mapping();
+    tensor_mapping.set_scores_tensor_index(0);
+    tensor_mapping.set_detections_tensor_index(1);
+    tensor_mapping.set_num_detections_tensor_index(2);
+    tensor_mapping.set_classes_tensor_index(3);
+    auto& box_indices = *options.mutable_box_boundaries_indices();
+    box_indices.set_xmin(0);
+    box_indices.set_ymin(1);
+    box_indices.set_xmax(2);
+    box_indices.set_ymax(3);
+    return node.detections.Get();
+  };
+  MP_ASSERT_OK_AND_ASSIGN(auto runner, api3::Runner::For(build).Create());
+
+  MP_ASSERT_OK_AND_ASSIGN(std::vector<Detection> detections,
+                          Decode(runner, MakeFiveBoxTensors()));
+  EXPECT_THAT(Scores(detections),
+              ElementsAre(FloatNear(0.2f, 1e-6f), FloatNear(0.9f, 1e-6f),
+                          FloatNear(0.5f, 1e-6f), FloatNear(0.7f, 1e-6f)));
+}
+
 // The parameter is an invalid value of the number-of-detections tensor.
 class InvalidNumDetectionsTest : public TestWithParam<float> {};
 

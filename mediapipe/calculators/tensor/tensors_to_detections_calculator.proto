@@ -132,4 +132,11 @@ message TensorsToDetectionsCalculatorOptions {
     XYXY = 3;
   }
   optional BoxFormat box_format = 24 [default = UNSPECIFIED];
+
+  // Fork addition. When positive, the output is this many detections with the
+  // highest scores, highest first, instead of all of them in box order; only
+  // those are converted. Detections dropped for another reason (score
+  // threshold, invalid box) do not count. Requires one class per detection.
+  // When unset or not positive (default) the output is unchanged.
+  optional int32 top_k_by_score = 1001 [default = -1];
 }
