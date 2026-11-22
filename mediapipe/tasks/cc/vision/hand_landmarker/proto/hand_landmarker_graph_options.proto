@@ -53,4 +53,20 @@ message HandLandmarkerGraphOptions {
   // motion blur is re-acquired quickly and cheaply. 0 (default) preserves the
   // original drop-immediately behavior.
   optional int32 tracking_grace_frames = 5 [default = 0];
+
+  // Debugging aid. When true, the graph additionally exposes the intermediate
+  // per-stage streams of the hand pipeline (previous-frame ROIs, the palm
+  // detector gate, detector outputs, per-ROI presence, pre-deduplication
+  // landmarks and rects, keep-alive state) as STAGE_* outputs. When false or
+  // unset (default) the generated graph is identical to one built without
+  // this field.
+  optional bool debug_stage_outputs = 6 [default = false];
+
+  // Debugging aid. When true, the graph takes a CAPTURE_TENSORS input stream
+  // (bool, one packet per frame) and, on the frames where it is true, emits
+  // CPU copies of the tensors given to the palm detection model and to the
+  // landmark model as PALM_INPUT_TENSOR_CAPTURE and
+  // LANDMARK_INPUT_TENSOR_CAPTURES. When false or unset (default) the
+  // generated graph is identical to one built without this field.
+  optional bool debug_tensor_capture = 7 [default = false];
 }

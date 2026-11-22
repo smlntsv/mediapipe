@@ -50,6 +50,11 @@ namespace tasks {
 //
 // Output:
 //  No tag - Vector of NormalizedRect (input rects first, held rects appended).
+//  MISS_COUNTS - Vector of int @Optional
+//    One entry per output rect, in the same order: 0 for a rect that arrived
+//    on the input this frame, otherwise the number of consecutive frames the
+//    held rect has been missing. Debugging aid; when not connected nothing is
+//    computed for it.
 struct HandRectsKeepAliveNode : public api3::Node<"HandRectsKeepAliveCalculator"> {
   template <typename S>
   struct Contract {
@@ -58,6 +63,10 @@ struct HandRectsKeepAliveNode : public api3::Node<"HandRectsKeepAliveCalculator"
 
     // Same rects with held (recently vanished) rects appended.
     api3::Output<S, std::vector<NormalizedRect>> rects_out{""};
+
+    // Per-output-rect consecutive-miss counts (0 for live rects).
+    api3::Optional<api3::Output<S, std::vector<int>>> miss_counts_out{
+        "MISS_COUNTS"};
 
     api3::Options<S, mediapipe::HandRectsKeepAliveCalculatorOptions> options;
   };

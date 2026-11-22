@@ -15,6 +15,8 @@
 #import <Foundation/Foundation.h>
 
 #import "MPCCategory.h"
+#import "MPCHandLandmarkerDiagnostics.h"
+#import "MPCHandLandmarkerStages.h"
 #import "MPCLandmark.h"
 
 NS_ASSUME_NONNULL_BEGIN
@@ -32,10 +34,26 @@ NS_ASSUME_NONNULL_BEGIN
 // Handedness classification, per hand.
 @property(nonatomic, readonly) NSArray<NSArray<MPCCategory *> *> *handedness;
 
+// Per-stage debug outputs. Nil unless the landmarker was created with
+// `stageOutputs`.
+@property(nonatomic, readonly, nullable) MPCHandLandmarkerStages *stages;
+
+// Model input tensors. Nil unless the detect call asked for a capture.
+@property(nonatomic, strong, nullable) MPCHandLandmarkerTensorCapture *tensorCapture;
+
+// Palm candidate diagnostics. Nil unless the landmarker was created with a
+// positive `palmCandidateLimit`.
+@property(nonatomic, strong, nullable) MPCHandLandmarkerPalmCandidates *palmCandidates;
+
 - (instancetype)initWithLandmarks:(NSArray<NSArray<MPCLandmark *> *> *)landmarks
                    worldLandmarks:(NSArray<NSArray<MPCLandmark *> *> *)worldLandmarks
                        handedness:(NSArray<NSArray<MPCCategory *> *> *)handedness
+                           stages:(nullable MPCHandLandmarkerStages *)stages
     NS_DESIGNATED_INITIALIZER;
+
+- (instancetype)initWithLandmarks:(NSArray<NSArray<MPCLandmark *> *> *)landmarks
+                   worldLandmarks:(NSArray<NSArray<MPCLandmark *> *> *)worldLandmarks
+                       handedness:(NSArray<NSArray<MPCCategory *> *> *)handedness;
 
 - (instancetype)init NS_UNAVAILABLE;
 

@@ -18,14 +18,25 @@
 
 - (instancetype)initWithLandmarks:(NSArray<NSArray<MPCLandmark *> *> *)landmarks
                    worldLandmarks:(NSArray<NSArray<MPCLandmark *> *> *)worldLandmarks
-                       handedness:(NSArray<NSArray<MPCCategory *> *> *)handedness {
+                       handedness:(NSArray<NSArray<MPCCategory *> *> *)handedness
+                           stages:(nullable MPCHandLandmarkerStages *)stages {
   self = [super init];
   if (self) {
     _landmarks = [landmarks copy];
     _worldLandmarks = [worldLandmarks copy];
     _handedness = [handedness copy];
+    _stages = stages;
   }
   return self;
+}
+
+- (instancetype)initWithLandmarks:(NSArray<NSArray<MPCLandmark *> *> *)landmarks
+                   worldLandmarks:(NSArray<NSArray<MPCLandmark *> *> *)worldLandmarks
+                       handedness:(NSArray<NSArray<MPCCategory *> *> *)handedness {
+  return [self initWithLandmarks:landmarks
+                  worldLandmarks:worldLandmarks
+                      handedness:handedness
+                          stages:nil];
 }
 
 @end

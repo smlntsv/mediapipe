@@ -37,6 +37,14 @@ typedef struct MpImageProcessingOptions {
   // in degrees clockwise. The rotation must be a multiple (positive or
   // negative) of 90°.
   int rotation_degrees;
+
+  // Hand landmarker debugging aid; every other task ignores it. Non-zero asks
+  // the hand landmarker to return the model input tensors of this frame in
+  // `MpHandLandmarkerResult::tensor_capture`. Honored only by a hand landmarker
+  // created with `debug_tensor_capture`.
+  // Kept as the last field so that the layout of the fields before it is
+  // unchanged.
+  int capture_tensors;
 } MpImageProcessingOptions;
 
 #ifdef __cplusplus

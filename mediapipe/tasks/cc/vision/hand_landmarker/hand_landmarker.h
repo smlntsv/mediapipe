@@ -79,6 +79,24 @@ struct HandLandmarkerOptions {
   // 0 (default) drops a hand immediately (original behavior).
   int tracking_grace_frames = 0;
 
+  // Debugging aid. When true, every result carries `stages`: the per-stage
+  // outputs of the hand pipeline for that frame (see HandLandmarkerStages).
+  // When false (default) the graph and the results are unchanged.
+  bool debug_stage_outputs = false;
+
+  // Debugging aid. When true, the `capture_tensors` argument of the detect
+  // methods may be set, and the result of such a call carries
+  // `tensor_capture`: CPU copies of the tensors given to the palm detection
+  // model and to the landmark model on that frame. A call without
+  // `capture_tensors` does not read any tensor. When false (default) the graph
+  // and the results are unchanged.
+  bool debug_tensor_capture = false;
+
+  // Debugging aid. When positive, every result carries `palm_candidates`,
+  // with this many of the palm detector's highest scored candidates. 0
+  // (default) leaves the graph and the results unchanged.
+  int debug_palm_candidates = 0;
+
   // The user-defined result callback for processing live stream data.
   // The result callback should only be specified when the running mode is set
   // to RunningMode::LIVE_STREAM.
@@ -140,10 +158,14 @@ class HandLandmarker : tasks::vision::core::BaseVisionTaskApi {
   // The image can be of any size with format RGB or RGBA.
   // TODO: Describes how the input image will be preprocessed
   // after the yuv support is implemented.
+  //
+  // `capture_tensors` requires `debug_tensor_capture` and makes the result
+  // carry `tensor_capture`; the same holds for the other detect methods.
   absl::StatusOr<HandLandmarkerResult> Detect(
       Image image,
       std::optional<core::ImageProcessingOptions> image_processing_options =
-          std::nullopt);
+          std::nullopt,
+      bool capture_tensors = false);
 
   // Performs hand landmarks detection on the provided video frame.
   // Only use this method when the HandLandmarker is created with the video
@@ -161,7 +183,8 @@ class HandLandmarker : tasks::vision::core::BaseVisionTaskApi {
   absl::StatusOr<HandLandmarkerResult> DetectForVideo(
       Image image, int64_t timestamp_ms,
       std::optional<core::ImageProcessingOptions> image_processing_options =
-          std::nullopt);
+          std::nullopt,
+      bool capture_tensors = false);
 
   // Sends live image data to perform hand landmarks detection, and the results
   // will be available via the "result_callback" provided in the
@@ -189,10 +212,20 @@ class HandLandmarker : tasks::vision::core::BaseVisionTaskApi {
   //   - The input timestamp in milliseconds.
   absl::Status DetectAsync(Image image, int64_t timestamp_ms,
                            std::optional<core::ImageProcessingOptions>
-                               image_processing_options = std::nullopt);
+                               image_processing_options = std::nullopt,
+                           bool capture_tensors = false);
 
   // Shuts down the HandLandmarker when all works are done.
   absl::Status Close() { return runner_->Close(); }
+
+ private:
+  // Adds the per-frame capture request to `inputs` when the graph was built
+  // with tensor capture; fails when a capture is requested without it.
+  absl::Status AddCaptureRequest(bool capture_tensors, Timestamp timestamp,
+                                 tasks::core::PacketMap* inputs) const;
+
+  // Whether the graph was built with `debug_tensor_capture`.
+  bool tensor_capture_enabled_ = false;
 };
 
 }  // namespace hand_landmarker

@@ -16,6 +16,13 @@ Apple silicon (native and Rosetta) and on Intel Macs (natively, over SSH). See
 No camera, Accessibility permission, Xcode, Swift toolchain or Python is
 needed on the target. Video frames come from a file through AVAssetReader.
 
+`video` also takes the hand pipeline's debug options, all off by default:
+`--stages`, `--palm-candidates N`, `--tensor-capture` and `--capture-every N`
+(capture the model inputs on every Nth frame). With any of them on, the report
+gets a `debug` object: per-frame checks of the debug records (timestamps,
+missing records, agreement between the records) and the latency of captured
+frames next to that of the others.
+
 Exit codes of `mp-arch-validate`: `0` ok · `1` implausible (e.g. no hands, or
 hand rate below `--min-hand-rate` in video) · `3` landmarker creation failed
 (`UNSUPPORTED`, e.g. `.gpu` against a CPU-only artifact) · `4` inference error. A signal

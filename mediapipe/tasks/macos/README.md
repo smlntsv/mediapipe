@@ -229,6 +229,231 @@ with MediaPipe Web result handling:
 `NormalizedLandmark` and `Landmark` carry optional `visibility` / `presence`
 (populated for pose; `nil` for hand/face where the model omits them).
 
+### Hand pipeline stage outputs (debugging)
+
+Set `HandLandmarkerOptions.stageOutputs = true` to get
+`HandLandmarkerResult.stages` on every result, including frames with no hand.
+It is a copy of the hand graph's intermediate streams for that frame: the
+rects carried in from the previous frame, whether the palm detector ran, its
+detections and rects, the regions the landmark model was given with their
+presence scores, the landmarks and next-frame rects before deduplication, and
+the keep-alive state. See `HandLandmarkerStages` for each field. Default off:
+the graph, the results and the timings are then unchanged and `stages` is nil.
+
+Things the record shows that are easy to misread:
+
+- All coordinates are normalized to the image as passed in, whatever
+  `rotationDegrees` is (the same frame as `landmarks`).
+- When the detector runs and finds no palm, the rect arrays hold one all-zero
+  rect instead of being empty; the landmark model skips it.
+- `StageRect.rectId` is reassigned on every frame. It is not a track id.
+
+### Model input tensors (debugging)
+
+Set `HandLandmarkerOptions.tensorCapture = true` and pass
+`captureTensors: true` to a detect call to get `HandLandmarkerResult.tensorCapture`
+for that frame: a copy of the tensor the palm detection model was given and of
+the tensor the landmark model was given for each region of interest.
+
+```swift
+let options = HandLandmarkerOptions(modelPath: path, runningMode: .video, tensorCapture: true)
+let landmarker = try HandLandmarker(options: options)
+let result = try landmarker.detectForVideo(pixelBuffer: frame,
+                                           timestampInMilliseconds: ms,
+                                           captureTensors: wanted)
+if let capture = result.tensorCapture {
+    capture.palmDetectorInput        // CapturedTensor?, nil: the detector did not run
+    capture.landmarkInputs[0].tensor // CapturedTensor?, nil: the model skipped that region
+}
+```
+
+- **Which frames.** Only the calls that pass `captureTensors: true`. On every
+  other call nothing reads the tensors (on the GPU path that means no
+  GPU-to-CPU readback), and `tensorCapture` is nil. Passing it without the
+  option throws `MediaPipeError.invalidArgument`.
+- **Nil has two meanings, at two levels.** `result.tensorCapture == nil`: there
+  is no capture for this frame. A nil tensor inside a capture: that model did
+  not run on this frame (the palm detector while hands are tracked; the
+  landmark model for an all-zero region).
+- **What a tensor is.** The `mediapipe::Tensor` handed to the inference step,
+  after crop, rotation, resize and value normalization: `shape`, `elementType`
+  and the raw bytes. The palm input is 192 x 192, the landmark input 224 x 224,
+  both `float32`. On CPU and Core ML they have 3 channels; on the GPU delegate
+  the Metal preprocessing produces 4 channels per pixel, of which the first
+  three are RGB.
+- **Landmark inputs line up with regions.** `landmarkInputs[i]` belongs to
+  `stages.landmarkROIs[i]`; `roiIndex` is that `i`.
+- The option is independent of `stageOutputs`.
+
+### Palm candidates (debugging)
+
+Set `HandLandmarkerOptions.palmCandidateLimit = N` (N > 0) to get
+`HandLandmarkerResult.palmCandidates` on every result. It shows where the palm
+detector's candidates went on that frame:
+
+| Field | Meaning |
+|---|---|
+| `palmDetectorRan` | false: the detector was skipped, the rest is empty |
+| `candidates` | the N highest scored decoded boxes, highest first, with no threshold and before suppression |
+| `aboveThresholdCount` | boxes with a score of at least `minHandDetectionConfidence` |
+| `afterSuppressionCount` | detections left after non-max suppression |
+
+The first `numHands` detections after suppression become hand rects. So a best
+candidate score under the threshold means the scores fell short;
+`aboveThresholdCount` greater than `afterSuppressionCount` is the number merged
+by suppression; `afterSuppressionCount` greater than `numHands` is the number
+cut by the output limit. Which box was merged into which is not reported.
+Candidates are in the same coordinates as `stages.palmDetections`.
+
+### Hand Landmarker debug API reference
+
+Everything the three debugging aids add to the public Swift API. All of it is
+opt-in; with the defaults the pipeline, the results and the timings are what
+they were before. The records are built by the package, so the structs have no
+public initializers.
+
+**Options and calls**
+
+```swift
+public final class HandLandmarkerOptions {
+    public var stageOutputs: Bool        // default false -> result.stages
+    public var tensorCapture: Bool       // default false -> allows captureTensors: true
+    public var palmCandidateLimit: Int   // default 0     -> result.palmCandidates
+    public init(modelPath: String = "", numHands: Int = 1, /* ...existing parameters... */
+                stageOutputs: Bool = false,
+                tensorCapture: Bool = false,
+                palmCandidateLimit: Int = 0)
+}
+
+public final class HandLandmarker {
+    // Each of the four detect methods has a trailing `captureTensors` parameter.
+    public func detect(cgImage: CGImage,
+                       imageProcessingOptions: ImageProcessingOptions = ImageProcessingOptions(),
+                       captureTensors: Bool = false) throws -> HandLandmarkerResult
+    public func detect(pixelBuffer: CVPixelBuffer,
+                       imageProcessingOptions: ImageProcessingOptions = ImageProcessingOptions(),
+                       captureTensors: Bool = false) throws -> HandLandmarkerResult
+    public func detectForVideo(cgImage: CGImage, timestampInMilliseconds: Int,
+                               imageProcessingOptions: ImageProcessingOptions = ImageProcessingOptions(),
+                               captureTensors: Bool = false) throws -> HandLandmarkerResult
+    public func detectForVideo(pixelBuffer: CVPixelBuffer, timestampInMilliseconds: Int,
+                               imageProcessingOptions: ImageProcessingOptions = ImageProcessingOptions(),
+                               captureTensors: Bool = false) throws -> HandLandmarkerResult
+}
+```
+
+`captureTensors: true` on a landmarker created without `tensorCapture` throws
+`MediaPipeError.invalidArgument`.
+
+**Result**
+
+```swift
+public struct HandLandmarkerResult {
+    public var stages: HandLandmarkerStages?                  // every frame, with stageOutputs
+    public var tensorCapture: HandLandmarkerTensorCapture?    // only the frames that asked
+    public var palmCandidates: HandLandmarkerPalmCandidates?  // every frame, with palmCandidateLimit > 0
+}
+```
+
+**Stage record** (`stageOutputs`)
+
+```swift
+public struct StageRect: Sendable, Equatable {
+    public var xCenter: Float     // normalized by the image width
+    public var yCenter: Float     // normalized by the image height
+    public var width: Float
+    public var height: Float
+    public var rotation: Float    // radians, clockwise
+    public var rectId: Int64?     // reassigned every frame; not a track id
+}
+
+public struct StagePoint: Sendable, Equatable {
+    public var x: Float
+    public var y: Float
+}
+
+public struct StageDetection: Sendable, Equatable {
+    public var score: Float
+    public var xMin: Float
+    public var yMin: Float
+    public var width: Float
+    public var height: Float
+    public var keypoints: [StagePoint]   // 7 for the palm model
+}
+
+public struct HandLandmarkerStages: Sendable, Equatable {
+    public var timestampMicroseconds: Int64
+    public var previousRects: [StageRect]
+    public var palmDetectorRan: Bool
+    public var palmDetections: [StageDetection]
+    public var palmRects: [StageRect]
+    public var detectorHandRects: [StageRect]
+    public var landmarkROIs: [StageRect]
+    public var presenceScores: [Float]
+    public var presencePassed: [Bool]
+    public var landmarksBeforeDeduplication: [[NormalizedLandmark]]
+    public var handRectsBeforeDeduplication: [StageRect]
+    public var handRectsNextFrame: [StageRect]
+    public var keepAliveRects: [StageRect]
+    public var keepAliveMissCounts: [Int]
+}
+```
+
+| Field | What it is | When it is empty |
+|---|---|---|
+| `timestampMicroseconds` | Graph timestamp the record was read from. In `.video` mode `timestampInMilliseconds * 1000` of the call | never (synthetic in `.image` mode) |
+| `previousRects` | Rects carried in from the previous frame: its `handRectsNextFrame`, or its `keepAliveRects` when `trackingGraceFrames` > 0 | `.image` mode; nothing was tracked |
+| `palmDetectorRan` | Whether the palm detector ran. In `.video` mode it is skipped when `previousRects.count >= numHands` | |
+| `palmDetections` | Palm detections after non-max suppression; can be more than `numHands` | detector skipped or found nothing |
+| `palmRects` | One rect per palm detection | detector skipped (one all-zero rect when it found nothing) |
+| `detectorHandRects` | `palmRects` expanded to whole hands, clipped to `numHands` | same as `palmRects` |
+| `landmarkROIs` | What the landmark model is given: `previousRects`, then the detector rects that do not overlap them, clipped to `numHands` | never in practice |
+| `presenceScores`, `presencePassed` | Per ROI the model ran on, in ROI order: the hand presence score and whether it passed `minHandPresenceConfidence` | no ROI was run (only an all-zero ROI) |
+| `landmarksBeforeDeduplication`, `handRectsBeforeDeduplication` | Per ROI that passed presence: its landmarks and its next-frame rect | no ROI passed |
+| `handRectsNextFrame` | Next-frame rects after deduplication, one per hand in the result | no hand |
+| `keepAliveRects`, `keepAliveMissCounts` | `.video` with `trackingGraceFrames` > 0: the rects handed to the next frame and, per rect, 0 if live or the number of frames it has been missing | no grace; nothing to hand on |
+
+**Tensor capture** (`tensorCapture` + `captureTensors: true`)
+
+```swift
+public enum TensorElementType: Int, Sendable {
+    case none = 0, float16, float32, uint8, int8, int32, int64, char, bool
+}
+
+public struct CapturedTensor: Sendable, Equatable {
+    public var shape: [Int]                   // [1, height, width, channels]
+    public var elementType: TensorElementType
+    public var data: Data                     // row-major, native byte order
+    public func floatValues() -> [Float]?     // nil unless elementType == .float32
+}
+
+public struct LandmarkModelInput: Sendable, Equatable {
+    public var roiIndex: Int                  // index into stages.landmarkROIs
+    public var tensor: CapturedTensor?        // nil: the model did not run on this ROI
+}
+
+public struct HandLandmarkerTensorCapture: Sendable, Equatable {
+    public var timestampMicroseconds: Int64
+    public var palmDetectorInput: CapturedTensor?    // nil: the palm detector did not run
+    public var landmarkInputs: [LandmarkModelInput]  // one per ROI, in ROI order
+}
+```
+
+**Palm candidates** (`palmCandidateLimit`)
+
+```swift
+public struct HandLandmarkerPalmCandidates: Sendable, Equatable {
+    public var timestampMicroseconds: Int64
+    public var palmDetectorRan: Bool
+    public var candidates: [StageDetection]   // highest score first, no threshold, before suppression
+    public var aboveThresholdCount: Int       // score >= minHandDetectionConfidence
+    public var afterSuppressionCount: Int     // == stages.palmDetections.count
+}
+```
+
+**Platforms.** macOS. On iOS the options are accepted, and the three records
+stay nil until the iOS slices are rebuilt from a version that has them.
+
 ## Tests
 
 `swift test` runs result-shape/count assertions (Hand 21+21, Pose 33+33, Face

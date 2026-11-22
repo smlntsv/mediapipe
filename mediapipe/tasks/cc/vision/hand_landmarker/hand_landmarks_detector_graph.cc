@@ -41,6 +41,7 @@ limitations under the License.
 #include "mediapipe/tasks/cc/core/model_task_graph.h"
 #include "mediapipe/tasks/cc/vision/hand_landmarker/proto/hand_landmarks_detector_graph_options.pb.h"
 #include "mediapipe/tasks/cc/vision/utils/image_tensor_specs.h"
+#include "mediapipe/util/graph_builder_utils.h"
 #include "mediapipe/util/label_map.pb.h"
 
 namespace mediapipe {
@@ -70,6 +71,10 @@ constexpr char kPresenceTag[] = "PRESENCE";
 constexpr char kPresenceScoreTag[] = "PRESENCE_SCORE";
 constexpr char kHandednessTag[] = "HANDEDNESS";
 constexpr char kImageSizeTag[] = "IMAGE_SIZE";
+// Debug-only streams, see the graph documentation.
+constexpr char kCaptureTensorsTag[] = "CAPTURE_TENSORS";
+constexpr char kInputTensorCaptureTag[] = "INPUT_TENSOR_CAPTURE";
+constexpr char kInputTensorCapturesTag[] = "INPUT_TENSOR_CAPTURES";
 
 constexpr int kLandmarksNum = 21;
 constexpr float kLandmarksNormalizeZ = 0.4;
@@ -216,7 +221,8 @@ class SingleHandLandmarksDetectorGraph : public core::ModelTaskGraph {
         BuildSingleHandLandmarksDetectorGraph(
             sc->Options<HandLandmarksDetectorGraphOptions>(), *model_resources,
             graph[Input<Image>(kImageTag)],
-            graph[Input<NormalizedRect>::Optional(kHandRectTag)], graph));
+            graph[Input<NormalizedRect>::Optional(kHandRectTag)],
+            HasInput(sc->OriginalNode(), kCaptureTensorsTag), graph));
     hand_landmark_detection_outs.hand_landmarks >>
         graph[Output<NormalizedLandmarkList>(kLandmarksTag)];
     hand_landmark_detection_outs.world_hand_landmarks >>
@@ -248,7 +254,7 @@ class SingleHandLandmarksDetectorGraph : public core::ModelTaskGraph {
   BuildSingleHandLandmarksDetectorGraph(
       const HandLandmarksDetectorGraphOptions& subgraph_options,
       const core::ModelResources& model_resources, Source<Image> image_in,
-      Source<NormalizedRect> hand_rect, Graph& graph) {
+      Source<NormalizedRect> hand_rect, bool capture_tensors, Graph& graph) {
     ABSL_RETURN_IF_ERROR(SanityCheckOptions(subgraph_options));
 
     auto& preprocessing = graph.AddNode(
@@ -272,6 +278,18 @@ class SingleHandLandmarksDetectorGraph : public core::ModelTaskGraph {
     auto& inference = AddInference(
         model_resources, subgraph_options.base_options().acceleration(), graph);
     preprocessing.Out("TENSORS") >> inference.In("TENSORS");
+
+    // Debug only: a CPU copy of the model input, on request. HAND_RECT makes
+    // the capture run for a rect the preprocessing skips (an all-zero rect),
+    // so that such a rect still gets an entry, one that says no tensor
+    // reached the model.
+    if (capture_tensors) {
+      auto& tensor_capture = graph.AddNode("TensorCaptureCalculator");
+      preprocessing.Out("TENSORS") >> tensor_capture.In("TENSORS");
+      graph.In(kCaptureTensorsTag) >> tensor_capture.In("ENABLE");
+      hand_rect >> tensor_capture.In("TICK");
+      tensor_capture.Out("CAPTURE") >> graph.Out(kInputTensorCaptureTag);
+    }
 
     // Split model output tensors to multiple streams.
     auto& split_tensors_vector = graph.AddNode("SplitTensorVectorCalculator");
@@ -431,6 +449,16 @@ REGISTER_MEDIAPIPE_GRAPH(
 //   HANDEDNESS - std::vector<ClassificationList>
 //     Vector of classification of handedness.
 //
+// Debug streams. Neither is part of the graph unless CAPTURE_TENSORS is
+// connected.
+//   CAPTURE_TENSORS (input) - bool @Optional
+//     One packet per frame; true asks for a capture on that frame.
+//   INPUT_TENSOR_CAPTURES - std::vector<TensorCapture>
+//     Emitted on the frames where CAPTURE_TENSORS is true. One entry per
+//     HAND_RECT rect, in the same order: a CPU copy of the tensor given to
+//     the landmark model for that rect, or `has_tensor` false for a rect the
+//     model was not run on.
+//
 // Example:
 // node {
 //   calculator:
@@ -465,7 +493,8 @@ class MultipleHandLandmarksDetectorGraph : public core::ModelTaskGraph {
         BuildHandLandmarksDetectorGraph(
             sc->Options<HandLandmarksDetectorGraphOptions>(),
             graph[Input<Image>(kImageTag)],
-            graph[Input<std::vector<NormalizedRect>>(kHandRectTag)], graph));
+            graph[Input<std::vector<NormalizedRect>>(kHandRectTag)],
+            HasInput(sc->OriginalNode(), kCaptureTensorsTag), graph));
     hand_landmark_detection_outputs.landmark_lists >>
         graph[Output<std::vector<NormalizedLandmarkList>>(kLandmarksTag)];
     hand_landmark_detection_outputs.world_landmark_lists >>
@@ -486,7 +515,8 @@ class MultipleHandLandmarksDetectorGraph : public core::ModelTaskGraph {
   absl::StatusOr<HandLandmarkerOutputs> BuildHandLandmarksDetectorGraph(
       const HandLandmarksDetectorGraphOptions& subgraph_options,
       Source<Image> image_in,
-      Source<std::vector<NormalizedRect>> multi_hand_rects, Graph& graph) {
+      Source<std::vector<NormalizedRect>> multi_hand_rects,
+      bool capture_tensors, Graph& graph) {
     auto& hand_landmark_subgraph = graph.AddNode(
         "mediapipe.tasks.vision.hand_landmarker."
         "SingleHandLandmarksDetectorGraph");
@@ -511,6 +541,20 @@ class MultipleHandLandmarksDetectorGraph : public core::ModelTaskGraph {
         hand_landmark_subgraph.Out("HAND_RECT_NEXT_FRAME");
     auto landmarks = hand_landmark_subgraph.Out("LANDMARKS");
     auto world_landmarks = hand_landmark_subgraph.Out("WORLD_LANDMARKS");
+
+    if (capture_tensors) {
+      graph.In(kCaptureTensorsTag) >>
+          begin_loop_multi_hand_rects.In("CLONE")[1];
+      begin_loop_multi_hand_rects.Out("CLONE")[1] >>
+          hand_landmark_subgraph.In(kCaptureTensorsTag);
+      auto& end_loop_captures =
+          graph.AddNode("EndLoopTensorCaptureCalculator");
+      batch_end >> end_loop_captures.In("BATCH_END");
+      hand_landmark_subgraph.Out(kInputTensorCaptureTag) >>
+          end_loop_captures.In("ITEM");
+      end_loop_captures.Out("ITERABLE") >>
+          graph.Out(kInputTensorCapturesTag);
+    }
 
     auto& end_loop_handedness =
         graph.AddNode("EndLoopClassificationListCalculator");

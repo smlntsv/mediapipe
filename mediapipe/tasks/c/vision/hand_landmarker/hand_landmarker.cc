@@ -46,6 +46,9 @@ limitations under the License.
 struct MpHandLandmarkerInternal {
   std::unique_ptr<::mediapipe::tasks::vision::hand_landmarker::HandLandmarker>
       instance;
+  // Whether it was created with `debug_tensor_capture`. A capture request is
+  // ignored otherwise.
+  bool tensor_capture = false;
 };
 
 namespace mediapipe::tasks::c::vision::hand_landmarker {
@@ -73,6 +76,13 @@ HandLandmarker* GetCppLandmarker(MpHandLandmarkerPtr landmarker) {
   return landmarker->instance.get();
 }
 
+// Whether this call asks for the model input tensors.
+bool CaptureTensors(MpHandLandmarkerPtr landmarker,
+                    const MpImageProcessingOptions* image_processing_options) {
+  return landmarker->tensor_capture && image_processing_options != nullptr &&
+         image_processing_options->capture_tensors != 0;
+}
+
 }  // namespace
 
 void CppConvertToHandLandmarkerOptions(
@@ -84,6 +94,9 @@ void CppConvertToHandLandmarkerOptions(
   out->min_tracking_confidence = in.min_tracking_confidence;
   out->roi_scale = in.roi_scale;
   out->tracking_grace_frames = in.tracking_grace_frames;
+  out->debug_stage_outputs = in.debug_stage_outputs;
+  out->debug_tensor_capture = in.debug_tensor_capture;
+  out->debug_palm_candidates = in.debug_palm_candidates;
 }
 
 absl::Status CppHandLandmarkerCreate(const MpHandLandmarkerOptions& options,
@@ -129,7 +142,8 @@ absl::Status CppHandLandmarkerCreate(const MpHandLandmarkerOptions& options,
     return cpp_landmarker.status();
   }
   *landmarker =
-      new MpHandLandmarkerInternal{.instance = std::move(*cpp_landmarker)};
+      new MpHandLandmarkerInternal{.instance = std::move(*cpp_landmarker),
+                                   .tensor_capture = options.debug_tensor_capture};
   return absl::OkStatus();
 }
 
@@ -145,7 +159,8 @@ absl::Status CppHandLandmarkerDetect(
     cpp_image_processing_options = options;
   }
   auto cpp_result =
-      cpp_landmarker->Detect(ToImage(image), cpp_image_processing_options);
+      cpp_landmarker->Detect(ToImage(image), cpp_image_processing_options,
+                             CaptureTensors(landmarker, image_processing_options));
 
   if (!cpp_result.ok()) {
     return cpp_result.status();
@@ -166,7 +181,8 @@ absl::Status CppHandLandmarkerDetectForVideo(
     cpp_image_processing_options = options;
   }
   auto cpp_result = cpp_landmarker->DetectForVideo(
-      ToImage(image), timestamp_ms, cpp_image_processing_options);
+      ToImage(image), timestamp_ms, cpp_image_processing_options,
+      CaptureTensors(landmarker, image_processing_options));
 
   if (!cpp_result.ok()) {
     return cpp_result.status();
@@ -186,8 +202,9 @@ absl::Status CppHandLandmarkerDetectAsync(
     CppConvertToImageProcessingOptions(*image_processing_options, &options);
     cpp_image_processing_options = options;
   }
-  auto cpp_result = cpp_landmarker->DetectAsync(ToImage(image), timestamp_ms,
-                                                cpp_image_processing_options);
+  auto cpp_result = cpp_landmarker->DetectAsync(
+      ToImage(image), timestamp_ms, cpp_image_processing_options,
+      CaptureTensors(landmarker, image_processing_options));
 
   return cpp_result;
 }

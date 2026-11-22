@@ -39,6 +39,7 @@ limitations under the License.
 #include "mediapipe/tasks/cc/core/model_task_graph.h"
 #include "mediapipe/tasks/cc/vision/hand_detector/proto/hand_detector_graph_options.pb.h"
 #include "mediapipe/tasks/cc/vision/utils/image_tensor_specs.h"
+#include "mediapipe/util/graph_builder_utils.h"
 
 namespace mediapipe {
 namespace tasks {
@@ -60,6 +61,11 @@ constexpr char kNormRectTag[] = "NORM_RECT";
 constexpr char kPalmDetectionsTag[] = "PALM_DETECTIONS";
 constexpr char kHandRectsTag[] = "HAND_RECTS";
 constexpr char kPalmRectsTag[] = "PALM_RECTS";
+// Debug-only streams, see the graph documentation.
+constexpr char kCaptureTensorsTag[] = "CAPTURE_TENSORS";
+constexpr char kInputTensorCaptureTag[] = "INPUT_TENSOR_CAPTURE";
+constexpr char kPalmCandidatesTag[] = "PALM_CANDIDATES";
+constexpr char kPalmThresholdedDetectionsTag[] = "PALM_THRESHOLDED_DETECTIONS";
 
 struct HandDetectionOuts {
   Source<std::vector<Detection>> palm_detections;
@@ -164,6 +170,23 @@ void ConfigureRectTransformationCalculator(
 // All returned coordinates are in the unrotated and uncropped input image
 // coordinates system.
 //
+// Debug streams. None of them is part of the graph unless requested.
+//   CAPTURE_TENSORS (input) - bool @Optional
+//     Connecting it adds the INPUT_TENSOR_CAPTURE output. One packet per
+//     frame; true asks for a capture on that frame.
+//   INPUT_TENSOR_CAPTURE - hand_landmarker::TensorCapture
+//     Emitted on the frames where CAPTURE_TENSORS is true: a CPU copy of the
+//     tensor given to the palm detection model, or `has_tensor` false when the
+//     graph received no image at that timestamp (the model did not run).
+//   PALM_CANDIDATES - std::vector<Detection>
+//     Only with `debug_palm_candidates` > 0. That many of the boxes decoded
+//     from the model output, highest score first, with no score threshold and
+//     no suppression, in the same coordinates as PALM_DETECTIONS.
+//   PALM_THRESHOLDED_DETECTIONS - std::vector<Detection>
+//     Only with `debug_palm_candidates` > 0. The input of non-max suppression:
+//     the decoded boxes whose score passed `min_detection_confidence`, in
+//     model input coordinates.
+//
 // Example:
 // node {
 //   calculator: "mediapipe.tasks.vision.hand_detector.HandDetectorGraph"
@@ -199,7 +222,8 @@ class HandDetectorGraph : public core::ModelTaskGraph {
         BuildHandDetectionSubgraph(
             sc->Options<HandDetectorGraphOptions>(), *model_resources,
             graph[Input<Image>(kImageTag)],
-            graph[Input<NormalizedRect>::Optional(kNormRectTag)], graph));
+            graph[Input<NormalizedRect>::Optional(kNormRectTag)],
+            HasInput(sc->OriginalNode(), kCaptureTensorsTag), graph));
     hand_detection_outs.palm_detections >>
         graph[Output<std::vector<Detection>>(kPalmDetectionsTag)];
     hand_detection_outs.hand_rects >>
@@ -222,7 +246,8 @@ class HandDetectorGraph : public core::ModelTaskGraph {
   absl::StatusOr<HandDetectionOuts> BuildHandDetectionSubgraph(
       const HandDetectorGraphOptions& subgraph_options,
       const core::ModelResources& model_resources, Source<Image> image_in,
-      Source<NormalizedRect> norm_rect_in, Graph& graph) {
+      Source<NormalizedRect> norm_rect_in, bool capture_tensors,
+      Graph& graph) {
     // Add image preprocessing subgraph. The model expects aspect ratio
     // unchanged.
     auto& preprocessing = graph.AddNode(
@@ -255,6 +280,13 @@ class HandDetectorGraph : public core::ModelTaskGraph {
         model_resources, subgraph_options.base_options().acceleration(), graph);
     preprocessed_tensors >> inference.In("TENSORS");
     auto model_output_tensors = inference.Out("TENSORS");
+
+    if (capture_tensors) {
+      auto& tensor_capture = graph.AddNode("TensorCaptureCalculator");
+      preprocessed_tensors >> tensor_capture.In("TENSORS");
+      graph.In(kCaptureTensorsTag) >> tensor_capture.In("ENABLE");
+      tensor_capture.Out("CAPTURE") >> graph.Out(kInputTensorCaptureTag);
+    }
 
     // TODO: support hand detection metadata.
     bool has_metadata = false;
@@ -290,6 +322,42 @@ class HandDetectorGraph : public core::ModelTaskGraph {
              .GetOptions<mediapipe::NonMaxSuppressionCalculatorOptions>());
     detections >> non_maximum_suppression.In("");
     auto nms_detections = non_maximum_suppression.Out("");
+
+    if (subgraph_options.debug_palm_candidates() > 0) {
+      detections >> graph.Out(kPalmThresholdedDetectionsTag);
+
+      // The same decoder without a score threshold...
+      auto& all_candidates = graph.AddNode("TensorsToDetectionsCalculator");
+      auto& all_candidates_options =
+          all_candidates
+              .GetOptions<mediapipe::TensorsToDetectionsCalculatorOptions>();
+      ConfigureTensorsToDetectionsCalculator(subgraph_options,
+                                             &all_candidates_options);
+      all_candidates_options.clear_min_score_thresh();
+      model_output_tensors >> all_candidates.In("TENSORS");
+      anchors >> all_candidates.SideIn("ANCHORS");
+
+      // ...sorted by score and cut to the requested count. The suppression
+      // threshold of 1 suppresses nothing: no overlap exceeds it.
+      auto& top_candidates = graph.AddNode("NonMaxSuppressionCalculator");
+      auto& top_candidates_options =
+          top_candidates
+              .GetOptions<mediapipe::NonMaxSuppressionCalculatorOptions>();
+      top_candidates_options.set_min_suppression_threshold(1.0);
+      top_candidates_options.set_overlap_type(
+          mediapipe::NonMaxSuppressionCalculatorOptions::
+              INTERSECTION_OVER_UNION);
+      top_candidates_options.set_max_num_detections(
+          subgraph_options.debug_palm_candidates());
+      top_candidates_options.set_return_empty_detections(true);
+      all_candidates.Out("DETECTIONS") >> top_candidates.In("");
+
+      auto& candidate_projection =
+          graph.AddNode("DetectionProjectionCalculator");
+      top_candidates.Out("") >> candidate_projection.In("DETECTIONS");
+      matrix >> candidate_projection.In("PROJECTION_MATRIX");
+      candidate_projection.Out("DETECTIONS") >> graph.Out(kPalmCandidatesTag);
+    }
 
     // Maps detection label IDs to the corresponding label text "Palm".
     auto& detection_label_id_to_text =

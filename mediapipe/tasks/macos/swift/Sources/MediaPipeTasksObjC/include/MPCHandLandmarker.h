@@ -24,6 +24,9 @@ NS_ASSUME_NONNULL_BEGIN
 // on deallocation.
 @interface MPCHandLandmarker : NSObject
 
+// `stageOutputs` makes every result carry `stages` (per-stage debug outputs).
+// `tensorCapture` allows `captureTensors:YES` on the detect methods.
+// `palmCandidateLimit` > 0 makes every result carry `palmCandidates`.
 // `delegate` and `runningMode` use the MediaPipe C enum integer values
 // (MpDelegate / MpRunningMode).
 - (nullable instancetype)initWithModelPath:(NSString *)modelPath
@@ -36,7 +39,37 @@ NS_ASSUME_NONNULL_BEGIN
                                   delegate:(int)delegate
                       coreMLModelCacheDir:(nullable NSString *)coreMLModelCacheDir
                                runningMode:(int)runningMode
+                              stageOutputs:(BOOL)stageOutputs
+                             tensorCapture:(BOOL)tensorCapture
+                        palmCandidateLimit:(NSInteger)palmCandidateLimit
                                      error:(NSError **)error NS_DESIGNATED_INITIALIZER;
+
+// Same as above with `tensorCapture` off and `palmCandidateLimit` 0.
+- (nullable instancetype)initWithModelPath:(NSString *)modelPath
+                                  numHands:(NSInteger)numHands
+               minHandDetectionConfidence:(float)minHandDetectionConfidence
+                minHandPresenceConfidence:(float)minHandPresenceConfidence
+                    minTrackingConfidence:(float)minTrackingConfidence
+                                  roiScale:(float)roiScale
+                      trackingGraceFrames:(NSInteger)trackingGraceFrames
+                                  delegate:(int)delegate
+                      coreMLModelCacheDir:(nullable NSString *)coreMLModelCacheDir
+                               runningMode:(int)runningMode
+                              stageOutputs:(BOOL)stageOutputs
+                                     error:(NSError **)error;
+
+// Same as above with `stageOutputs` off.
+- (nullable instancetype)initWithModelPath:(NSString *)modelPath
+                                  numHands:(NSInteger)numHands
+               minHandDetectionConfidence:(float)minHandDetectionConfidence
+                minHandPresenceConfidence:(float)minHandPresenceConfidence
+                    minTrackingConfidence:(float)minTrackingConfidence
+                                  roiScale:(float)roiScale
+                      trackingGraceFrames:(NSInteger)trackingGraceFrames
+                                  delegate:(int)delegate
+                      coreMLModelCacheDir:(nullable NSString *)coreMLModelCacheDir
+                               runningMode:(int)runningMode
+                                     error:(NSError **)error;
 
 - (instancetype)init NS_UNAVAILABLE;
 
@@ -51,6 +84,20 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable MPCHandLandmarkerResult *)detectForVideoImage:(MPCImage *)image
                                           rotationDegrees:(int)rotationDegrees
                                               timestampMs:(int64_t)timestampMs
+                                                    error:(NSError **)error;
+
+// The two methods above with a capture request. `captureTensors` makes the
+// result carry `tensorCapture`; it needs a landmarker created with
+// `tensorCapture` and is ignored otherwise.
+- (nullable MPCHandLandmarkerResult *)detectImage:(MPCImage *)image
+                                  rotationDegrees:(int)rotationDegrees
+                                   captureTensors:(BOOL)captureTensors
+                                            error:(NSError **)error;
+
+- (nullable MPCHandLandmarkerResult *)detectForVideoImage:(MPCImage *)image
+                                          rotationDegrees:(int)rotationDegrees
+                                              timestampMs:(int64_t)timestampMs
+                                           captureTensors:(BOOL)captureTensors
                                                     error:(NSError **)error;
 
 @end

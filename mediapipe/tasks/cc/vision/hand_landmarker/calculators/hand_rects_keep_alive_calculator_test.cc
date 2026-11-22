@@ -15,6 +15,7 @@ limitations under the License.
 #include "mediapipe/tasks/cc/vision/hand_landmarker/calculators/hand_rects_keep_alive_calculator.h"
 
 #include <initializer_list>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -125,6 +126,45 @@ TEST(HandRectsKeepAliveCalculatorTest, HoldsOneHandWhileOtherStaysLive) {
   MP_ASSERT_OK_AND_ASSIGN(auto out3, runner.Run(Frame({a_recovered, b})));
   EXPECT_THAT(out3.GetOrDie(),
               ElementsAre(EqualsProto(a_recovered), EqualsProto(b)));
+}
+
+// MISS_COUNTS mirrors the output rects: 0 for live rects, the consecutive-miss
+// count for held ones.
+TEST(HandRectsKeepAliveCalculatorTest, ReportsMissCountsPerOutputRect) {
+  MP_ASSERT_OK_AND_ASSIGN(
+      auto runner,
+      Runner::For([](GenericGraph& graph,
+                     Stream<std::vector<NormalizedRect>> rects)
+                      -> std::tuple<Stream<std::vector<NormalizedRect>>,
+                                    Stream<std::vector<int>>> {
+        auto& node = graph.AddNode<tasks::HandRectsKeepAliveNode>();
+        {
+          mediapipe::HandRectsKeepAliveCalculatorOptions& options =
+              *node.options.Mutable();
+          options.set_max_miss_frames(2);
+          options.set_min_similarity_threshold(0.5);
+        }
+        node.rects_in.Set(rects);
+        return {node.rects_out.Get(), node.miss_counts_out.Get()};
+      }).Create());
+
+  const NormalizedRect a = Rect(0.3, 0.5);
+  const NormalizedRect b = Rect(0.7, 0.5);
+
+  MP_ASSERT_OK_AND_ASSIGN((auto [rects1, counts1]), runner.Run(Frame({a, b})));
+  EXPECT_THAT(rects1.GetOrDie(), ElementsAre(EqualsProto(a), EqualsProto(b)));
+  EXPECT_THAT(counts1.GetOrDie(), ElementsAre(0, 0));
+  // b vanishes: a stays live, b is held with one miss, then two.
+  MP_ASSERT_OK_AND_ASSIGN((auto [rects2, counts2]), runner.Run(Frame({a})));
+  EXPECT_THAT(rects2.GetOrDie(), ElementsAre(EqualsProto(a), EqualsProto(b)));
+  EXPECT_THAT(counts2.GetOrDie(), ElementsAre(0, 1));
+  MP_ASSERT_OK_AND_ASSIGN((auto [rects3, counts3]), runner.Run(Frame({a})));
+  EXPECT_THAT(rects3.GetOrDie(), ElementsAre(EqualsProto(a), EqualsProto(b)));
+  EXPECT_THAT(counts3.GetOrDie(), ElementsAre(0, 2));
+  // Budget exhausted: b is dropped.
+  MP_ASSERT_OK_AND_ASSIGN((auto [rects4, counts4]), runner.Run(Frame({a})));
+  EXPECT_THAT(rects4.GetOrDie(), ElementsAre(EqualsProto(a)));
+  EXPECT_THAT(counts4.GetOrDie(), ElementsAre(0));
 }
 
 TEST(HandRectsKeepAliveCalculatorTest, ZeroMissFramesIsPassthrough) {

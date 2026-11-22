@@ -93,6 +93,15 @@ class HandRectsKeepAliveNodeImpl
     // Output: real rects first (they win downstream clipping), held appended.
     auto output = std::make_unique<std::vector<NormalizedRect>>(
         std::move(incoming));
+    if (cc.miss_counts_out.IsConnected()) {
+      auto miss_counts = std::make_unique<std::vector<int>>();
+      miss_counts->reserve(output->size() + held_.size());
+      miss_counts->assign(output->size(), 0);
+      for (const HeldRect& held : held_) {
+        miss_counts->push_back(held.misses);
+      }
+      cc.miss_counts_out.Send(std::move(miss_counts));
+    }
     for (const HeldRect& held : held_) {
       output->push_back(held.rect);
     }

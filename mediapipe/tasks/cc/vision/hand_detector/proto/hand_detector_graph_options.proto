@@ -38,4 +38,12 @@ message HandDetectorGraphOptions {
 
   // The maximum number of hands output by the detector.
   optional int32 num_hands = 3;
+
+  // Debugging aid. When positive, the graph additionally exposes
+  // PALM_CANDIDATES (the this-many highest scored decoded boxes, whatever
+  // their score) and PALM_THRESHOLDED_DETECTIONS (the detections that passed
+  // `min_detection_confidence`, before non-max suppression). When 0 or unset
+  // (default) the generated graph is identical to one built without this
+  // field.
+  optional int32 debug_palm_candidates = 4 [default = 0];
 }

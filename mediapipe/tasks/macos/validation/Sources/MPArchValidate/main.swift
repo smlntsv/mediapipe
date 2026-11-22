@@ -112,7 +112,7 @@ func stats(_ values: [Double]) -> [String: Any] {
     }
     let mean = values.reduce(0, +) / Double(values.count)
     return ["n": values.count, "mean": num(mean), "min": num(sorted.first!), "p50": num(pct(50)),
-            "p90": num(pct(90)), "p99": num(pct(99)), "max": num(sorted.last!)]
+            "p90": num(pct(90)), "p95": num(pct(95)), "p99": num(pct(99)), "max": num(sorted.last!)]
 }
 
 func writeJSON(_ object: [String: Any], to path: String) {
@@ -204,6 +204,13 @@ struct Options {
     /// nothing (the reference clip has hands in ~78% of frames).
     var minHandRate = 0.25
     var outDir = ""
+    /// Hand pipeline debug options (all off by default). `captureEvery` N asks
+    /// for the model input tensors on every Nth frame; it needs
+    /// `tensorCapture`.
+    var stages = false
+    var tensorCapture = false
+    var captureEvery = 0
+    var palmCandidates = 0
 }
 
 func parse() -> Options {
@@ -232,6 +239,10 @@ func parse() -> Options {
         case "--at-ms": options.atMs = value(flag).split(separator: ",").compactMap { Int($0) }
         case "--out-dir": options.outDir = value(flag)
         case "--min-hand-rate": options.minHandRate = Double(value(flag)) ?? options.minHandRate
+        case "--stages": options.stages = true
+        case "--tensor-capture": options.tensorCapture = true
+        case "--capture-every": options.captureEvery = Int(value(flag)) ?? options.captureEvery
+        case "--palm-candidates": options.palmCandidates = Int(value(flag)) ?? options.palmCandidates
         default: die("unknown argument \(flag)")
         }
     }
@@ -255,7 +266,10 @@ func makeLandmarker(_ options: Options, mode: RunningMode) -> (HandLandmarker, D
             numHands: options.numHands,
             delegate: delegate(named: options.delegate),
             coreMLModelCacheDirectory: options.coreMLCache,
-            runningMode: mode))
+            runningMode: mode,
+            stageOutputs: options.stages,
+            tensorCapture: options.tensorCapture,
+            palmCandidateLimit: options.palmCandidates))
         return (landmarker, nowMs() - start)
     } catch {
         var report = baseReport(options)
@@ -507,6 +521,17 @@ func runVideo(_ options: Options) -> Int32 {
     var totalWithHand = 0
     var memAfterLoop0 = 0.0
     var peak = memBefore
+    // Debug options: what was checked on every frame.
+    let debugOn = options.stages || options.tensorCapture || options.palmCandidates > 0
+    var capturedLatencies: [Double] = []
+    var uncapturedLatencies: [Double] = []
+    var stageRecords = 0, stageMissing = 0, stageTimestampMismatches = 0
+    var framesDetectorRan = 0, framesDetectorSkipped = 0, framesNoHand = 0
+    var captures = 0, captureMissing = 0, captureUnexpected = 0, captureTimestampMismatches = 0
+    var capturedBytes = 0, palmTensors = 0, palmSkipped = 0, landmarkTensors = 0, landmarkSkipped = 0
+    var captureShapeMismatches = 0, captureSkipDisagreements = 0
+    var candidateRecords = 0, candidateMissing = 0, candidateTimestampMismatches = 0
+    var candidateDisagreements = 0
     let wallStart = nowMs()
     for loop in 0..<options.loops {
         var frames = 0, withHand = 0, withTwo = 0
@@ -517,10 +542,84 @@ func runVideo(_ options: Options) -> Int32 {
                 var ts = Int((loopOffset + ptsMs).rounded())
                 if ts <= lastTimestamp { ts = lastTimestamp + 1 }
                 lastTimestamp = ts
+                let capture = options.tensorCapture && options.captureEvery > 0
+                    && globalFrame % options.captureEvery == 0
                 let t0 = nowMs()
-                let result = try landmarker.detectForVideo(pixelBuffer: pixelBuffer, timestampInMilliseconds: ts)
+                let result = try landmarker.detectForVideo(
+                    pixelBuffer: pixelBuffer, timestampInMilliseconds: ts, captureTensors: capture)
                 let dt = nowMs() - t0
-                if firstFrameMs == nil { firstFrameMs = dt } else { latencies.append(dt) }
+                if firstFrameMs == nil {
+                    firstFrameMs = dt
+                } else {
+                    latencies.append(dt)
+                    if capture { capturedLatencies.append(dt) } else { uncapturedLatencies.append(dt) }
+                }
+                let expectedUs = Int64(ts) * 1000
+                if options.stages {
+                    if let stages = result.stages {
+                        stageRecords += 1
+                        if stages.timestampMicroseconds != expectedUs { stageTimestampMismatches += 1 }
+                        if stages.palmDetectorRan { framesDetectorRan += 1 } else { framesDetectorSkipped += 1 }
+                        if result.landmarks.isEmpty { framesNoHand += 1 }
+                    } else {
+                        stageMissing += 1
+                    }
+                }
+                if let captured = result.tensorCapture {
+                    if !capture { captureUnexpected += 1 }
+                    captures += 1
+                    if captured.timestampMicroseconds != expectedUs { captureTimestampMismatches += 1 }
+                    if let palm = captured.palmDetectorInput {
+                        palmTensors += 1
+                        capturedBytes += palm.data.count
+                        if palm.data.count != palm.shape.reduce(4, *) || palm.elementType != .float32 {
+                            captureShapeMismatches += 1
+                        }
+                    } else {
+                        palmSkipped += 1
+                    }
+                    for input in captured.landmarkInputs {
+                        if let tensor = input.tensor {
+                            landmarkTensors += 1
+                            capturedBytes += tensor.data.count
+                            if tensor.data.count != tensor.shape.reduce(4, *) || tensor.elementType != .float32 {
+                                captureShapeMismatches += 1
+                            }
+                        } else {
+                            landmarkSkipped += 1
+                        }
+                    }
+                    // Cross-check against the stage record of the same frame:
+                    // a palm tensor exactly when the detector ran, and one
+                    // landmark entry per ROI, with a tensor exactly for the
+                    // ROIs that got a presence score.
+                    if let stages = result.stages {
+                        if (captured.palmDetectorInput != nil) != stages.palmDetectorRan
+                            || captured.landmarkInputs.count != stages.landmarkROIs.count
+                            || captured.landmarkInputs.filter({ $0.tensor != nil }).count
+                                != stages.presenceScores.count {
+                            captureSkipDisagreements += 1
+                        }
+                    }
+                } else if capture {
+                    captureMissing += 1
+                }
+                if options.palmCandidates > 0 {
+                    if let candidates = result.palmCandidates {
+                        candidateRecords += 1
+                        if candidates.timestampMicroseconds != expectedUs { candidateTimestampMismatches += 1 }
+                        if let stages = result.stages {
+                            if candidates.palmDetectorRan != stages.palmDetectorRan
+                                || candidates.afterSuppressionCount != stages.palmDetections.count
+                                || (candidates.palmDetectorRan
+                                    && candidates.candidates.count != options.palmCandidates) {
+                                candidateDisagreements += 1
+                            }
+                        }
+                    } else {
+                        candidateMissing += 1
+                    }
+                }
                 loopLatency.append(dt)
                 frames += 1
                 globalFrame += 1
@@ -575,6 +674,29 @@ func runVideo(_ options: Options) -> Int32 {
     report["throughput_fps_wall"] = Double(globalFrame) / (wallMs / 1000)
     report["per_loop"] = perLoop
     report["first_loop_frames"] = firstLoopFrames
+    if debugOn {
+        report["debug"] = [
+            "stages": options.stages, "tensor_capture": options.tensorCapture,
+            "capture_every": options.captureEvery, "palm_candidates": options.palmCandidates,
+            "stage_records": stageRecords, "stage_missing": stageMissing,
+            "stage_timestamp_mismatches": stageTimestampMismatches,
+            "frames_detector_ran": framesDetectorRan, "frames_detector_skipped": framesDetectorSkipped,
+            "frames_no_hand": framesNoHand,
+            "captures": captures, "capture_missing": captureMissing,
+            "capture_unexpected": captureUnexpected,
+            "capture_timestamp_mismatches": captureTimestampMismatches,
+            "capture_shape_mismatches": captureShapeMismatches,
+            "capture_skip_disagreements": captureSkipDisagreements,
+            "palm_tensors": palmTensors, "palm_skipped": palmSkipped,
+            "landmark_tensors": landmarkTensors, "landmark_skipped": landmarkSkipped,
+            "captured_bytes": capturedBytes,
+            "candidate_records": candidateRecords, "candidate_missing": candidateMissing,
+            "candidate_timestamp_mismatches": candidateTimestampMismatches,
+            "candidate_disagreements": candidateDisagreements,
+            "latency_ms_captured_frames": stats(capturedLatencies),
+            "latency_ms_other_frames": stats(uncapturedLatencies),
+        ] as [String: Any]
+    }
     report["memory"] = [
         "footprint_mb_before_init": memBefore,
         "footprint_mb_after_loop0": memAfterLoop0,
@@ -605,6 +727,108 @@ func runVideo(_ options: Options) -> Int32 {
                    (stats(latencies)["p90"] as? Double) ?? -1,
                    Double(globalFrame) / (detectMs / 1000), Double(globalFrame) / (wallMs / 1000), peak))
     return plausible ? 0 : 1
+}
+
+// MARK: - Debug option cost (interleaved)
+
+/// Measures what the hand pipeline's debug options cost, on one clip and one
+/// delegate. Each round plays the clip once per mode, with a fresh landmarker
+/// per pass and the mode order rotated per round, so that drift over the run
+/// (thermal state, other load) spreads over all modes instead of landing on
+/// the ones that ran last. The first frames of every pass are left out.
+func runDebugBench(_ options: Options) -> Int32 {
+    guard !options.model.isEmpty, !options.video.isEmpty, !options.out.isEmpty else {
+        die("debug-bench needs --model, --video and --out")
+    }
+    struct Mode {
+        let name: String
+        let stages: Bool
+        let tensorCapture: Bool
+        let captureEvery: Int
+        let palmCandidates: Int
+    }
+    let modes = [
+        Mode(name: "off", stages: false, tensorCapture: false, captureEvery: 0, palmCandidates: 0),
+        Mode(name: "stages", stages: true, tensorCapture: false, captureEvery: 0, palmCandidates: 0),
+        Mode(name: "capture_armed", stages: false, tensorCapture: true, captureEvery: 0, palmCandidates: 0),
+        Mode(name: "capture_every_10", stages: false, tensorCapture: true, captureEvery: 10,
+             palmCandidates: 0),
+        Mode(name: "capture_every_frame", stages: false, tensorCapture: true, captureEvery: 1,
+             palmCandidates: 0),
+        Mode(name: "candidates_32", stages: false, tensorCapture: false, captureEvery: 0,
+             palmCandidates: 32),
+        Mode(name: "all", stages: true, tensorCapture: true, captureEvery: 10, palmCandidates: 32),
+    ]
+    let warmupFrames = 5
+    let source = VideoSource(path: options.video)
+    var all: [String: [Double]] = [:]
+    var captured: [String: [Double]] = [:]
+    var others: [String: [Double]] = [:]
+    var passMedians: [String: [Double]] = [:]
+    var handFrames: [String: Int] = [:]
+    for round in 0..<options.loops {
+        for offset in 0..<modes.count {
+            let mode = modes[(round + offset) % modes.count]
+            var modeOptions = options
+            modeOptions.stages = mode.stages
+            modeOptions.tensorCapture = mode.tensorCapture
+            modeOptions.palmCandidates = mode.palmCandidates
+            let (landmarker, _) = makeLandmarker(modeOptions, mode: .video)
+            var pass: [Double] = []
+            var frame = 0
+            var lastTimestamp = -1
+            do {
+                try source.forEachFrame(maxFrames: options.maxFrames) { pixelBuffer, ptsMs in
+                    var ts = Int(ptsMs.rounded())
+                    if ts <= lastTimestamp { ts = lastTimestamp + 1 }
+                    lastTimestamp = ts
+                    let capture = mode.captureEvery > 0 && frame % mode.captureEvery == 0
+                    let t0 = nowMs()
+                    let result = try landmarker.detectForVideo(
+                        pixelBuffer: pixelBuffer, timestampInMilliseconds: ts, captureTensors: capture)
+                    let dt = nowMs() - t0
+                    if frame >= warmupFrames {
+                        pass.append(dt)
+                        all[mode.name, default: []].append(dt)
+                        if mode.captureEvery > 0 {
+                            if capture { captured[mode.name, default: []].append(dt) }
+                            else { others[mode.name, default: []].append(dt) }
+                        }
+                    }
+                    if !result.landmarks.isEmpty { handFrames[mode.name, default: 0] += 1 }
+                    frame += 1
+                    return true
+                }
+            } catch {
+                die("inference failed in mode \(mode.name): \(error)", code: 4)
+            }
+            let median = (stats(pass)["p50"] as? Double) ?? -1
+            passMedians[mode.name, default: []].append(median)
+            log(String(format: "round %d %@: %d frames, p50 %.2f ms", round, mode.name, frame, median))
+        }
+    }
+    var report = baseReport(options)
+    report["video"] = ["file": (options.video as NSString).lastPathComponent,
+                       "sha256": sha256(of: options.video)]
+    report["rounds"] = options.loops
+    report["warmup_frames_per_pass"] = warmupFrames
+    report["modes"] = modes.map { mode -> [String: Any] in
+        var entry: [String: Any] = [
+            "name": mode.name, "stages": mode.stages, "tensor_capture": mode.tensorCapture,
+            "capture_every": mode.captureEvery, "palm_candidates": mode.palmCandidates,
+            "latency_ms": stats(all[mode.name] ?? []),
+            "pass_p50_ms": (passMedians[mode.name] ?? []).map { num($0) },
+            "frames_with_hand": handFrames[mode.name] ?? 0,
+        ]
+        if mode.captureEvery > 0 {
+            entry["latency_ms_captured_frames"] = stats(captured[mode.name] ?? [])
+            entry["latency_ms_other_frames"] = stats(others[mode.name] ?? [])
+        }
+        return entry
+    }
+    report["status"] = "ok"
+    writeJSON(report, to: options.out)
+    return 0
 }
 
 // MARK: - Still extraction
@@ -646,6 +870,8 @@ case "image":
     exit(runImage(options))
 case "video":
     exit(runVideo(options))
+case "debug-bench":
+    exit(runDebugBench(options))
 case "frames":
     exit(runFrames(options))
 default:

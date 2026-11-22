@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef MEDIAPIPE_TASKS_C_VISION_HAND_LANDMARKER_HAND_LANDMARKER_H_
 #define MEDIAPIPE_TASKS_C_VISION_HAND_LANDMARKER_HAND_LANDMARKER_H_
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "mediapipe/tasks/c/core/base_options.h"
@@ -126,6 +127,27 @@ typedef struct MpHandLandmarkerOptions {
   // `result_callback`. Can be null. The hand landmarker neither dereferences
   // nor frees it. It must remain valid until `MpHandLandmarkerClose()` returns.
   void* result_callback_user_data;
+
+  // Debugging aid. When true, every result carries `stages`: the per-stage
+  // outputs of the hand pipeline for that frame (see MpHandLandmarkerStages).
+  // Suggested default: false, which leaves the graph and the results unchanged
+  // and `stages` null.
+  // Kept as the last field, like `stages` in MpHandLandmarkerResult, so that
+  // the layout of the fields before it is unchanged.
+  bool debug_stage_outputs;
+
+  // Debugging aid. When true, a detect call whose image processing options
+  // set `capture_tensors` returns the model input tensors of that frame in
+  // `MpHandLandmarkerResult::tensor_capture`. Calls that do not set it read no
+  // tensor. Suggested default: false, which leaves the graph and the results
+  // unchanged.
+  bool debug_tensor_capture;
+
+  // Debugging aid. When positive, every result carries `palm_candidates` with
+  // this many of the palm detector's highest scored candidates (see
+  // MpHandLandmarkerPalmCandidates). Suggested default: 0, which leaves the
+  // graph and the results unchanged.
+  int debug_palm_candidates;
 } MpHandLandmarkerOptions;
 
 // Creates an HandLandmarker from the provided `options`.

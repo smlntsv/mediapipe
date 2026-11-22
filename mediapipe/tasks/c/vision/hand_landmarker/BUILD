@@ -34,6 +34,8 @@ cc_library(
     hdrs = ["hand_landmarker_result_converter.h"],
     deps = [
         ":hand_landmarker_result",
+        "//mediapipe/framework/formats:detection_cc_proto",
+        "//mediapipe/framework/formats:rect_cc_proto",
         "//mediapipe/tasks/c/components/containers:category",
         "//mediapipe/tasks/c/components/containers:category_converter",
         "//mediapipe/tasks/c/components/containers:landmark",
@@ -51,6 +53,9 @@ cc_test(
     deps = [
         ":hand_landmarker_result",
         ":hand_landmarker_result_converter",
+        "//mediapipe/framework/formats:detection_cc_proto",
+        "//mediapipe/framework/formats:rect_cc_proto",
+        "//mediapipe/framework/formats:tensor",
         "//mediapipe/framework/port:gtest",
         "//mediapipe/tasks/c/components/containers:landmark",
         "//mediapipe/tasks/cc/components/containers:category",

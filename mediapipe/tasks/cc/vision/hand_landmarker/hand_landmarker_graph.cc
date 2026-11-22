@@ -77,6 +77,26 @@ constexpr char kHandednessTag[] = "HANDEDNESS";
 constexpr char kPalmDetectionsTag[] = "PALM_DETECTIONS";
 constexpr char kPalmRectsTag[] = "PALM_RECTS";
 constexpr char kPreviousLoopbackCalculatorName[] = "PreviousLoopbackCalculator";
+// Debug-only outputs, present only when `debug_stage_outputs` is set.
+constexpr char kStagePrevHandRectsTag[] = "STAGE_PREV_HAND_RECTS";
+constexpr char kStageHasEnoughHandsTag[] = "STAGE_HAS_ENOUGH_HANDS";
+constexpr char kStageDetectorHandRectsTag[] = "STAGE_DETECTOR_HAND_RECTS";
+constexpr char kStageLandmarkRoisTag[] = "STAGE_LANDMARK_ROIS";
+constexpr char kStagePresenceTag[] = "STAGE_PRESENCE";
+constexpr char kStagePresenceScoreTag[] = "STAGE_PRESENCE_SCORE";
+constexpr char kStageLandmarksBeforeDedupTag[] = "STAGE_LANDMARKS_BEFORE_DEDUP";
+constexpr char kStageHandRectsBeforeDedupTag[] =
+    "STAGE_HAND_RECTS_BEFORE_DEDUP";
+constexpr char kStageKeepAliveRectsTag[] = "STAGE_KEEP_ALIVE_RECTS";
+constexpr char kStageKeepAliveMissCountsTag[] = "STAGE_KEEP_ALIVE_MISS_COUNTS";
+// Debug-only streams of `debug_tensor_capture`.
+constexpr char kCaptureTensorsTag[] = "CAPTURE_TENSORS";
+constexpr char kPalmInputTensorCaptureTag[] = "PALM_INPUT_TENSOR_CAPTURE";
+constexpr char kLandmarkInputTensorCapturesTag[] =
+    "LANDMARK_INPUT_TENSOR_CAPTURES";
+// Debug-only outputs of the hand detector's `debug_palm_candidates`.
+constexpr char kPalmCandidatesTag[] = "PALM_CANDIDATES";
+constexpr char kPalmThresholdedDetectionsTag[] = "PALM_THRESHOLDED_DETECTIONS";
 constexpr char kHandDetectorTFLiteName[] = "hand_detector.tflite";
 constexpr char kHandLandmarksDetectorTFLiteName[] =
     "hand_landmarks_detector.tflite";
@@ -174,6 +194,53 @@ absl::Status SetSubTaskBaseOptions(const ModelAssetBundleResources& resources,
 //     stored on the target storage (CPU vs GPU).
 // All returned coordinates are in the unrotated and uncropped input image
 // coordinates system.
+//
+// Debug outputs, present only when the `debug_stage_outputs` option is set.
+// Each one is an existing internal stream exposed unchanged; a stream carries
+// no packet on a frame where its producer did not emit one.
+//   STAGE_PREV_HAND_RECTS - std::vector<NormalizedRect> (stream mode only)
+//     Rects carried in from the previous frame (PreviousLoopbackCalculator
+//     output), including rects held by HandRectsKeepAliveCalculator.
+//   STAGE_HAS_ENOUGH_HANDS - bool (stream mode only)
+//     NormalizedRectVectorHasMinSizeCalculator output. The palm detector is
+//     skipped on a frame exactly when this packet is present and true.
+//   STAGE_DETECTOR_HAND_RECTS - std::vector<NormalizedRect>
+//     HAND_RECTS of HandDetectorGraph (palm rects expanded to hand rects).
+//   STAGE_LANDMARK_ROIS - std::vector<NormalizedRect>
+//     Rects the landmark model runs on: the HandAssociationCalculator output
+//     (detector output in image mode) clipped to `num_hands`.
+//   STAGE_PRESENCE - std::vector<bool>
+//   STAGE_PRESENCE_SCORE - std::vector<float>
+//     One entry per STAGE_LANDMARK_ROIS rect, in the same order, except for an
+//     all-zero rect (what the detector graph emits when it finds no palm),
+//     which the landmark model skips.
+//   STAGE_LANDMARKS_BEFORE_DEDUP - std::vector<NormalizedLandmarkList>
+//   STAGE_HAND_RECTS_BEFORE_DEDUP - std::vector<NormalizedRect>
+//     HandLandmarksDeduplicationCalculator inputs: one entry per ROI that
+//     passed the presence threshold.
+//   STAGE_KEEP_ALIVE_RECTS - std::vector<NormalizedRect>
+//   STAGE_KEEP_ALIVE_MISS_COUNTS - std::vector<int>
+//     (stream mode with tracking_grace_frames > 0 only)
+//     HandRectsKeepAliveCalculator outputs: the rects handed to the next frame
+//     and, per rect, 0 if live or the consecutive-miss count if held.
+//
+// Tensor capture, present only when the `debug_tensor_capture` option is set:
+//   CAPTURE_TENSORS (input) - bool
+//     One packet per frame; true asks for a capture on that frame. On other
+//     frames the tensors are not touched.
+//   PALM_INPUT_TENSOR_CAPTURE - TensorCapture
+//     On a requested frame: a CPU copy of the tensor given to the palm
+//     detection model, or `has_tensor` false when the detector was skipped.
+//   LANDMARK_INPUT_TENSOR_CAPTURES - std::vector<TensorCapture>
+//     On a requested frame: one entry per rect the landmark model is given
+//     (STAGE_LANDMARK_ROIS order), a CPU copy of its input tensor, or
+//     `has_tensor` false for a rect the model was not run on.
+//
+// Palm candidates, present only when `debug_palm_candidates` of the hand
+// detector options is positive; see HandDetectorGraph. No packet on a frame
+// where the detector was skipped.
+//   PALM_CANDIDATES - std::vector<Detection>
+//   PALM_THRESHOLDED_DETECTIONS - std::vector<Detection>
 //
 // Example:
 // node {
@@ -273,6 +340,10 @@ class HandLandmarkerGraph : public core::ModelTaskGraph {
       std::optional<Stream<NormalizedRect>> norm_rect_in, Graph& graph) {
     const int max_num_hands =
         tasks_options.hand_detector_graph_options().num_hands();
+    // Debug outputs are added to the graph only when requested, so the config
+    // is unchanged otherwise.
+    const bool stage_outputs = tasks_options.debug_stage_outputs();
+    const bool tensor_capture = tasks_options.debug_tensor_capture();
 
     auto& previous_loopback = graph.AddNode(kPreviousLoopbackCalculatorName);
     image_in >> previous_loopback.In("MAIN");
@@ -290,6 +361,19 @@ class HandLandmarkerGraph : public core::ModelTaskGraph {
         graph.AddNode("mediapipe.tasks.vision.hand_detector.HandDetectorGraph");
     hand_detector.GetOptions<HandDetectorGraphOptions>().CopyFrom(
         tasks_options.hand_detector_graph_options());
+    if (tensor_capture) {
+      // Not gated with the detector's image: the capture reports a skipped
+      // detector as a capture without a tensor.
+      graph.In(kCaptureTensorsTag) >> hand_detector.In(kCaptureTensorsTag);
+      hand_detector.Out("INPUT_TENSOR_CAPTURE") >>
+          graph.Out(kPalmInputTensorCaptureTag);
+    }
+    if (tasks_options.hand_detector_graph_options().debug_palm_candidates() >
+        0) {
+      hand_detector.Out(kPalmCandidatesTag) >> graph.Out(kPalmCandidatesTag);
+      hand_detector.Out(kPalmThresholdedDetectionsTag) >>
+          graph.Out(kPalmThresholdedDetectionsTag);
+    }
     auto& clip_hand_rects =
         graph.AddNode("ClipNormalizedRectVectorSizeCalculator");
     clip_hand_rects.GetOptions<ClipVectorSizeCalculatorOptions>()
@@ -310,6 +394,11 @@ class HandLandmarkerGraph : public core::ModelTaskGraph {
         norm_rect_in_for_hand_detector.value() >> hand_detector.In("NORM_RECT");
       }
       auto hand_rects_from_hand_detector = hand_detector.Out("HAND_RECTS");
+      if (stage_outputs) {
+        prev_hand_rects_from_landmarks >> graph.Out(kStagePrevHandRectsTag);
+        has_enough_hands >> graph.Out(kStageHasEnoughHandsTag);
+        hand_rects_from_hand_detector >> graph.Out(kStageDetectorHandRectsTag);
+      }
       auto& hand_association = graph.AddNode("HandAssociationCalculator");
       hand_association.GetOptions<HandAssociationCalculatorOptions>()
           .set_min_similarity_threshold(
@@ -329,6 +418,9 @@ class HandLandmarkerGraph : public core::ModelTaskGraph {
         norm_rect_in.value() >> hand_detector.In("NORM_RECT");
       }
       auto hand_rects_from_hand_detector = hand_detector.Out("HAND_RECTS");
+      if (stage_outputs) {
+        hand_rects_from_hand_detector >> graph.Out(kStageDetectorHandRectsTag);
+      }
       hand_rects_from_hand_detector >> clip_hand_rects.In("");
     }
     auto clipped_hand_rects = clip_hand_rects.Out("");
@@ -341,6 +433,12 @@ class HandLandmarkerGraph : public core::ModelTaskGraph {
         .CopyFrom(tasks_options.hand_landmarks_detector_graph_options());
     image_in >> hand_landmarks_detector_graph.In("IMAGE");
     clipped_hand_rects >> hand_landmarks_detector_graph.In("HAND_RECT");
+    if (tensor_capture) {
+      graph.In(kCaptureTensorsTag) >>
+          hand_landmarks_detector_graph.In(kCaptureTensorsTag);
+      hand_landmarks_detector_graph.Out("INPUT_TENSOR_CAPTURES") >>
+          graph.Out(kLandmarkInputTensorCapturesTag);
+    }
 
     auto landmarks = hand_landmarks_detector_graph.Out(kLandmarksTag);
     auto world_landmarks =
@@ -348,6 +446,15 @@ class HandLandmarkerGraph : public core::ModelTaskGraph {
     auto hand_rects_for_next_frame =
         hand_landmarks_detector_graph.Out(kHandRectNextFrameTag);
     auto handedness = hand_landmarks_detector_graph.Out(kHandednessTag);
+    if (stage_outputs) {
+      clipped_hand_rects >> graph.Out(kStageLandmarkRoisTag);
+      hand_landmarks_detector_graph.Out("PRESENCE") >>
+          graph.Out(kStagePresenceTag);
+      hand_landmarks_detector_graph.Out("PRESENCE_SCORE") >>
+          graph.Out(kStagePresenceScoreTag);
+      landmarks >> graph.Out(kStageLandmarksBeforeDedupTag);
+      hand_rects_for_next_frame >> graph.Out(kStageHandRectsBeforeDedupTag);
+    }
 
     auto& image_property = graph.AddNode("ImagePropertiesCalculator");
     image_in >> image_property.In("IMAGE");
@@ -386,8 +493,14 @@ class HandLandmarkerGraph : public core::ModelTaskGraph {
       keep_alive_options.set_min_similarity_threshold(
           tasks_options.min_tracking_confidence());
       filtered_hand_rects_for_next_frame >> keep_alive.In("");
-      keep_alive.Out("").Cast<std::vector<NormalizedRect>>() >>
-          previous_loopback.In("LOOP");
+      auto kept_hand_rects =
+          keep_alive.Out("").Cast<std::vector<NormalizedRect>>();
+      kept_hand_rects >> previous_loopback.In("LOOP");
+      if (stage_outputs) {
+        kept_hand_rects >> graph.Out(kStageKeepAliveRectsTag);
+        keep_alive.Out("MISS_COUNTS") >>
+            graph.Out(kStageKeepAliveMissCountsTag);
+      }
     } else {
       filtered_hand_rects_for_next_frame >> previous_loopback.In("LOOP");
     }

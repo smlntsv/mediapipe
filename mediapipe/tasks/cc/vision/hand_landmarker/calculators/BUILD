@@ -95,6 +95,39 @@ cc_test(
 )
 
 cc_library(
+    name = "tensor_capture",
+    hdrs = ["tensor_capture.h"],
+    deps = ["//mediapipe/framework/formats:tensor"],
+)
+
+cc_library(
+    name = "tensor_capture_calculator",
+    srcs = ["tensor_capture_calculator.cc"],
+    deps = [
+        ":tensor_capture",
+        "//mediapipe/calculators/core:end_loop_calculator",
+        "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework/formats:tensor",
+    ],
+    alwayslink = 1,
+)
+
+cc_test(
+    name = "tensor_capture_calculator_test",
+    srcs = ["tensor_capture_calculator_test.cc"],
+    deps = [
+        ":tensor_capture",
+        ":tensor_capture_calculator",
+        "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework:calculator_runner",
+        "//mediapipe/framework/formats:tensor",
+        "//mediapipe/framework/port:gtest_main",
+        "//mediapipe/framework/port:parse_text_proto",
+        "//mediapipe/framework/port:status_matchers",
+    ],
+)
+
+cc_library(
     name = "hand_landmarks_deduplication_calculator",
     srcs = ["hand_landmarks_deduplication_calculator.cc"],
     hdrs = ["hand_landmarks_deduplication_calculator.h"],
