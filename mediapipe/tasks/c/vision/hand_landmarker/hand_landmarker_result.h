@@ -226,6 +226,132 @@ typedef struct MpHandLandmarkerPalmCandidates {
   uint32_t after_suppression_count;
 } MpHandLandmarkerPalmCandidates;
 
+// One detection of one palm search region.
+struct MpPalmSearchRegionDetection {
+  // As it left the region's own non-max suppression, in frame coordinates.
+  struct MpNormalizedDetection detection;
+  // 0: went into the merge. 1: dropped by `reject_truncated_detections`.
+  // 2: dropped by `max_palm_fraction`.
+  int outcome;
+  // Index into `MpHandLandmarkerPalmSearch::merged` of the detection it
+  // became or was folded into; -1 when it was dropped.
+  int merged_index;
+};
+
+// One region the palm model was run on, and what it produced.
+struct MpPalmSearchRegion {
+  // 0: the full frame. 1 + row * columns + column: a grid tile. 1000 + i: the
+  // i-th external region of the call.
+  int id;
+  // 0: full frame, 1: grid tile, 2: external region.
+  int kind;
+  // Grid tiles only, otherwise -1.
+  int grid_row;
+  int grid_column;
+  // The region as asked for: an axis-aligned box of the frame.
+  float requested_x_center;
+  float requested_y_center;
+  float requested_width;
+  float requested_height;
+  // The window the model input was sampled from: the requested box grown
+  // around its center to a square in pixels. Not clipped to the frame; the
+  // part outside the frame is black.
+  float sampled_x_center;
+  float sampled_y_center;
+  float sampled_width;
+  float sampled_height;
+
+  struct MpPalmSearchRegionDetection* detections;
+  uint32_t detections_count;
+
+  // Only with `debug_palm_candidates` > 0: the highest scored decoded boxes
+  // of this region whatever their score, and the number of decoded boxes
+  // that passed the score threshold.
+  struct MpNormalizedDetection* candidates;
+  uint32_t candidates_count;
+  uint32_t above_threshold_count;
+
+  // Monotonic clock, nanoseconds: when the region entered the loop and when
+  // its detections left it. Iterations can overlap in time.
+  int64_t crop_start_ns;
+  int64_t detections_ready_ns;
+};
+
+// Where a merged detection came from.
+struct MpPalmSearchSource {
+  int region_id;
+  // Index into that region's `detections`.
+  int detection_index;
+};
+
+struct MpPalmSearchMergedDetection {
+  struct MpNormalizedDetection detection;
+  // Highest scored first.
+  struct MpPalmSearchSource* sources;
+  uint32_t sources_count;
+  // What became of its hand rect. 0: given to the landmark model. 1: dropped
+  // by the association, overlapped a rect carried over from the previous
+  // frame. 2: dropped by the association, overlapped the hand rect of an
+  // earlier detection of this frame. 3: cut off by the clip to `num_hands`
+  // after the association. 4: cut off by the clip to `num_hands` before the
+  // association (`clip_before_association`).
+  int outcome;
+  // For outcomes 1 and 2: index of the overlapped rect in the association's
+  // output (the previous frame's rects first, then the kept detector rects).
+  // -1 otherwise.
+  int overlapped_rect_index;
+  // For outcome 0: index into `MpHandLandmarkerStages::landmark_rois`. -1
+  // otherwise.
+  int landmark_roi_index;
+};
+
+// The palm search record of one frame. Present in every result of a hand
+// landmarker created with `palm_search_enabled` and `debug_stage_outputs`.
+// Raw values of one frame; all coordinates are normalized to the input image
+// as passed in.
+typedef struct MpHandLandmarkerPalmSearch {
+  // Timestamp (microseconds) of the graph output this record was read from.
+  int64_t timestamp_us;
+  // Image and video mode: the number of detect calls on this landmarker
+  // before this one. -1 in live stream mode.
+  int64_t frame_sequence;
+
+  // Whether the palm detector ran on this frame. In stream mode it is skipped
+  // when the rects carried over from the previous frame already number
+  // `num_hands`. The schedule, the detector's clock stamps, `regions` and
+  // `merged` are 0 / null when it did not.
+  bool palm_detector_ran;
+
+  // Schedule state: the number of detector frames before this one, the
+  // number of grid tiles, how many run per detector frame (0: all), and the
+  // index of the first tile run on this detector frame and on the next.
+  int64_t detector_frame_index;
+  int grid_tile_count;
+  int tiles_per_frame;
+  int cursor_before;
+  int cursor_after;
+
+  // Monotonic clock, nanoseconds; 0 where not measured. When the detect call
+  // was entered and when the graph had produced its outputs (image and video
+  // mode), when the region list and the merged detections were emitted, when
+  // the landmark model's rects were emitted and when its landmarks were
+  // collected.
+  int64_t call_start_ns;
+  int64_t call_end_ns;
+  int64_t regions_ready_ns;
+  int64_t merge_done_ns;
+  int64_t landmark_rois_ready_ns;
+  int64_t landmarks_done_ns;
+
+  // In the order the model was run on them.
+  struct MpPalmSearchRegion* regions;
+  uint32_t regions_count;
+
+  // The merged detections, highest score first: the graph's palm detections.
+  struct MpPalmSearchMergedDetection* merged;
+  uint32_t merged_count;
+} MpHandLandmarkerPalmSearch;
+
 // The hand landmarker result from HandLandmarker, where each vector
 // element represents a single hand detected in the image.
 typedef struct MpHandLandmarkerResult {
@@ -260,6 +386,11 @@ typedef struct MpHandLandmarkerResult {
   // Palm candidate diagnostics. Null unless the hand landmarker was created
   // with `debug_palm_candidates` > 0. Owned by the result and freed with it.
   struct MpHandLandmarkerPalmCandidates* palm_candidates;
+
+  // Palm search record. Null unless the hand landmarker was created with
+  // `palm_search_enabled` and `debug_stage_outputs`. Owned by the result and
+  // freed with it. Kept as the last field.
+  struct MpHandLandmarkerPalmSearch* palm_search;
 } MpHandLandmarkerResult;
 
 #ifdef __cplusplus

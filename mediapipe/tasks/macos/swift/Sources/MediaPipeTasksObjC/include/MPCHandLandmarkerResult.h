@@ -16,6 +16,7 @@
 
 #import "MPCCategory.h"
 #import "MPCHandLandmarkerDiagnostics.h"
+#import "MPCHandLandmarkerPalmSearch.h"
 #import "MPCHandLandmarkerStages.h"
 #import "MPCLandmark.h"
 
@@ -44,6 +45,10 @@ NS_ASSUME_NONNULL_BEGIN
 // Palm candidate diagnostics. Nil unless the landmarker was created with a
 // positive `palmCandidateLimit`.
 @property(nonatomic, strong, nullable) MPCHandLandmarkerPalmCandidates *palmCandidates;
+
+// Palm search record. Nil unless the landmarker was created with palm search
+// options and `stageOutputs`.
+@property(nonatomic, strong, nullable) MPCHandLandmarkerPalmSearch *palmSearch;
 
 - (instancetype)initWithLandmarks:(NSArray<NSArray<MPCLandmark *> *> *)landmarks
                    worldLandmarks:(NSArray<NSArray<MPCLandmark *> *> *)worldLandmarks

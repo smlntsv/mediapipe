@@ -15,6 +15,7 @@
 #import <Foundation/Foundation.h>
 
 #import "MPCHandLandmarkerResult.h"
+#import "MPCHandLandmarkerPalmSearch.h"
 #import "MPCImage.h"
 
 NS_ASSUME_NONNULL_BEGIN
@@ -42,7 +43,24 @@ NS_ASSUME_NONNULL_BEGIN
                               stageOutputs:(BOOL)stageOutputs
                              tensorCapture:(BOOL)tensorCapture
                         palmCandidateLimit:(NSInteger)palmCandidateLimit
+                                palmSearch:(nullable MPCPalmSearchOptions *)palmSearch
                                      error:(NSError **)error NS_DESIGNATED_INITIALIZER;
+
+// As above without palm search regions.
+- (nullable instancetype)initWithModelPath:(NSString *)modelPath
+                                  numHands:(NSInteger)numHands
+               minHandDetectionConfidence:(float)minHandDetectionConfidence
+                minHandPresenceConfidence:(float)minHandPresenceConfidence
+                    minTrackingConfidence:(float)minTrackingConfidence
+                                  roiScale:(float)roiScale
+                      trackingGraceFrames:(NSInteger)trackingGraceFrames
+                                  delegate:(int)delegate
+                      coreMLModelCacheDir:(nullable NSString *)coreMLModelCacheDir
+                               runningMode:(int)runningMode
+                              stageOutputs:(BOOL)stageOutputs
+                             tensorCapture:(BOOL)tensorCapture
+                        palmCandidateLimit:(NSInteger)palmCandidateLimit
+                                     error:(NSError **)error;
 
 // Same as above with `tensorCapture` off and `palmCandidateLimit` 0.
 - (nullable instancetype)initWithModelPath:(NSString *)modelPath
@@ -98,6 +116,24 @@ NS_ASSUME_NONNULL_BEGIN
                                           rotationDegrees:(int)rotationDegrees
                                               timestampMs:(int64_t)timestampMs
                                            captureTensors:(BOOL)captureTensors
+                                                    error:(NSError **)error;
+
+// `searchRegions`: regions of this frame for the palm detector, as flat
+// quadruples {left, top, right, bottom} in normalized coordinates of the image
+// as passed in. Used only by a landmarker created with palm search options
+// that accept external regions; nil or empty for none.
+- (nullable MPCHandLandmarkerResult *)detectImage:(MPCImage *)image
+                                  rotationDegrees:(int)rotationDegrees
+                                   captureTensors:(BOOL)captureTensors
+                                    searchRegions:(nullable NSArray<NSNumber *> *)searchRegions
+                                            error:(NSError **)error;
+
+- (nullable MPCHandLandmarkerResult *)detectForVideoImage:(MPCImage *)image
+                                          rotationDegrees:(int)rotationDegrees
+                                              timestampMs:(int64_t)timestampMs
+                                           captureTensors:(BOOL)captureTensors
+                                            searchRegions:
+                                                (nullable NSArray<NSNumber *> *)searchRegions
                                                     error:(NSError **)error;
 
 @end

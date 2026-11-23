@@ -50,7 +50,12 @@ class HandAssociationNodeImpl
   }
 
   absl::Status Process(CalculatorContext<HandAssociationNode>& cc) override {
-    ABSL_ASSIGN_OR_RETURN(auto result, GetNonOverlappingElements(cc));
+    std::vector<int> overlaps;
+    ABSL_ASSIGN_OR_RETURN(auto result,
+                          GetNonOverlappingElements(cc, &overlaps));
+    if (cc.overlaps.IsConnected()) {
+      cc.overlaps.Send(std::make_unique<std::vector<int>>(std::move(overlaps)));
+    }
 
     auto output =
         std::make_unique<std::vector<NormalizedRect>>(std::move(result));
@@ -76,7 +81,8 @@ class HandAssociationNodeImpl
   // decreasing order of priority based on input stream index and indices
   // within an input stream.
   absl::StatusOr<std::vector<NormalizedRect>> GetNonOverlappingElements(
-      CalculatorContext<HandAssociationNode>& cc) {
+      CalculatorContext<HandAssociationNode>& cc, std::vector<int>* overlaps) {
+    const bool report_overlaps = cc.overlaps.IsConnected();
     std::vector<NormalizedRect> result;
 
     for (int i = 0; i < cc.base_rects.Count(); ++i) {
@@ -103,6 +109,21 @@ class HandAssociationNodeImpl
             bool is_overlapping,
             mediapipe::DoesRectOverlap(rect, result,
                                        options_.min_similarity_threshold()));
+        if (report_overlaps) {
+          int overlapped = -1;
+          for (int k = 0; is_overlapping && k < result.size(); ++k) {
+            ABSL_ASSIGN_OR_RETURN(
+                bool overlaps_k,
+                mediapipe::DoesRectOverlap(
+                    rect, absl::MakeConstSpan(&result[k], 1),
+                    options_.min_similarity_threshold()));
+            if (overlaps_k) {
+              overlapped = k;
+              break;
+            }
+          }
+          overlaps->push_back(overlapped);
+        }
         if (!is_overlapping) {
           if (!rect.has_rect_id()) {
             rect.set_rect_id(GetNextRectId());

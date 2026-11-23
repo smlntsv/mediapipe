@@ -34,6 +34,9 @@ namespace tasks {
 //
 // Output:
 //  No tag - Vector of NormalizedRect.
+//  OVERLAPS - Vector of int. @Optional
+//    Per "RECTS" rect: -1 if kept, else the output index of the first rect it
+//    overlapped.
 //
 // Example use:
 // node {
@@ -75,6 +78,12 @@ struct HandAssociationNode : public api3::Node<"HandAssociationCalculator"> {
 
     // Output stream of vector of NormalizedRect.
     api3::Output<S, std::vector<NormalizedRect>> output_rects{""};
+
+    // Fork addition, debugging aid. One entry per rect of the "RECTS" input
+    // streams, in the order they are checked: -1 if the rect was kept, else
+    // the index in the output of the first rect it overlapped. Rects of the
+    // "BASE_RECTS" streams have no entry.
+    api3::Optional<api3::Output<S, std::vector<int>>> overlaps{"OVERLAPS"};
 
     // HandAssociationCalculator options.
     api3::Options<S, mediapipe::HandAssociationCalculatorOptions> options;

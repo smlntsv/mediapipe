@@ -97,6 +97,13 @@ constexpr char kLandmarkInputTensorCapturesTag[] =
 // Debug-only outputs of the hand detector's `debug_palm_candidates`.
 constexpr char kPalmCandidatesTag[] = "PALM_CANDIDATES";
 constexpr char kPalmThresholdedDetectionsTag[] = "PALM_THRESHOLDED_DETECTIONS";
+// Streams of the palm search path (`palm_search` of the hand detector options).
+constexpr char kPalmInputTensorCapturesTag[] = "PALM_INPUT_TENSOR_CAPTURES";
+constexpr char kStagePalmSearchRecordTag[] = "STAGE_PALM_SEARCH_RECORD";
+constexpr char kStageAssociationOverlapsTag[] = "STAGE_ASSOCIATION_OVERLAPS";
+constexpr char kSearchRegionsTag[] = "SEARCH_REGIONS";
+constexpr char kStageLandmarkRoisReadyNsTag[] = "STAGE_LANDMARK_ROIS_READY_NS";
+constexpr char kStageLandmarksDoneNsTag[] = "STAGE_LANDMARKS_DONE_NS";
 constexpr char kHandDetectorTFLiteName[] = "hand_detector.tflite";
 constexpr char kHandLandmarksDetectorTFLiteName[] =
     "hand_landmarks_detector.tflite";
@@ -242,6 +249,30 @@ absl::Status SetSubTaskBaseOptions(const ModelAssetBundleResources& resources,
 //   PALM_CANDIDATES - std::vector<Detection>
 //   PALM_THRESHOLDED_DETECTIONS - std::vector<Detection>
 //
+// Palm search regions, with `palm_search` of the hand detector options set; see
+// HandDetectorGraph. The detector's hand rects then are not clipped to
+// `num_hands` before HandAssociationCalculator (unless
+// `clip_before_association`); in image mode they go through a
+// HandAssociationCalculator of their own, which drops a rect overlapping an
+// earlier one, before the clip. Streams that change:
+//   SEARCH_REGIONS (input) - std::vector<NormalizedRect>
+//     Only with `accepts_external_regions`: the caller's regions for this
+//     frame. One packet per frame; unused on a frame where the detector is
+//     skipped.
+//   STAGE_LANDMARK_ROIS_READY_NS, STAGE_LANDMARKS_DONE_NS - int64_t (with
+//     `debug_stage_outputs`)
+//     Monotonic clock when the landmark model's rects and its collected
+//     landmarks are emitted.
+//   PALM_INPUT_TENSOR_CAPTURES - std::vector<TensorCapture>
+//     Replaces PALM_INPUT_TENSOR_CAPTURE: one capture per region that was run.
+//   STAGE_PALM_SEARCH_RECORD - PalmSearchRecord (with `debug_stage_outputs`)
+//     PALM_SEARCH_RECORD of HandDetectorGraph. No packet on a frame where the
+//     detector was skipped.
+//   STAGE_ASSOCIATION_OVERLAPS - std::vector<int> (with `debug_stage_outputs`,
+//     where a HandAssociationCalculator is part of the graph)
+//     Per STAGE_DETECTOR_HAND_RECTS rect: -1 if the association kept it, else
+//     the index of the rect it overlapped in the association's output.
+//
 // Example:
 // node {
 //   calculator: "mediapipe.tasks.vision.hand_landmarker.HandLandmarkerGraph"
@@ -344,6 +375,16 @@ class HandLandmarkerGraph : public core::ModelTaskGraph {
     // is unchanged otherwise.
     const bool stage_outputs = tasks_options.debug_stage_outputs();
     const bool tensor_capture = tasks_options.debug_tensor_capture();
+    const bool palm_search =
+        tasks_options.hand_detector_graph_options().has_palm_search();
+    const bool external_regions =
+        palm_search && tasks_options.hand_detector_graph_options()
+                           .palm_search()
+                           .accepts_external_regions();
+    const bool clip_before_association =
+        tasks_options.hand_detector_graph_options()
+            .palm_search()
+            .clip_before_association();
 
     auto& previous_loopback = graph.AddNode(kPreviousLoopbackCalculatorName);
     image_in >> previous_loopback.In("MAIN");
@@ -365,8 +406,17 @@ class HandLandmarkerGraph : public core::ModelTaskGraph {
       // Not gated with the detector's image: the capture reports a skipped
       // detector as a capture without a tensor.
       graph.In(kCaptureTensorsTag) >> hand_detector.In(kCaptureTensorsTag);
-      hand_detector.Out("INPUT_TENSOR_CAPTURE") >>
-          graph.Out(kPalmInputTensorCaptureTag);
+      if (palm_search) {
+        hand_detector.Out("INPUT_TENSOR_CAPTURES") >>
+            graph.Out(kPalmInputTensorCapturesTag);
+      } else {
+        hand_detector.Out("INPUT_TENSOR_CAPTURE") >>
+            graph.Out(kPalmInputTensorCaptureTag);
+      }
+    }
+    if (palm_search && stage_outputs) {
+      hand_detector.Out("PALM_SEARCH_RECORD") >>
+          graph.Out(kStagePalmSearchRecordTag);
     }
     if (tasks_options.hand_detector_graph_options().debug_palm_candidates() >
         0) {
@@ -393,6 +443,12 @@ class HandLandmarkerGraph : public core::ModelTaskGraph {
       if (norm_rect_in_for_hand_detector) {
         norm_rect_in_for_hand_detector.value() >> hand_detector.In("NORM_RECT");
       }
+      if (external_regions) {
+        DisallowIf(
+            graph.In(kSearchRegionsTag).Cast<std::vector<NormalizedRect>>(),
+            has_enough_hands, graph) >>
+            hand_detector.In(kSearchRegionsTag);
+      }
       auto hand_rects_from_hand_detector = hand_detector.Out("HAND_RECTS");
       if (stage_outputs) {
         prev_hand_rects_from_landmarks >> graph.Out(kStagePrevHandRectsTag);
@@ -409,6 +465,10 @@ class HandLandmarkerGraph : public core::ModelTaskGraph {
           hand_association[Input<std::vector<NormalizedRect>>("RECTS")];
       auto hand_rects = hand_association.Out("");
       hand_rects >> clip_hand_rects.In("");
+      if (palm_search && stage_outputs) {
+        hand_association.Out("OVERLAPS") >>
+            graph.Out(kStageAssociationOverlapsTag);
+      }
     } else {
       // While not in stream mode, the input images are not guaranteed to be in
       // series, and we don't want to enable the tracking and hand associations
@@ -417,11 +477,31 @@ class HandLandmarkerGraph : public core::ModelTaskGraph {
       if (norm_rect_in) {
         norm_rect_in.value() >> hand_detector.In("NORM_RECT");
       }
+      if (external_regions) {
+        graph.In(kSearchRegionsTag) >> hand_detector.In(kSearchRegionsTag);
+      }
       auto hand_rects_from_hand_detector = hand_detector.Out("HAND_RECTS");
       if (stage_outputs) {
         hand_rects_from_hand_detector >> graph.Out(kStageDetectorHandRectsTag);
       }
-      hand_rects_from_hand_detector >> clip_hand_rects.In("");
+      if (palm_search && !clip_before_association) {
+        // Nothing has limited the detector's rects yet. Drop the ones that
+        // overlap an earlier (higher scored) one before the clip, as the
+        // association does in stream mode.
+        auto& hand_association = graph.AddNode("HandAssociationCalculator");
+        hand_association.GetOptions<HandAssociationCalculatorOptions>()
+            .set_min_similarity_threshold(
+                tasks_options.min_tracking_confidence());
+        hand_rects_from_hand_detector >>
+            hand_association[Input<std::vector<NormalizedRect>>("RECTS")];
+        hand_association.Out("") >> clip_hand_rects.In("");
+        if (stage_outputs) {
+          hand_association.Out("OVERLAPS") >>
+              graph.Out(kStageAssociationOverlapsTag);
+        }
+      } else {
+        hand_rects_from_hand_detector >> clip_hand_rects.In("");
+      }
     }
     auto clipped_hand_rects = clip_hand_rects.Out("");
 
@@ -453,6 +533,14 @@ class HandLandmarkerGraph : public core::ModelTaskGraph {
       hand_landmarks_detector_graph.Out("PRESENCE_SCORE") >>
           graph.Out(kStagePresenceScoreTag);
       landmarks >> graph.Out(kStageLandmarksBeforeDedupTag);
+      if (palm_search) {
+        auto& rois_ready = graph.AddNode("MonotonicClockCalculator");
+        clipped_hand_rects >> rois_ready.In("");
+        rois_ready.Out("") >> graph.Out(kStageLandmarkRoisReadyNsTag);
+        auto& landmarks_done = graph.AddNode("MonotonicClockCalculator");
+        landmarks >> landmarks_done.In("");
+        landmarks_done.Out("") >> graph.Out(kStageLandmarksDoneNsTag);
+      }
       hand_rects_for_next_frame >> graph.Out(kStageHandRectsBeforeDedupTag);
     }
 

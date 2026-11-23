@@ -24,6 +24,7 @@ limitations under the License.
 #include "mediapipe/framework/formats/classification.pb.h"
 #include "mediapipe/framework/formats/image.h"
 #include "mediapipe/framework/formats/landmark.pb.h"
+#include "mediapipe/tasks/cc/components/containers/rect.h"
 #include "mediapipe/tasks/cc/components/processors/classifier_options.h"
 #include "mediapipe/tasks/cc/core/base_options.h"
 #include "mediapipe/tasks/cc/vision/core/base_vision_task_api.h"
@@ -35,6 +36,53 @@ namespace mediapipe {
 namespace tasks {
 namespace vision {
 namespace hand_landmarker {
+
+// Fork addition. Configures the palm search regions path; see
+// `HandLandmarkerOptions::palm_search`. The defaults are not a recommended
+// configuration: they run the whole frame only.
+struct PalmSearchOptions {
+  // The whole frame is one of the regions on every detector frame.
+  bool include_full_frame = true;
+
+  // A grid of tiles over the frame, each of them a region. Off when rows or
+  // columns is 0. `grid_overlap` is the fraction of a tile's width (height)
+  // it shares with its horizontal (vertical) neighbour, in [0, 1).
+  int grid_rows = 0;
+  int grid_columns = 0;
+  float grid_overlap = 0.0f;
+
+  // Number of grid tiles run per detector frame, cycling through the grid. 0:
+  // every tile on every detector frame. A detector frame is a frame on which
+  // the palm detector runs at all; the cycle does not advance on others.
+  int round_robin_tiles_per_frame = 0;
+
+  // Allows the `search_regions` argument of the detect methods.
+  bool accepts_external_regions = false;
+
+  // Drops a detection whose box touches an edge of the window its region was
+  // sampled from, unless that edge is a frame edge. Never applied to the
+  // full-frame region.
+  bool reject_truncated_detections = false;
+
+  // Drops a detection of a grid tile or external region whose box is wider or
+  // taller than this fraction of the frame. 0: off.
+  float max_palm_fraction = 0.0f;
+
+  // How detections of different regions that overlap are merged.
+  enum class Merge {
+    // Boxes and keypoints averaged by score, as in the detector's own
+    // non-max suppression.
+    kWeighted = 0,
+    // The highest scored detection, unchanged.
+    kBestScore = 1,
+  };
+  Merge merge = Merge::kWeighted;
+
+  // Hands the detector's rects to the association with tracked hands already
+  // clipped to `num_hands`, as the graph without search regions does. When
+  // false the only clip to `num_hands` is the one after the association.
+  bool clip_before_association = false;
+};
 
 struct HandLandmarkerOptions {
   // Base options for configuring MediaPipe Tasks library, such as specifying
@@ -96,6 +144,13 @@ struct HandLandmarkerOptions {
   // with this many of the palm detector's highest scored candidates. 0
   // (default) leaves the graph and the results unchanged.
   int debug_palm_candidates = 0;
+
+  // Palm search regions. When set, the palm detection model runs on a list of
+  // regions of the frame instead of on the whole frame only, and the
+  // detections of all regions are merged. With `debug_stage_outputs` every
+  // result then also carries `palm_search`. When unset (default) the graph
+  // and the results are unchanged.
+  std::optional<PalmSearchOptions> palm_search;
 
   // The user-defined result callback for processing live stream data.
   // The result callback should only be specified when the running mode is set
@@ -165,7 +220,8 @@ class HandLandmarker : tasks::vision::core::BaseVisionTaskApi {
       Image image,
       std::optional<core::ImageProcessingOptions> image_processing_options =
           std::nullopt,
-      bool capture_tensors = false);
+      bool capture_tensors = false,
+      const std::vector<components::containers::RectF>& search_regions = {});
 
   // Performs hand landmarks detection on the provided video frame.
   // Only use this method when the HandLandmarker is created with the video
@@ -184,7 +240,8 @@ class HandLandmarker : tasks::vision::core::BaseVisionTaskApi {
       Image image, int64_t timestamp_ms,
       std::optional<core::ImageProcessingOptions> image_processing_options =
           std::nullopt,
-      bool capture_tensors = false);
+      bool capture_tensors = false,
+      const std::vector<components::containers::RectF>& search_regions = {});
 
   // Sends live image data to perform hand landmarks detection, and the results
   // will be available via the "result_callback" provided in the
@@ -213,7 +270,9 @@ class HandLandmarker : tasks::vision::core::BaseVisionTaskApi {
   absl::Status DetectAsync(Image image, int64_t timestamp_ms,
                            std::optional<core::ImageProcessingOptions>
                                image_processing_options = std::nullopt,
-                           bool capture_tensors = false);
+                           bool capture_tensors = false,
+                           const std::vector<components::containers::RectF>&
+                               search_regions = {});
 
   // Shuts down the HandLandmarker when all works are done.
   absl::Status Close() { return runner_->Close(); }
@@ -226,6 +285,18 @@ class HandLandmarker : tasks::vision::core::BaseVisionTaskApi {
 
   // Whether the graph was built with `debug_tensor_capture`.
   bool tensor_capture_enabled_ = false;
+  // Adds the per-frame search regions packet when the graph has that input;
+  // an error if regions are given and it has not.
+  absl::Status AddSearchRegions(
+      const std::vector<components::containers::RectF>& search_regions,
+      Timestamp timestamp, tasks::core::PacketMap* inputs) const;
+
+  // `HandLandmarkerOptions::num_hands`, for the debug records.
+  int num_hands_ = 1;
+  // Whether the graph has the per-call search regions input.
+  bool external_regions_enabled_ = false;
+  // Number of Detect / DetectForVideo calls so far.
+  int64_t frame_sequence_ = 0;
 };
 
 }  // namespace hand_landmarker

@@ -43,6 +43,8 @@ using CppHandLandmarkerTensorCaptures =
     ::mediapipe::tasks::vision::hand_landmarker::HandLandmarkerTensorCaptures;
 using CppHandLandmarkerPalmCandidates =
     ::mediapipe::tasks::vision::hand_landmarker::HandLandmarkerPalmCandidates;
+using CppHandLandmarkerPalmSearch =
+    ::mediapipe::tasks::vision::hand_landmarker::HandLandmarkerPalmSearch;
 using CppTensorCapture =
     ::mediapipe::tasks::vision::hand_landmarker::TensorCapture;
 
@@ -70,29 +72,33 @@ void CloseRects(MpNormalizedRotatedRect** rects, uint32_t* count) {
   *count = 0;
 }
 
+void ConvertDetection(const mediapipe::Detection& detection,
+                      MpNormalizedDetection* out) {
+  const auto& location = detection.location_data();
+  const auto& box = location.relative_bounding_box();
+  MpNormalizedDetection& c_detection = *out;
+  c_detection.score = detection.score_size() > 0 ? detection.score(0) : 0.0f;
+  c_detection.x_min = box.xmin();
+  c_detection.y_min = box.ymin();
+  c_detection.width = box.width();
+  c_detection.height = box.height();
+  c_detection.keypoints_count = location.relative_keypoints_size();
+  c_detection.keypoints =
+      c_detection.keypoints_count == 0
+          ? nullptr
+          : new MpNormalizedPoint[c_detection.keypoints_count];
+  for (uint32_t j = 0; j < c_detection.keypoints_count; ++j) {
+    c_detection.keypoints[j].x = location.relative_keypoints(j).x();
+    c_detection.keypoints[j].y = location.relative_keypoints(j).y();
+  }
+}
+
 void ConvertDetections(const std::vector<mediapipe::Detection>& in,
                        MpNormalizedDetection** out, uint32_t* out_count) {
   *out_count = in.size();
   *out = in.empty() ? nullptr : new MpNormalizedDetection[in.size()];
   for (uint32_t i = 0; i < in.size(); ++i) {
-    const mediapipe::Detection& detection = in[i];
-    const auto& location = detection.location_data();
-    const auto& box = location.relative_bounding_box();
-    MpNormalizedDetection& c_detection = (*out)[i];
-    c_detection.score = detection.score_size() > 0 ? detection.score(0) : 0.0f;
-    c_detection.x_min = box.xmin();
-    c_detection.y_min = box.ymin();
-    c_detection.width = box.width();
-    c_detection.height = box.height();
-    c_detection.keypoints_count = location.relative_keypoints_size();
-    c_detection.keypoints =
-        c_detection.keypoints_count == 0
-            ? nullptr
-            : new MpNormalizedPoint[c_detection.keypoints_count];
-    for (uint32_t j = 0; j < c_detection.keypoints_count; ++j) {
-      c_detection.keypoints[j].x = location.relative_keypoints(j).x();
-      c_detection.keypoints[j].y = location.relative_keypoints(j).y();
-    }
+    ConvertDetection(in[i], &(*out)[i]);
   }
 }
 
@@ -162,6 +168,110 @@ MpHandLandmarkerPalmCandidates* ConvertPalmCandidates(
   out->above_threshold_count = in.above_threshold_count;
   out->after_suppression_count = in.after_suppression_count;
   return out;
+}
+
+MpHandLandmarkerPalmSearch* ConvertPalmSearch(
+    const CppHandLandmarkerPalmSearch& in) {
+  auto* out = new MpHandLandmarkerPalmSearch{};
+  out->timestamp_us = in.timestamp_us;
+  out->frame_sequence = in.frame_sequence;
+  out->palm_detector_ran = in.palm_detector_ran;
+  out->detector_frame_index = in.record.schedule.detector_frame_index;
+  out->grid_tile_count = in.record.schedule.grid_tile_count;
+  out->tiles_per_frame = in.record.schedule.tiles_per_frame;
+  out->cursor_before = in.record.schedule.cursor_before;
+  out->cursor_after = in.record.schedule.cursor_after;
+  out->call_start_ns = in.call_start_ns;
+  out->call_end_ns = in.call_end_ns;
+  out->regions_ready_ns = in.record.regions_ready_ns;
+  out->merge_done_ns = in.record.merge_done_ns;
+  out->landmark_rois_ready_ns = in.landmark_rois_ready_ns;
+  out->landmarks_done_ns = in.landmarks_done_ns;
+
+  out->regions_count = in.record.regions.size();
+  out->regions = in.record.regions.empty()
+                     ? nullptr
+                     : new MpPalmSearchRegion[in.record.regions.size()]();
+  for (uint32_t r = 0; r < out->regions_count; ++r) {
+    const auto& cpp_region = in.record.regions[r];
+    MpPalmSearchRegion& region = out->regions[r];
+    region.id = cpp_region.region.id;
+    region.kind = static_cast<int>(cpp_region.region.kind);
+    region.grid_row = cpp_region.region.grid_row;
+    region.grid_column = cpp_region.region.grid_column;
+    region.requested_x_center = cpp_region.region.requested_x_center;
+    region.requested_y_center = cpp_region.region.requested_y_center;
+    region.requested_width = cpp_region.region.requested_width;
+    region.requested_height = cpp_region.region.requested_height;
+    region.sampled_x_center = cpp_region.region.sampled_x_center;
+    region.sampled_y_center = cpp_region.region.sampled_y_center;
+    region.sampled_width = cpp_region.region.sampled_width;
+    region.sampled_height = cpp_region.region.sampled_height;
+    region.detections_count = cpp_region.detections.size();
+    region.detections =
+        cpp_region.detections.empty()
+            ? nullptr
+            : new MpPalmSearchRegionDetection[cpp_region.detections.size()]();
+    for (uint32_t d = 0; d < region.detections_count; ++d) {
+      ConvertDetection(cpp_region.detections[d].detection,
+                       &region.detections[d].detection);
+      region.detections[d].outcome =
+          static_cast<int>(cpp_region.detections[d].outcome);
+      region.detections[d].merged_index = cpp_region.detections[d].merged_index;
+    }
+    ConvertDetections(cpp_region.candidates, &region.candidates,
+                      &region.candidates_count);
+    region.above_threshold_count = cpp_region.above_threshold_count;
+    region.crop_start_ns = cpp_region.crop_start_ns;
+    region.detections_ready_ns = cpp_region.detections_ready_ns;
+  }
+
+  out->merged_count = in.record.merged.size();
+  out->merged = in.record.merged.empty()
+                    ? nullptr
+                    : new MpPalmSearchMergedDetection[in.record.merged.size()]();
+  for (uint32_t m = 0; m < out->merged_count; ++m) {
+    const auto& cpp_merged = in.record.merged[m];
+    MpPalmSearchMergedDetection& merged = out->merged[m];
+    ConvertDetection(cpp_merged.detection, &merged.detection);
+    merged.sources_count = cpp_merged.sources.size();
+    merged.sources = cpp_merged.sources.empty()
+                         ? nullptr
+                         : new MpPalmSearchSource[cpp_merged.sources.size()];
+    for (uint32_t s = 0; s < merged.sources_count; ++s) {
+      merged.sources[s].region_id = cpp_merged.sources[s].region_id;
+      merged.sources[s].detection_index = cpp_merged.sources[s].detection_index;
+    }
+    merged.outcome = m < in.merged_outcomes.size()
+                         ? static_cast<int>(in.merged_outcomes[m])
+                         : 0;
+    merged.overlapped_rect_index = m < in.merged_overlapped_rect_index.size()
+                                       ? in.merged_overlapped_rect_index[m]
+                                       : -1;
+    merged.landmark_roi_index = m < in.merged_landmark_roi_index.size()
+                                    ? in.merged_landmark_roi_index[m]
+                                    : -1;
+  }
+  return out;
+}
+
+void ClosePalmSearch(MpHandLandmarkerPalmSearch* search) {
+  if (search == nullptr) return;
+  for (uint32_t r = 0; r < search->regions_count; ++r) {
+    MpPalmSearchRegion& region = search->regions[r];
+    for (uint32_t d = 0; d < region.detections_count; ++d) {
+      delete[] region.detections[d].detection.keypoints;
+    }
+    delete[] region.detections;
+    CloseDetections(&region.candidates, &region.candidates_count);
+  }
+  delete[] search->regions;
+  for (uint32_t m = 0; m < search->merged_count; ++m) {
+    delete[] search->merged[m].detection.keypoints;
+    delete[] search->merged[m].sources;
+  }
+  delete[] search->merged;
+  delete search;
 }
 
 void ClosePalmCandidates(MpHandLandmarkerPalmCandidates* candidates) {
@@ -296,6 +406,9 @@ void CppConvertToHandLandmarkerResult(
   out->palm_candidates = in.palm_candidates.has_value()
                              ? ConvertPalmCandidates(*in.palm_candidates)
                              : nullptr;
+  out->palm_search = in.palm_search.has_value()
+                         ? ConvertPalmSearch(*in.palm_search)
+                         : nullptr;
 }
 
 void CppCloseHandLandmarkerResult(MpHandLandmarkerResult* result) {
@@ -328,6 +441,8 @@ void CppCloseHandLandmarkerResult(MpHandLandmarkerResult* result) {
   result->tensor_capture = nullptr;
   ClosePalmCandidates(result->palm_candidates);
   result->palm_candidates = nullptr;
+  ClosePalmSearch(result->palm_search);
+  result->palm_search = nullptr;
 }
 
 }  // namespace mediapipe::tasks::c::components::containers

@@ -137,6 +137,7 @@ TEST(HandLandmarkerResultConverterTest, StagesAreNullWhenAbsent) {
   EXPECT_EQ(c_result.stages, nullptr);
   EXPECT_EQ(c_result.tensor_capture, nullptr);
   EXPECT_EQ(c_result.palm_candidates, nullptr);
+  EXPECT_EQ(c_result.palm_search, nullptr);
   CppCloseHandLandmarkerResult(&c_result);
 }
 
@@ -215,6 +216,116 @@ TEST(HandLandmarkerResultConverterTest, ConvertsAndFreesPalmCandidates) {
 
   CppCloseHandLandmarkerResult(&c_result);
   EXPECT_EQ(c_result.palm_candidates, nullptr);
+}
+
+TEST(HandLandmarkerResultConverterTest, ConvertsAndFreesPalmSearch) {
+  using namespace ::mediapipe::tasks::vision::hand_landmarker;  // NOLINT
+  HandLandmarkerResult cpp_result;
+  auto& search = cpp_result.palm_search.emplace();
+  search.timestamp_us = 33000;
+  search.frame_sequence = 7;
+  search.palm_detector_ran = true;
+  search.call_start_ns = 100;
+  search.call_end_ns = 900;
+  search.landmark_rois_ready_ns = 600;
+  search.landmarks_done_ns = 800;
+  search.record.schedule.detector_frame_index = 4;
+  search.record.schedule.grid_tile_count = 4;
+  search.record.schedule.tiles_per_frame = 1;
+  search.record.schedule.cursor_before = 2;
+  search.record.schedule.cursor_after = 3;
+  search.record.regions_ready_ns = 200;
+  search.record.merge_done_ns = 500;
+
+  mediapipe::Detection detection;
+  detection.add_score(0.75f);
+  auto* box = detection.mutable_location_data()->mutable_relative_bounding_box();
+  box->set_xmin(0.1f);
+  box->set_ymin(0.2f);
+  box->set_width(0.3f);
+  box->set_height(0.4f);
+  auto* keypoint = detection.mutable_location_data()->add_relative_keypoints();
+  keypoint->set_x(0.25f);
+  keypoint->set_y(0.35f);
+
+  search.record.regions.resize(2);
+  search.record.regions[0].region.id = 0;
+  search.record.regions[1].region.id = 3;
+  search.record.regions[1].region.kind = PalmSearchRegionKind::kGrid;
+  search.record.regions[1].region.grid_row = 1;
+  search.record.regions[1].region.grid_column = 0;
+  search.record.regions[1].region.requested_width = 0.5f;
+  search.record.regions[1].region.sampled_height = 0.9f;
+  search.record.regions[1].detections.resize(2);
+  search.record.regions[1].detections[0].detection = detection;
+  search.record.regions[1].detections[0].merged_index = 0;
+  search.record.regions[1].detections[1].detection = detection;
+  search.record.regions[1].detections[1].outcome =
+      PalmSearchDetectionOutcome::kRejectedTruncated;
+  search.record.regions[1].candidates = {detection};
+  search.record.regions[1].above_threshold_count = 5;
+  search.record.regions[1].crop_start_ns = 210;
+  search.record.regions[1].detections_ready_ns = 400;
+
+  search.record.merged.resize(1);
+  search.record.merged[0].detection = detection;
+  search.record.merged[0].sources = {{3, 0}};
+  search.merged_outcomes = {PalmSearchHandOutcome::kOverlapsTrackedRect};
+  search.merged_overlapped_rect_index = {0};
+  search.merged_landmark_roi_index = {-1};
+
+  MpHandLandmarkerResult c_result;
+  CppConvertToHandLandmarkerResult(cpp_result, &c_result);
+  ASSERT_NE(c_result.palm_search, nullptr);
+  const MpHandLandmarkerPalmSearch& c_search = *c_result.palm_search;
+  EXPECT_EQ(c_search.timestamp_us, 33000);
+  EXPECT_EQ(c_search.frame_sequence, 7);
+  EXPECT_TRUE(c_search.palm_detector_ran);
+  EXPECT_EQ(c_search.detector_frame_index, 4);
+  EXPECT_EQ(c_search.grid_tile_count, 4);
+  EXPECT_EQ(c_search.tiles_per_frame, 1);
+  EXPECT_EQ(c_search.cursor_before, 2);
+  EXPECT_EQ(c_search.cursor_after, 3);
+  EXPECT_EQ(c_search.call_start_ns, 100);
+  EXPECT_EQ(c_search.call_end_ns, 900);
+  EXPECT_EQ(c_search.regions_ready_ns, 200);
+  EXPECT_EQ(c_search.merge_done_ns, 500);
+  EXPECT_EQ(c_search.landmark_rois_ready_ns, 600);
+  EXPECT_EQ(c_search.landmarks_done_ns, 800);
+  ASSERT_EQ(c_search.regions_count, 2);
+  EXPECT_EQ(c_search.regions[0].detections, nullptr);
+  EXPECT_EQ(c_search.regions[0].candidates, nullptr);
+  const MpPalmSearchRegion& c_region = c_search.regions[1];
+  EXPECT_EQ(c_region.id, 3);
+  EXPECT_EQ(c_region.kind, 1);
+  EXPECT_EQ(c_region.grid_row, 1);
+  EXPECT_EQ(c_region.grid_column, 0);
+  EXPECT_FLOAT_EQ(c_region.requested_width, 0.5f);
+  EXPECT_FLOAT_EQ(c_region.sampled_height, 0.9f);
+  ASSERT_EQ(c_region.detections_count, 2);
+  EXPECT_FLOAT_EQ(c_region.detections[0].detection.score, 0.75f);
+  EXPECT_FLOAT_EQ(c_region.detections[0].detection.x_min, 0.1f);
+  ASSERT_EQ(c_region.detections[0].detection.keypoints_count, 1);
+  EXPECT_FLOAT_EQ(c_region.detections[0].detection.keypoints[0].y, 0.35f);
+  EXPECT_EQ(c_region.detections[0].outcome, 0);
+  EXPECT_EQ(c_region.detections[0].merged_index, 0);
+  EXPECT_EQ(c_region.detections[1].outcome, 1);
+  EXPECT_EQ(c_region.detections[1].merged_index, -1);
+  EXPECT_EQ(c_region.candidates_count, 1);
+  EXPECT_EQ(c_region.above_threshold_count, 5);
+  EXPECT_EQ(c_region.crop_start_ns, 210);
+  EXPECT_EQ(c_region.detections_ready_ns, 400);
+  ASSERT_EQ(c_search.merged_count, 1);
+  EXPECT_FLOAT_EQ(c_search.merged[0].detection.height, 0.4f);
+  ASSERT_EQ(c_search.merged[0].sources_count, 1);
+  EXPECT_EQ(c_search.merged[0].sources[0].region_id, 3);
+  EXPECT_EQ(c_search.merged[0].sources[0].detection_index, 0);
+  EXPECT_EQ(c_search.merged[0].outcome, 1);
+  EXPECT_EQ(c_search.merged[0].overlapped_rect_index, 0);
+  EXPECT_EQ(c_search.merged[0].landmark_roi_index, -1);
+
+  CppCloseHandLandmarkerResult(&c_result);
+  EXPECT_EQ(c_result.palm_search, nullptr);
 }
 
 TEST(HandLandmarkerResultConverterTest, ConvertsAndFreesStages) {

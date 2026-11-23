@@ -38,6 +38,7 @@ cc_library(
         "//mediapipe/framework/formats:rect_cc_proto",
         "//mediapipe/tasks/cc:common",
         "//mediapipe/tasks/cc/components/containers:landmark",
+        "//mediapipe/tasks/cc/components/containers:rect",
         "//mediapipe/tasks/cc/components/processors:classifier_options",
         "//mediapipe/tasks/cc/components/processors/proto:classifier_options_cc_proto",
         "//mediapipe/tasks/cc/core:base_options",
@@ -141,6 +142,7 @@ cc_library(
         "//mediapipe/tasks/cc/metadata/utils:zip_utils",
         "//mediapipe/tasks/cc/vision/hand_detector:hand_detector_graph",
         "//mediapipe/tasks/cc/vision/hand_detector/proto:hand_detector_graph_options_cc_proto",
+        "//mediapipe/tasks/cc/vision/hand_landmarker/calculators:monotonic_clock_calculator",
         "//mediapipe/tasks/cc/vision/hand_landmarker/calculators:hand_association_calculator",
         "//mediapipe/tasks/cc/vision/hand_landmarker/calculators:hand_association_calculator_cc_proto",
         "//mediapipe/tasks/cc/vision/hand_landmarker/calculators:hand_rects_keep_alive_calculator",
@@ -204,6 +206,7 @@ cc_library(
         "//mediapipe/framework/formats:rect_cc_proto",
         "//mediapipe/tasks/cc/components/containers:classification_result",
         "//mediapipe/tasks/cc/components/containers:landmark",
+        "//mediapipe/tasks/cc/vision/hand_landmarker/calculators:palm_search",
         "//mediapipe/tasks/cc/vision/hand_landmarker/calculators:tensor_capture",
     ],
 )

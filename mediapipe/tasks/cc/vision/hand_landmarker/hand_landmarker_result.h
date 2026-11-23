@@ -26,6 +26,7 @@ limitations under the License.
 #include "mediapipe/framework/formats/rect.pb.h"
 #include "mediapipe/tasks/cc/components/containers/classification_result.h"
 #include "mediapipe/tasks/cc/components/containers/landmark.h"
+#include "mediapipe/tasks/cc/vision/hand_landmarker/calculators/palm_search.h"
 #include "mediapipe/tasks/cc/vision/hand_landmarker/calculators/tensor_capture.h"
 
 namespace mediapipe {
@@ -115,6 +116,11 @@ struct HandLandmarkerTensorCaptures {
   // detector did not run on this frame.
   TensorCapture palm_detector_input;
 
+  // With `HandLandmarkerOptions::palm_search`: the input of the palm
+  // detection model per region it ran on, in region order;
+  // `palm_detector_input` then is the first of them.
+  std::vector<TensorCapture> palm_detector_inputs;
+
   // Input of the landmark model, one entry per rect it is given, in that
   // order (`HandLandmarkerStages::landmark_rois`). `has_tensor` is false for a
   // rect the model was not run on (an all-zero rect).
@@ -145,6 +151,64 @@ struct HandLandmarkerPalmCandidates {
   int after_suppression_count = 0;
 };
 
+// What became of one merged palm detection after the merge.
+enum class PalmSearchHandOutcome {
+  // Its hand rect was given to the landmark model.
+  kToLandmarks = 0,
+  // HandAssociationCalculator dropped its hand rect because it overlapped a
+  // rect carried over from the previous frame.
+  kOverlapsTrackedRect = 1,
+  // HandAssociationCalculator dropped its hand rect because it overlapped the
+  // hand rect of an earlier (higher scored) detection of this frame.
+  kOverlapsEarlierRect = 2,
+  // The association kept its hand rect and the clip to `num_hands` after it
+  // cut it off.
+  kClippedByNumHands = 3,
+  // `clip_before_association`: the clip to `num_hands` inside the detector
+  // graph cut its hand rect off before the association.
+  kClippedBeforeAssociation = 4,
+};
+
+// The palm search record of one frame. Set on every result when
+// `HandLandmarkerOptions::palm_search` and `debug_stage_outputs` are both set.
+struct HandLandmarkerPalmSearch {
+  // Timestamp (microseconds) of the graph output this record was read from.
+  int64_t timestamp_us = 0;
+
+  // Image and video mode: the number of detect calls on this landmarker
+  // before this one. -1 in live stream mode.
+  int64_t frame_sequence = -1;
+
+  // Monotonic clock, nanoseconds; 0 where not measured. Raw stamps: when the
+  // detect call was entered and when the graph had produced its outputs
+  // (image and video mode only), when the rects for the landmark model were
+  // emitted (`HandLandmarkerStages::landmark_rois`) and when its landmarks
+  // of all rects were collected. The detector's own stamps are in `record`.
+  int64_t call_start_ns = 0;
+  int64_t call_end_ns = 0;
+  int64_t landmark_rois_ready_ns = 0;
+  int64_t landmarks_done_ns = 0;
+
+  // Whether the palm detector ran on this frame. `record` is empty when it
+  // did not. In stream mode the detector is skipped when the rects carried
+  // over from the previous frame (`HandLandmarkerStages::previous_rects`)
+  // already number `num_hands`.
+  bool palm_detector_ran = false;
+
+  // Regions, the detections of each, and the merged detections.
+  PalmSearchRecord record;
+
+  // Per `record.merged` entry, in the same order.
+  std::vector<PalmSearchHandOutcome> merged_outcomes;
+  // For the two overlap outcomes: the index of the overlapped rect in the
+  // association's output, which lists `previous_rects` first and then the
+  // kept detector rects. -1 otherwise.
+  std::vector<int> merged_overlapped_rect_index;
+  // For `kToLandmarks`: index into `HandLandmarkerStages::landmark_rois`. -1
+  // otherwise.
+  std::vector<int> merged_landmark_roi_index;
+};
+
 // The hand landmarks detection result from HandLandmarker, where each vector
 // element represents a single hand detected in the image.
 struct HandLandmarkerResult {
@@ -164,6 +228,9 @@ struct HandLandmarkerResult {
   // Palm candidate diagnostics. Set only when
   // `HandLandmarkerOptions::debug_palm_candidates` is positive.
   std::optional<HandLandmarkerPalmCandidates> palm_candidates;
+  // Palm search record. Set only when `HandLandmarkerOptions::palm_search` and
+  // `debug_stage_outputs` are both set.
+  std::optional<HandLandmarkerPalmSearch> palm_search;
 };
 
 HandLandmarkerResult ConvertToHandLandmarkerResult(

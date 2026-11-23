@@ -305,6 +305,64 @@ by suppression; `afterSuppressionCount` greater than `numHands` is the number
 cut by the output limit. Which box was merged into which is not reported.
 Candidates are in the same coordinates as `stages.palmDetections`.
 
+### Palm search regions (experimental)
+
+`HandLandmarkerOptions.palmSearch` runs the palm detection model on a list
+of regions of the frame, as well as or instead of the whole frame, and merges
+what the regions found. A far hand is a few pixels wide when the whole frame
+is scaled into the model's 192x192 input; inside a region it is larger.
+`nil` (the default) builds the graph exactly as before. Nothing here is a
+recommended configuration: the options exist to compare configurations on the
+same frames.
+
+```swift
+var options = HandLandmarkerOptions(modelPath: model, numHands: 2, runningMode: .video,
+                                    stageOutputs: true)
+options.palmSearch = PalmSearchOptions(
+    includeFullFrame: true,                              // its own switch
+    grid: PalmSearchGrid(rows: 3, columns: 4, overlap: 0.1),
+    schedule: .roundRobin(perFrame: 1),                  // or .allRegions
+    acceptsExternalRegions: true,
+    rejectTruncatedDetections: false,
+    maxPalmFraction: nil,
+    merge: .weighted,                                    // or .bestScore
+    clipBeforeAssociation: false)
+let landmarker = try HandLandmarker(options: options)
+let result = try landmarker.detectForVideo(
+    pixelBuffer: frame, timestampInMilliseconds: t,
+    searchRegions: [CGRect(x: 0.6, y: 0.1, width: 0.2, height: 0.3)])
+```
+
+- **Regions.** The full frame, the grid tiles due on this detector frame,
+  and the regions passed on the call, in that order. A region is sampled as a
+  square window (the box grown around its center to a square in pixels), so
+  the magnification of a tile is `frame long side / tile long side`.
+  `PalmSearchGrid.recommended(frameSize:targetMagnification:overlap:)` does
+  that arithmetic: 1280x720 at 4x is 4 columns by 3 rows.
+- **Schedule.** Applies to grid tiles. The round-robin cursor advances only
+  on frames on which the palm detector runs.
+- **Merge.** Detections of one region are never merged with each other here
+  (the region's own suppression has done that); detections of different
+  regions with IoU above 0.3 become one.
+- **`numHands`.** The detector's rects are clipped to `numHands` after the
+  association with tracked hands, not before it. `clipBeforeAssociation`
+  restores the old order.
+- **Record.** With `stageOutputs`, every result carries `palmSearch`: the
+  regions that ran (requested and sampled rects), each region's detections
+  with what became of them, the merged detections with their sources and
+  what became of their hand rect (to the landmark model, dropped by the
+  association and which rect it overlapped, clipped by `numHands`), the
+  schedule cursor, and monotonic clock stamps. Region ids are stable for a
+  grid: 0 is the full frame, `1 + row * columns + column` a tile, `1000 + i`
+  an external region.
+
+With only `PalmSearchOptions(clipBeforeAssociation: true)` the whole frame
+goes through the new path and every output equals the pipeline without the
+option (`PalmSearchTests.testFullFrameOnlyMatchesThePipelineWithoutPalmSearch`).
+
+Not covered yet: live-stream mode, iOS and x86_64 builds, per-region tensor
+captures through the C API (the C++ result has them).
+
 ### Hand Landmarker debug API reference
 
 Everything the three debugging aids add to the public Swift API. All of it is

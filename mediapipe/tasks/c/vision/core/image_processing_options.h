@@ -45,6 +45,17 @@ typedef struct MpImageProcessingOptions {
   // Kept as the last field so that the layout of the fields before it is
   // unchanged.
   int capture_tensors;
+
+  // Hand landmarker palm search regions; every other task ignores them.
+  // Regions of this frame for the palm detector to look at, in normalized
+  // coordinates of the image as passed in, with 'left' < 'right' and 'top' <
+  // 'bottom'. Honored only by a hand landmarker created with
+  // `palm_search.accepts_external_regions`; null / 0 for none. The array is
+  // read during the detect call only.
+  // Kept after `capture_tensors` so that the layout of the fields before
+  // them is unchanged.
+  const struct MpRectF* search_regions;
+  int search_regions_count;
 } MpImageProcessingOptions;
 
 #ifdef __cplusplus

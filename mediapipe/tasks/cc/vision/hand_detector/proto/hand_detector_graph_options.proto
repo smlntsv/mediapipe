@@ -20,6 +20,7 @@ package mediapipe.tasks.vision.hand_detector.proto;
 import "mediapipe/framework/calculator.proto";
 import "mediapipe/framework/calculator_options.proto";
 import "mediapipe/tasks/cc/core/proto/base_options.proto";
+import "mediapipe/tasks/cc/vision/hand_detector/proto/palm_search_options.proto";
 
 option java_package = "com.google.mediapipe.tasks.vision.handdetector.proto";
 option java_outer_classname = "HandDetectorGraphOptionsProto";
@@ -46,4 +47,10 @@ message HandDetectorGraphOptions {
   // (default) the generated graph is identical to one built without this
   // field.
   optional int32 debug_palm_candidates = 4 [default = 0];
+
+  // Fork addition. When set, the palm model runs on a list of search regions
+  // and their detections are merged; see PalmSearchOptions. When unset
+  // (default) the generated graph is identical to one built without this
+  // field.
+  optional PalmSearchOptions palm_search = 5;
 }

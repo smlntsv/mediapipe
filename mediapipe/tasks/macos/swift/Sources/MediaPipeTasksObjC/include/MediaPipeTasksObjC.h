@@ -22,6 +22,7 @@
 #import "MPCFaceLandmarkerResult.h"
 #import "MPCHandLandmarker.h"
 #import "MPCHandLandmarkerDiagnostics.h"
+#import "MPCHandLandmarkerPalmSearch.h"
 #import "MPCHandLandmarkerResult.h"
 #import "MPCHandLandmarkerStages.h"
 #import "MPCImage.h"

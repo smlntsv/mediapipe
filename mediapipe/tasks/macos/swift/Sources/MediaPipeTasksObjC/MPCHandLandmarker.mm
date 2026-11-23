@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <vector>
+
 #import "MPCHandLandmarker.h"
 
 #import "MPCError.h"
@@ -97,6 +99,101 @@ MPCHandLandmarkerTensorCapture *_Nullable BuildTensorCapture(
     [inputs addObject:CopyTensorCapture(capture->landmark_inputs[i])];
   }
   out.landmarkInputs = inputs;
+  return out;
+}
+
+// Fills the search regions of `options` from flat {left, top, right, bottom}
+// quadruples. `storage` owns the array and must outlive the detect call.
+void SetSearchRegions(NSArray<NSNumber *> *_Nullable regions, std::vector<MpRectF> *storage,
+                      MpImageProcessingOptions *options) {
+  storage->clear();
+  for (NSUInteger i = 0; i + 3 < regions.count; i += 4) {
+    MpRectF rect{};
+    rect.left = regions[i].floatValue;
+    rect.top = regions[i + 1].floatValue;
+    rect.right = regions[i + 2].floatValue;
+    rect.bottom = regions[i + 3].floatValue;
+    storage->push_back(rect);
+  }
+  options->search_regions = storage->empty() ? NULL : storage->data();
+  options->search_regions_count = (int)storage->size();
+}
+
+// Deep-copies the palm search record, or returns nil when the result carries
+// none.
+MPCHandLandmarkerPalmSearch *_Nullable BuildPalmSearch(const MpHandLandmarkerPalmSearch *search) {
+  if (search == NULL) {
+    return nil;
+  }
+  MPCHandLandmarkerPalmSearch *out = [[MPCHandLandmarkerPalmSearch alloc] init];
+  out.timestampUs = search->timestamp_us;
+  out.frameSequence = search->frame_sequence;
+  out.palmDetectorRan = search->palm_detector_ran ? YES : NO;
+  out.detectorFrameIndex = search->detector_frame_index;
+  out.gridTileCount = search->grid_tile_count;
+  out.tilesPerFrame = search->tiles_per_frame;
+  out.cursorBefore = search->cursor_before;
+  out.cursorAfter = search->cursor_after;
+  out.callStartNs = search->call_start_ns;
+  out.callEndNs = search->call_end_ns;
+  out.regionsReadyNs = search->regions_ready_ns;
+  out.mergeDoneNs = search->merge_done_ns;
+  out.landmarkRoisReadyNs = search->landmark_rois_ready_ns;
+  out.landmarksDoneNs = search->landmarks_done_ns;
+
+  NSMutableArray<MPCPalmSearchRegion *> *regions =
+      [NSMutableArray arrayWithCapacity:search->regions_count];
+  for (uint32_t r = 0; r < search->regions_count; ++r) {
+    const MpPalmSearchRegion &in = search->regions[r];
+    MPCPalmSearchRegion *region = [[MPCPalmSearchRegion alloc] init];
+    region.regionId = in.id;
+    region.kind = in.kind;
+    region.gridRow = in.grid_row;
+    region.gridColumn = in.grid_column;
+    region.requestedXCenter = in.requested_x_center;
+    region.requestedYCenter = in.requested_y_center;
+    region.requestedWidth = in.requested_width;
+    region.requestedHeight = in.requested_height;
+    region.sampledXCenter = in.sampled_x_center;
+    region.sampledYCenter = in.sampled_y_center;
+    region.sampledWidth = in.sampled_width;
+    region.sampledHeight = in.sampled_height;
+    NSMutableArray<MPCPalmSearchRegionDetection *> *detections =
+        [NSMutableArray arrayWithCapacity:in.detections_count];
+    for (uint32_t d = 0; d < in.detections_count; ++d) {
+      MPCPalmSearchRegionDetection *detection = [[MPCPalmSearchRegionDetection alloc] init];
+      detection.detection = CopyDetections(&in.detections[d].detection, 1)[0];
+      detection.outcome = in.detections[d].outcome;
+      detection.mergedIndex = in.detections[d].merged_index;
+      [detections addObject:detection];
+    }
+    region.detections = detections;
+    region.candidates = CopyDetections(in.candidates, in.candidates_count);
+    region.aboveThresholdCount = in.above_threshold_count;
+    region.cropStartNs = in.crop_start_ns;
+    region.detectionsReadyNs = in.detections_ready_ns;
+    [regions addObject:region];
+  }
+  out.regions = regions;
+
+  NSMutableArray<MPCPalmSearchMergedDetection *> *merged =
+      [NSMutableArray arrayWithCapacity:search->merged_count];
+  for (uint32_t m = 0; m < search->merged_count; ++m) {
+    const MpPalmSearchMergedDetection &in = search->merged[m];
+    MPCPalmSearchMergedDetection *detection = [[MPCPalmSearchMergedDetection alloc] init];
+    detection.detection = CopyDetections(&in.detection, 1)[0];
+    NSMutableArray<NSNumber *> *sources = [NSMutableArray arrayWithCapacity:in.sources_count * 2];
+    for (uint32_t s = 0; s < in.sources_count; ++s) {
+      [sources addObject:@(in.sources[s].region_id)];
+      [sources addObject:@(in.sources[s].detection_index)];
+    }
+    detection.sources = sources;
+    detection.outcome = in.outcome;
+    detection.overlappedRectIndex = in.overlapped_rect_index;
+    detection.landmarkRoiIndex = in.landmark_roi_index;
+    [merged addObject:detection];
+  }
+  out.merged = merged;
   return out;
 }
 
@@ -209,6 +306,7 @@ MPCHandLandmarkerResult *BuildResult(const MpHandLandmarkerResult &result) {
                                                   stages:BuildStages(result.stages)];
   out.tensorCapture = BuildTensorCapture(result.tensor_capture);
   out.palmCandidates = BuildPalmCandidates(result.palm_candidates);
+  out.palmSearch = BuildPalmSearch(result.palm_search);
   return out;
 }
 
@@ -286,6 +384,38 @@ MPCHandLandmarkerResult *BuildResult(const MpHandLandmarkerResult &result) {
                     tensorCapture:(BOOL)tensorCapture
                palmCandidateLimit:(NSInteger)palmCandidateLimit
                             error:(NSError **)error {
+  return [self initWithModelPath:modelPath
+                        numHands:numHands
+      minHandDetectionConfidence:minHandDetectionConfidence
+       minHandPresenceConfidence:minHandPresenceConfidence
+           minTrackingConfidence:minTrackingConfidence
+                        roiScale:roiScale
+             trackingGraceFrames:trackingGraceFrames
+                        delegate:delegate
+             coreMLModelCacheDir:coreMLModelCacheDir
+                     runningMode:runningMode
+                    stageOutputs:stageOutputs
+                   tensorCapture:tensorCapture
+              palmCandidateLimit:palmCandidateLimit
+                      palmSearch:nil
+                           error:error];
+}
+
+- (instancetype)initWithModelPath:(NSString *)modelPath
+                         numHands:(NSInteger)numHands
+      minHandDetectionConfidence:(float)minHandDetectionConfidence
+       minHandPresenceConfidence:(float)minHandPresenceConfidence
+           minTrackingConfidence:(float)minTrackingConfidence
+                         roiScale:(float)roiScale
+             trackingGraceFrames:(NSInteger)trackingGraceFrames
+                         delegate:(int)delegate
+             coreMLModelCacheDir:(nullable NSString *)coreMLModelCacheDir
+                      runningMode:(int)runningMode
+                     stageOutputs:(BOOL)stageOutputs
+                    tensorCapture:(BOOL)tensorCapture
+               palmCandidateLimit:(NSInteger)palmCandidateLimit
+                       palmSearch:(nullable MPCPalmSearchOptions *)palmSearch
+                            error:(NSError **)error {
   self = [super init];
   if (!self) {
     return nil;
@@ -305,6 +435,22 @@ MPCHandLandmarkerResult *BuildResult(const MpHandLandmarkerResult &result) {
   options.debug_stage_outputs = stageOutputs ? true : false;
   options.debug_tensor_capture = tensorCapture ? true : false;
   options.debug_palm_candidates = (int)palmCandidateLimit;
+  if (palmSearch != nil) {
+    options.palm_search_enabled = true;
+    options.palm_search.include_full_frame = palmSearch.includeFullFrame ? true : false;
+    options.palm_search.grid_rows = (int)palmSearch.gridRows;
+    options.palm_search.grid_columns = (int)palmSearch.gridColumns;
+    options.palm_search.grid_overlap = palmSearch.gridOverlap;
+    options.palm_search.round_robin_tiles_per_frame = (int)palmSearch.roundRobinTilesPerFrame;
+    options.palm_search.accepts_external_regions =
+        palmSearch.acceptsExternalRegions ? true : false;
+    options.palm_search.reject_truncated_detections =
+        palmSearch.rejectTruncatedDetections ? true : false;
+    options.palm_search.max_palm_fraction = palmSearch.maxPalmFraction;
+    options.palm_search.merge = (int)palmSearch.merge;
+    options.palm_search.clip_before_association =
+        palmSearch.clipBeforeAssociation ? true : false;
+  }
   options.result_callback = nullptr;
 
   char *errorMsg = NULL;
@@ -345,10 +491,37 @@ MPCHandLandmarkerResult *BuildResult(const MpHandLandmarkerResult &result) {
                          rotationDegrees:(int)rotationDegrees
                           captureTensors:(BOOL)captureTensors
                                    error:(NSError **)error {
+  return [self detectImage:image
+           rotationDegrees:rotationDegrees
+            captureTensors:captureTensors
+             searchRegions:nil
+                     error:error];
+}
+
+- (MPCHandLandmarkerResult *)detectForVideoImage:(MPCImage *)image
+                                 rotationDegrees:(int)rotationDegrees
+                                     timestampMs:(int64_t)timestampMs
+                                  captureTensors:(BOOL)captureTensors
+                                           error:(NSError **)error {
+  return [self detectForVideoImage:image
+                   rotationDegrees:rotationDegrees
+                       timestampMs:timestampMs
+                    captureTensors:captureTensors
+                     searchRegions:nil
+                             error:error];
+}
+
+- (MPCHandLandmarkerResult *)detectImage:(MPCImage *)image
+                         rotationDegrees:(int)rotationDegrees
+                          captureTensors:(BOOL)captureTensors
+                           searchRegions:(nullable NSArray<NSNumber *> *)searchRegions
+                                   error:(NSError **)error {
   char *errorMsg = NULL;
   MpHandLandmarkerResult result{};
   MpImageProcessingOptions options =
       MakeImageProcessingOptions(rotationDegrees, captureTensors);
+  std::vector<MpRectF> regionStorage;
+  SetSearchRegions(searchRegions, &regionStorage, &options);
   MpStatus status = MpHandLandmarkerDetectImage(
       _landmarker, image.imagePtr, &options, &result, &errorMsg);
   if (status != kMpOk) {
@@ -369,11 +542,14 @@ MPCHandLandmarkerResult *BuildResult(const MpHandLandmarkerResult &result) {
                                  rotationDegrees:(int)rotationDegrees
                                      timestampMs:(int64_t)timestampMs
                                   captureTensors:(BOOL)captureTensors
+                                   searchRegions:(nullable NSArray<NSNumber *> *)searchRegions
                                            error:(NSError **)error {
   char *errorMsg = NULL;
   MpHandLandmarkerResult result{};
   MpImageProcessingOptions options =
       MakeImageProcessingOptions(rotationDegrees, captureTensors);
+  std::vector<MpRectF> regionStorage;
+  SetSearchRegions(searchRegions, &regionStorage, &options);
   MpStatus status = MpHandLandmarkerDetectForVideo(
       _landmarker, image.imagePtr, &options, timestampMs, &result,
       &errorMsg);

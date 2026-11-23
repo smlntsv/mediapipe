@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "mediapipe/tasks/cc/vision/hand_landmarker/hand_landmarker.h"
 
+#include <algorithm>
+#include <chrono>
 #include <memory>
 #include <optional>
 #include <string>
@@ -122,6 +124,34 @@ constexpr StageStream kPalmCandidates = {"PALM_CANDIDATES", "palm_candidates"};
 constexpr StageStream kPalmThresholdedDetections = {
     "PALM_THRESHOLDED_DETECTIONS", "palm_thresholded_detections"};
 
+// Palm search streams, wired only with `palm_search`.
+constexpr StageStream kPalmInputTensorCaptures = {
+    "PALM_INPUT_TENSOR_CAPTURES", "palm_input_tensor_captures"};
+// With `debug_stage_outputs` as well.
+constexpr StageStream kStagePalmSearchRecord = {"STAGE_PALM_SEARCH_RECORD",
+                                                "stage_palm_search_record"};
+constexpr StageStream kStageAssociationOverlaps = {
+    "STAGE_ASSOCIATION_OVERLAPS", "stage_association_overlaps"};
+constexpr StageStream kStageLandmarkRoisReadyNs = {
+    "STAGE_LANDMARK_ROIS_READY_NS", "stage_landmark_rois_ready_ns"};
+constexpr StageStream kStageLandmarksDoneNs = {"STAGE_LANDMARKS_DONE_NS",
+                                               "stage_landmarks_done_ns"};
+// Per-call regions, wired only with `accepts_external_regions`.
+constexpr char kSearchRegionsTag[] = "SEARCH_REGIONS";
+constexpr char kSearchRegionsStreamName[] = "search_regions_in";
+// Caller-side clock stamps and call count of the palm search record.
+struct CallInfo {
+  int64_t frame_sequence = -1;
+  int64_t call_start_ns = 0;
+  int64_t call_end_ns = 0;
+};
+
+int64_t MonotonicNowNs() {
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(
+             std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
+
 // Copies the payload of the named output packet into `out`. Leaves `out`
 // untouched when the stream is not part of the graph or carried no packet at
 // this timestamp.
@@ -176,6 +206,26 @@ void AddStagesIfRequested(const tasks::core::PacketMap& packets,
 void AddTensorCaptureIfRequested(const tasks::core::PacketMap& packets,
                                  HandLandmarkerResult* result) {
   auto palm = packets.find(kPalmInputTensorCapture.name);
+  if (auto palms = packets.find(kPalmInputTensorCaptures.name);
+      palms != packets.end()) {
+    // Palm search path: per-region captures, with no packet when no region
+    // ran. A requested frame is one where either model's captures arrived.
+    auto landmarks = packets.find(kLandmarkInputTensorCaptures.name);
+    const bool has_landmarks =
+        landmarks != packets.end() && !landmarks->second.IsEmpty();
+    if (palms->second.IsEmpty() && !has_landmarks) return;
+    HandLandmarkerTensorCaptures& capture = result->tensor_capture.emplace();
+    if (auto it = packets.find(kHandLandmarksStreamName);
+        it != packets.end()) {
+      capture.timestamp_us = it->second.Timestamp().Value();
+    }
+    CopyStage(packets, kPalmInputTensorCaptures, &capture.palm_detector_inputs);
+    if (!capture.palm_detector_inputs.empty()) {
+      capture.palm_detector_input = capture.palm_detector_inputs[0];
+    }
+    CopyStage(packets, kLandmarkInputTensorCaptures, &capture.landmark_inputs);
+    return;
+  }
   if (palm == packets.end() || palm->second.IsEmpty()) return;
   HandLandmarkerTensorCaptures& capture = result->tensor_capture.emplace();
   if (auto it = packets.find(kHandLandmarksStreamName); it != packets.end()) {
@@ -183,6 +233,67 @@ void AddTensorCaptureIfRequested(const tasks::core::PacketMap& packets,
   }
   capture.palm_detector_input = palm->second.Get<TensorCapture>();
   CopyStage(packets, kLandmarkInputTensorCaptures, &capture.landmark_inputs);
+}
+
+// Fills `result->palm_search` if the graph was built with the palm search
+// record stream. Needs `result->stages`, which the same option adds.
+void AddPalmSearchIfRequested(const tasks::core::PacketMap& packets,
+                              int num_hands, const CallInfo& call,
+                              HandLandmarkerResult* result) {
+  auto record = packets.find(kStagePalmSearchRecord.name);
+  if (record == packets.end() || !result->stages.has_value()) return;
+  const HandLandmarkerStages& stages = *result->stages;
+  HandLandmarkerPalmSearch& out = result->palm_search.emplace();
+  out.timestamp_us = stages.timestamp_us;
+  out.palm_detector_ran = stages.palm_detector_ran;
+  out.frame_sequence = call.frame_sequence;
+  out.call_start_ns = call.call_start_ns;
+  out.call_end_ns = call.call_end_ns;
+  CopyStage(packets, kStageLandmarkRoisReadyNs, &out.landmark_rois_ready_ns);
+  CopyStage(packets, kStageLandmarksDoneNs, &out.landmarks_done_ns);
+  if (record->second.IsEmpty()) return;
+  out.record = record->second.Get<PalmSearchRecord>();
+
+  // A HandAssociationCalculator is not part of every palm search graph.
+  const bool has_association =
+      packets.find(kStageAssociationOverlaps.name) != packets.end();
+  std::vector<int> overlaps;
+  CopyStage(packets, kStageAssociationOverlaps, &overlaps);
+
+  const int merged_count = out.record.merged.size();
+  // Without a merged detection the detector's rect vector holds one all-zero
+  // placeholder, which is not a detection.
+  const int rect_count =
+      merged_count == 0
+          ? 0
+          : std::min<int>(merged_count, stages.detector_hand_rects.size());
+  const int base_count = stages.previous_rects.size();
+  out.merged_outcomes.resize(merged_count);
+  out.merged_overlapped_rect_index.assign(merged_count, -1);
+  out.merged_landmark_roi_index.assign(merged_count, -1);
+  int position = base_count;
+  for (int i = 0; i < merged_count; ++i) {
+    if (i >= rect_count) {
+      out.merged_outcomes[i] = PalmSearchHandOutcome::kClippedBeforeAssociation;
+      continue;
+    }
+    const int overlapped =
+        has_association && i < overlaps.size() ? overlaps[i] : -1;
+    if (overlapped >= 0) {
+      out.merged_outcomes[i] = overlapped < base_count
+                                   ? PalmSearchHandOutcome::kOverlapsTrackedRect
+                                   : PalmSearchHandOutcome::kOverlapsEarlierRect;
+      out.merged_overlapped_rect_index[i] = overlapped;
+      continue;
+    }
+    if (position < num_hands) {
+      out.merged_outcomes[i] = PalmSearchHandOutcome::kToLandmarks;
+      out.merged_landmark_roi_index[i] = position;
+    } else {
+      out.merged_outcomes[i] = PalmSearchHandOutcome::kClippedByNumHands;
+    }
+    ++position;
+  }
 }
 
 // Fills `result->palm_candidates` if the graph was built with the palm
@@ -206,11 +317,12 @@ void AddPalmCandidatesIfRequested(const tasks::core::PacketMap& packets,
 }
 
 // Fills the debug records of `result` that the graph was built for.
-void AddDebugRecords(const tasks::core::PacketMap& packets,
-                     HandLandmarkerResult* result) {
+void AddDebugRecords(const tasks::core::PacketMap& packets, int num_hands,
+                     const CallInfo& call, HandLandmarkerResult* result) {
   AddStagesIfRequested(packets, result);
   AddTensorCaptureIfRequested(packets, result);
   AddPalmCandidatesIfRequested(packets, result);
+  AddPalmSearchIfRequested(packets, num_hands, call, result);
 }
 
 // Creates a MediaPipe graph config that contains a subgraph node of
@@ -243,9 +355,24 @@ CalculatorGraphConfig CreateGraphConfig(
     }
   }
   const bool tensor_capture = options->debug_tensor_capture();
+  const bool palm_search =
+      options->hand_detector_graph_options().has_palm_search();
   if (tensor_capture) {
-    stage_streams.push_back(kPalmInputTensorCapture);
+    stage_streams.push_back(palm_search ? kPalmInputTensorCaptures
+                                        : kPalmInputTensorCapture);
     stage_streams.push_back(kLandmarkInputTensorCaptures);
+  }
+  if (palm_search && options->debug_stage_outputs()) {
+    stage_streams.push_back(kStagePalmSearchRecord);
+    stage_streams.push_back(kStageLandmarkRoisReadyNs);
+    stage_streams.push_back(kStageLandmarksDoneNs);
+    // Image mode has an association only without `clip_before_association`.
+    if (options->base_options().use_stream_mode() ||
+        !options->hand_detector_graph_options()
+             .palm_search()
+             .clip_before_association()) {
+      stage_streams.push_back(kStageAssociationOverlaps);
+    }
   }
   if (options->hand_detector_graph_options().debug_palm_candidates() > 0) {
     stage_streams.push_back(kPalmCandidates);
@@ -259,6 +386,12 @@ CalculatorGraphConfig CreateGraphConfig(
   if (tensor_capture) {
     input_tags.push_back(kCaptureTensorsTag);
     graph.In(kCaptureTensorsTag).SetName(kCaptureTensorsStreamName);
+  }
+  if (palm_search && options->hand_detector_graph_options()
+                         .palm_search()
+                         .accepts_external_regions()) {
+    input_tags.push_back(kSearchRegionsTag);
+    graph.In(kSearchRegionsTag).SetName(kSearchRegionsStreamName);
   }
   subgraph.GetOptions<HandLandmarkerGraphOptionsProto>().Swap(options.get());
   graph.In(kImageTag).SetName(kImageInStreamName);
@@ -332,6 +465,27 @@ ConvertHandLandmarkerGraphOptionsProto(HandLandmarkerOptions* options) {
     hand_detector_graph_options->set_debug_palm_candidates(
         options->debug_palm_candidates);
   }
+  if (options->palm_search.has_value()) {
+    auto* palm_search = hand_detector_graph_options->mutable_palm_search();
+    palm_search->set_include_full_frame(
+        options->palm_search->include_full_frame);
+    palm_search->set_clip_before_association(
+        options->palm_search->clip_before_association);
+    palm_search->set_grid_rows(options->palm_search->grid_rows);
+    palm_search->set_grid_columns(options->palm_search->grid_columns);
+    palm_search->set_grid_overlap(options->palm_search->grid_overlap);
+    palm_search->set_round_robin_tiles_per_frame(
+        options->palm_search->round_robin_tiles_per_frame);
+    palm_search->set_accepts_external_regions(
+        options->palm_search->accepts_external_regions);
+    palm_search->set_reject_truncated_detections(
+        options->palm_search->reject_truncated_detections);
+    palm_search->set_max_palm_fraction(options->palm_search->max_palm_fraction);
+    palm_search->set_merge(
+        options->palm_search->merge == PalmSearchOptions::Merge::kBestScore
+            ? hand_detector::proto::PalmSearchOptions::BEST_SCORE
+            : hand_detector::proto::PalmSearchOptions::WEIGHTED);
+  }
 
   return options_proto;
 }
@@ -342,6 +496,7 @@ absl::StatusOr<std::unique_ptr<HandLandmarker>> HandLandmarker::Create(
     std::unique_ptr<HandLandmarkerOptions> options) {
   auto options_proto = ConvertHandLandmarkerGraphOptionsProto(options.get());
   tasks::core::PacketsCallback packets_callback = nullptr;
+  const int num_hands = options->num_hands;
   if (options->result_callback) {
     auto result_callback = options->result_callback;
     packets_callback = [=](absl::StatusOr<tasks::core::PacketMap>
@@ -360,7 +515,8 @@ absl::StatusOr<std::unique_ptr<HandLandmarker>> HandLandmarker::Create(
         Packet empty_packet =
             status_or_packets.value()[kHandLandmarksStreamName];
         HandLandmarkerResult empty_result;
-        AddDebugRecords(status_or_packets.value(), &empty_result);
+        AddDebugRecords(status_or_packets.value(), num_hands, CallInfo(),
+                        &empty_result);
         result_callback(
             {std::move(empty_result)}, image_packet.Get<Image>(),
             empty_packet.Timestamp().Value() / kMicroSecondsPerMilliSecond);
@@ -379,7 +535,7 @@ absl::StatusOr<std::unique_ptr<HandLandmarker>> HandLandmarker::Create(
           hand_landmarks_packet.Get<std::vector<NormalizedLandmarkList>>(),
           /* hand_world_landmarks= */
           hand_world_landmarks_packet.Get<std::vector<LandmarkList>>());
-      AddDebugRecords(status_or_packets.value(), &result);
+      AddDebugRecords(status_or_packets.value(), num_hands, CallInfo(), &result);
       result_callback(
           {std::move(result)}, image_packet.Get<Image>(),
           hand_landmarks_packet.Timestamp().Value() /
@@ -387,6 +543,8 @@ absl::StatusOr<std::unique_ptr<HandLandmarker>> HandLandmarker::Create(
     };
   }
   const bool tensor_capture = options->debug_tensor_capture;
+  const bool external_regions = options->palm_search.has_value() &&
+                                options->palm_search->accepts_external_regions;
   auto landmarker = core::VisionTaskApiFactory::Create<
       HandLandmarker, HandLandmarkerGraphOptionsProto>(
       {.config = CreateGraphConfig(
@@ -405,6 +563,8 @@ absl::StatusOr<std::unique_ptr<HandLandmarker>> HandLandmarker::Create(
        .ca_bundle_path = options->base_options.ca_bundle_path});
   if (landmarker.ok()) {
     (*landmarker)->tensor_capture_enabled_ = tensor_capture;
+    (*landmarker)->num_hands_ = num_hands;
+    (*landmarker)->external_regions_enabled_ = external_regions;
   }
   return landmarker;
 }
@@ -429,10 +589,47 @@ absl::Status HandLandmarker::AddCaptureRequest(
   return absl::OkStatus();
 }
 
+absl::Status HandLandmarker::AddSearchRegions(
+    const std::vector<components::containers::RectF>& search_regions,
+    Timestamp timestamp, tasks::core::PacketMap* inputs) const {
+  if (!external_regions_enabled_) {
+    if (!search_regions.empty()) {
+      return CreateStatusWithPayload(
+          absl::StatusCode::kInvalidArgument,
+          "search_regions requires palm_search.accepts_external_regions.",
+          MediaPipeTasksStatus::kInvalidArgumentError);
+    }
+    return absl::OkStatus();
+  }
+  auto rects = std::make_unique<std::vector<NormalizedRect>>();
+  rects->reserve(search_regions.size());
+  for (const auto& region : search_regions) {
+    if (!(region.left < region.right && region.top < region.bottom)) {
+      return CreateStatusWithPayload(
+          absl::StatusCode::kInvalidArgument,
+          "Expected search regions with left < right and top < bottom.",
+          MediaPipeTasksStatus::kInvalidArgumentError);
+    }
+    NormalizedRect rect;
+    rect.set_x_center((region.left + region.right) / 2);
+    rect.set_y_center((region.top + region.bottom) / 2);
+    rect.set_width(region.right - region.left);
+    rect.set_height(region.bottom - region.top);
+    rects->push_back(rect);
+  }
+  // One packet per frame, so that the stream's timestamp bound follows the
+  // image stream.
+  Packet packet = Adopt(rects.release());
+  (*inputs)[kSearchRegionsStreamName] =
+      timestamp == Timestamp::Unset() ? packet : packet.At(timestamp);
+  return absl::OkStatus();
+}
+
 absl::StatusOr<HandLandmarkerResult> HandLandmarker::Detect(
     mediapipe::Image image,
     std::optional<core::ImageProcessingOptions> image_processing_options,
-    bool capture_tensors) {
+    bool capture_tensors,
+    const std::vector<components::containers::RectF>& search_regions) {
   if (image.UsesGpu()) {
     return CreateStatusWithPayload(
         absl::StatusCode::kInvalidArgument,
@@ -447,11 +644,17 @@ absl::StatusOr<HandLandmarkerResult> HandLandmarker::Detect(
       {kNormRectStreamName, MakePacket<NormalizedRect>(std::move(norm_rect))}};
   ABSL_RETURN_IF_ERROR(
       AddCaptureRequest(capture_tensors, Timestamp::Unset(), &inputs));
+  ABSL_RETURN_IF_ERROR(
+      AddSearchRegions(search_regions, Timestamp::Unset(), &inputs));
+  CallInfo call;
+  call.frame_sequence = frame_sequence_++;
+  call.call_start_ns = MonotonicNowNs();
   ABSL_ASSIGN_OR_RETURN(auto output_packets,
                         ProcessImageData(std::move(inputs)));
+  call.call_end_ns = MonotonicNowNs();
   if (output_packets[kHandLandmarksStreamName].IsEmpty()) {
     HandLandmarkerResult empty_result;
-    AddDebugRecords(output_packets, &empty_result);
+    AddDebugRecords(output_packets, num_hands_, call, &empty_result);
     return empty_result;
   }
   HandLandmarkerResult result = ConvertToHandLandmarkerResult(
@@ -464,14 +667,15 @@ absl::StatusOr<HandLandmarkerResult> HandLandmarker::Detect(
       /* hand_world_landmarks */
       output_packets[kHandWorldLandmarksStreamName]
           .Get<std::vector<mediapipe::LandmarkList>>());
-  AddDebugRecords(output_packets, &result);
+  AddDebugRecords(output_packets, num_hands_, call, &result);
   return result;
 }
 
 absl::StatusOr<HandLandmarkerResult> HandLandmarker::DetectForVideo(
     mediapipe::Image image, int64_t timestamp_ms,
     std::optional<core::ImageProcessingOptions> image_processing_options,
-    bool capture_tensors) {
+    bool capture_tensors,
+    const std::vector<components::containers::RectF>& search_regions) {
   if (image.UsesGpu()) {
     return CreateStatusWithPayload(
         absl::StatusCode::kInvalidArgument,
@@ -487,11 +691,16 @@ absl::StatusOr<HandLandmarkerResult> HandLandmarker::DetectForVideo(
       {kNormRectStreamName,
        MakePacket<NormalizedRect>(std::move(norm_rect)).At(timestamp)}};
   ABSL_RETURN_IF_ERROR(AddCaptureRequest(capture_tensors, timestamp, &inputs));
+  ABSL_RETURN_IF_ERROR(AddSearchRegions(search_regions, timestamp, &inputs));
+  CallInfo call;
+  call.frame_sequence = frame_sequence_++;
+  call.call_start_ns = MonotonicNowNs();
   ABSL_ASSIGN_OR_RETURN(auto output_packets,
                         ProcessVideoData(std::move(inputs)));
+  call.call_end_ns = MonotonicNowNs();
   if (output_packets[kHandLandmarksStreamName].IsEmpty()) {
     HandLandmarkerResult empty_result;
-    AddDebugRecords(output_packets, &empty_result);
+    AddDebugRecords(output_packets, num_hands_, call, &empty_result);
     return empty_result;
   }
   HandLandmarkerResult result = ConvertToHandLandmarkerResult(
@@ -504,14 +713,15 @@ absl::StatusOr<HandLandmarkerResult> HandLandmarker::DetectForVideo(
       /* hand_world_landmarks */
       output_packets[kHandWorldLandmarksStreamName]
           .Get<std::vector<mediapipe::LandmarkList>>());
-  AddDebugRecords(output_packets, &result);
+  AddDebugRecords(output_packets, num_hands_, call, &result);
   return result;
 }
 
 absl::Status HandLandmarker::DetectAsync(
     mediapipe::Image image, int64_t timestamp_ms,
     std::optional<core::ImageProcessingOptions> image_processing_options,
-    bool capture_tensors) {
+    bool capture_tensors,
+    const std::vector<components::containers::RectF>& search_regions) {
   if (image.UsesGpu()) {
     return CreateStatusWithPayload(
         absl::StatusCode::kInvalidArgument,
@@ -527,6 +737,7 @@ absl::Status HandLandmarker::DetectAsync(
       {kNormRectStreamName,
        MakePacket<NormalizedRect>(std::move(norm_rect)).At(timestamp)}};
   ABSL_RETURN_IF_ERROR(AddCaptureRequest(capture_tensors, timestamp, &inputs));
+  ABSL_RETURN_IF_ERROR(AddSearchRegions(search_regions, timestamp, &inputs));
   return SendLiveStreamData(std::move(inputs));
 }
 

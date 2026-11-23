@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
+#include <vector>
 #include <optional>
 #include <utility>
 
@@ -49,6 +50,9 @@ struct MpHandLandmarkerInternal {
   // Whether it was created with `debug_tensor_capture`. A capture request is
   // ignored otherwise.
   bool tensor_capture = false;
+  // Whether it was created with `palm_search.accepts_external_regions`.
+  // Search regions on a call are ignored otherwise.
+  bool external_regions = false;
 };
 
 namespace mediapipe::tasks::c::vision::hand_landmarker {
@@ -83,6 +87,25 @@ bool CaptureTensors(MpHandLandmarkerPtr landmarker,
          image_processing_options->capture_tensors != 0;
 }
 
+// The search regions of this call, for a landmarker that accepts them.
+std::vector<::mediapipe::tasks::components::containers::RectF> SearchRegions(
+    MpHandLandmarkerPtr landmarker,
+    const MpImageProcessingOptions* image_processing_options) {
+  std::vector<::mediapipe::tasks::components::containers::RectF> regions;
+  if (!landmarker->external_regions || image_processing_options == nullptr ||
+      image_processing_options->search_regions == nullptr) {
+    return regions;
+  }
+  for (int i = 0; i < image_processing_options->search_regions_count; ++i) {
+    const MpRectF& in = image_processing_options->search_regions[i];
+    regions.push_back({.left = in.left,
+                       .top = in.top,
+                       .right = in.right,
+                       .bottom = in.bottom});
+  }
+  return regions;
+}
+
 }  // namespace
 
 void CppConvertToHandLandmarkerOptions(
@@ -97,6 +120,28 @@ void CppConvertToHandLandmarkerOptions(
   out->debug_stage_outputs = in.debug_stage_outputs;
   out->debug_tensor_capture = in.debug_tensor_capture;
   out->debug_palm_candidates = in.debug_palm_candidates;
+  if (in.palm_search_enabled) {
+    using CppPalmSearchOptions =
+        ::mediapipe::tasks::vision::hand_landmarker::PalmSearchOptions;
+    CppPalmSearchOptions palm_search;
+    palm_search.include_full_frame = in.palm_search.include_full_frame;
+    palm_search.grid_rows = in.palm_search.grid_rows;
+    palm_search.grid_columns = in.palm_search.grid_columns;
+    palm_search.grid_overlap = in.palm_search.grid_overlap;
+    palm_search.round_robin_tiles_per_frame =
+        in.palm_search.round_robin_tiles_per_frame;
+    palm_search.accepts_external_regions =
+        in.palm_search.accepts_external_regions;
+    palm_search.reject_truncated_detections =
+        in.palm_search.reject_truncated_detections;
+    palm_search.max_palm_fraction = in.palm_search.max_palm_fraction;
+    palm_search.merge = in.palm_search.merge == 1
+                            ? CppPalmSearchOptions::Merge::kBestScore
+                            : CppPalmSearchOptions::Merge::kWeighted;
+    palm_search.clip_before_association =
+        in.palm_search.clip_before_association;
+    out->palm_search = palm_search;
+  }
 }
 
 absl::Status CppHandLandmarkerCreate(const MpHandLandmarkerOptions& options,
@@ -143,7 +188,11 @@ absl::Status CppHandLandmarkerCreate(const MpHandLandmarkerOptions& options,
   }
   *landmarker =
       new MpHandLandmarkerInternal{.instance = std::move(*cpp_landmarker),
-                                   .tensor_capture = options.debug_tensor_capture};
+                                   .tensor_capture = options.debug_tensor_capture,
+                                   .external_regions =
+                                       options.palm_search_enabled &&
+                                       options.palm_search
+                                           .accepts_external_regions};
   return absl::OkStatus();
 }
 
@@ -160,7 +209,8 @@ absl::Status CppHandLandmarkerDetect(
   }
   auto cpp_result =
       cpp_landmarker->Detect(ToImage(image), cpp_image_processing_options,
-                             CaptureTensors(landmarker, image_processing_options));
+                             CaptureTensors(landmarker, image_processing_options),
+                             SearchRegions(landmarker, image_processing_options));
 
   if (!cpp_result.ok()) {
     return cpp_result.status();
@@ -182,7 +232,8 @@ absl::Status CppHandLandmarkerDetectForVideo(
   }
   auto cpp_result = cpp_landmarker->DetectForVideo(
       ToImage(image), timestamp_ms, cpp_image_processing_options,
-      CaptureTensors(landmarker, image_processing_options));
+      CaptureTensors(landmarker, image_processing_options),
+      SearchRegions(landmarker, image_processing_options));
 
   if (!cpp_result.ok()) {
     return cpp_result.status();
@@ -204,7 +255,8 @@ absl::Status CppHandLandmarkerDetectAsync(
   }
   auto cpp_result = cpp_landmarker->DetectAsync(
       ToImage(image), timestamp_ms, cpp_image_processing_options,
-      CaptureTensors(landmarker, image_processing_options));
+      CaptureTensors(landmarker, image_processing_options),
+      SearchRegions(landmarker, image_processing_options));
 
   return cpp_result;
 }

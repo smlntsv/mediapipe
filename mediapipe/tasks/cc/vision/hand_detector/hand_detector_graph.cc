@@ -38,6 +38,7 @@ limitations under the License.
 #include "mediapipe/tasks/cc/core/model_resources.h"
 #include "mediapipe/tasks/cc/core/model_task_graph.h"
 #include "mediapipe/tasks/cc/vision/hand_detector/proto/hand_detector_graph_options.pb.h"
+#include "mediapipe/tasks/cc/vision/hand_detector/proto/palm_search_options.pb.h"
 #include "mediapipe/tasks/cc/vision/utils/image_tensor_specs.h"
 #include "mediapipe/util/graph_builder_utils.h"
 
@@ -55,6 +56,7 @@ using ::mediapipe::api2::builder::Graph;
 using ::mediapipe::api2::builder::Source;
 using ::mediapipe::tasks::vision::hand_detector::proto::
     HandDetectorGraphOptions;
+using ::mediapipe::tasks::vision::hand_detector::proto::PalmSearchOptions;
 
 constexpr char kImageTag[] = "IMAGE";
 constexpr char kNormRectTag[] = "NORM_RECT";
@@ -66,6 +68,10 @@ constexpr char kCaptureTensorsTag[] = "CAPTURE_TENSORS";
 constexpr char kInputTensorCaptureTag[] = "INPUT_TENSOR_CAPTURE";
 constexpr char kPalmCandidatesTag[] = "PALM_CANDIDATES";
 constexpr char kPalmThresholdedDetectionsTag[] = "PALM_THRESHOLDED_DETECTIONS";
+// Streams of the palm search path, see the graph documentation.
+constexpr char kInputTensorCapturesTag[] = "INPUT_TENSOR_CAPTURES";
+constexpr char kPalmSearchRecordTag[] = "PALM_SEARCH_RECORD";
+constexpr char kSearchRegionsTag[] = "SEARCH_REGIONS";
 
 struct HandDetectionOuts {
   Source<std::vector<Detection>> palm_detections;
@@ -187,6 +193,26 @@ void ConfigureRectTransformationCalculator(
 //     the decoded boxes whose score passed `min_detection_confidence`, in
 //     model input coordinates.
 //
+// Palm search regions. With the `palm_search` option set, the palm model runs
+// on a list of regions of the frame (PalmSearchRegionsCalculator) in a loop
+// and PalmSearchMergeCalculator merges what the regions found; PALM_DETECTIONS
+// are the merged detections. HAND_RECTS are clipped to `num_hands` only with
+// `clip_before_association`.
+//   SEARCH_REGIONS (input) - std::vector<NormalizedRect>
+//     Only with `accepts_external_regions`: regions chosen by the caller for
+//     this frame, as axis-aligned boxes of the frame. One packet per frame
+//     the graph receives an image at; the vector may be empty.
+// The debug streams change as follows:
+//   INPUT_TENSOR_CAPTURES - std::vector<hand_landmarker::TensorCapture>
+//     Replaces INPUT_TENSOR_CAPTURE: one capture per region that was run, in
+//     region order. No packet on a frame where no region was run.
+//   PALM_CANDIDATES, PALM_THRESHOLDED_DETECTIONS
+//     The per-region vectors concatenated in region order.
+//   PALM_SEARCH_RECORD - hand_landmarker::PalmSearchRecord
+//     Added to the graph when connected: the regions of the frame, the
+//     detections of each and what became of them. One packet per frame the
+//     graph received an image at.
+//
 // Example:
 // node {
 //   calculator: "mediapipe.tasks.vision.hand_detector.HandDetectorGraph"
@@ -217,13 +243,21 @@ class HandDetectorGraph : public core::ModelTaskGraph {
     ABSL_ASSIGN_OR_RETURN(const auto* model_resources,
                           CreateModelResources<HandDetectorGraphOptions>(sc));
     Graph graph;
+    const auto& options = sc->Options<HandDetectorGraphOptions>();
+    const bool capture_tensors =
+        HasInput(sc->OriginalNode(), kCaptureTensorsTag);
     ABSL_ASSIGN_OR_RETURN(
         auto hand_detection_outs,
-        BuildHandDetectionSubgraph(
-            sc->Options<HandDetectorGraphOptions>(), *model_resources,
-            graph[Input<Image>(kImageTag)],
-            graph[Input<NormalizedRect>::Optional(kNormRectTag)],
-            HasInput(sc->OriginalNode(), kCaptureTensorsTag), graph));
+        options.has_palm_search()
+            ? BuildPalmSearchSubgraph(
+                  options, *model_resources, graph[Input<Image>(kImageTag)],
+                  graph[Input<NormalizedRect>::Optional(kNormRectTag)],
+                  capture_tensors,
+                  HasOutput(sc->OriginalNode(), kPalmSearchRecordTag), graph)
+            : BuildHandDetectionSubgraph(
+                  options, *model_resources, graph[Input<Image>(kImageTag)],
+                  graph[Input<NormalizedRect>::Optional(kNormRectTag)],
+                  capture_tensors, graph));
     hand_detection_outs.palm_detections >>
         graph[Output<std::vector<Detection>>(kPalmDetectionsTag)];
     hand_detection_outs.hand_rects >>
@@ -407,6 +441,225 @@ class HandDetectorGraph : public core::ModelTaskGraph {
         /* hand_rects= */ clipped_hand_rects,
         /* palm_rects= */ palm_rects,
         /* image= */ preprocessing[Output<Image>(kImageTag)]};
+  }
+
+  // The palm search path: the same model and post-processing as
+  // BuildHandDetectionSubgraph, run once per search region, followed by the
+  // merge across regions. Kept apart from that function so that the graph
+  // built without `palm_search` stays exactly as it was.
+  absl::StatusOr<HandDetectionOuts> BuildPalmSearchSubgraph(
+      const HandDetectorGraphOptions& subgraph_options,
+      const core::ModelResources& model_resources, Source<Image> image_in,
+      Source<NormalizedRect> norm_rect_in, bool capture_tensors,
+      bool output_record, Graph& graph) {
+    const PalmSearchOptions& search_options = subgraph_options.palm_search();
+    const bool palm_candidates = subgraph_options.debug_palm_candidates() > 0;
+
+    auto& image_properties = graph.AddNode("ImagePropertiesCalculator");
+    image_in >> image_properties.In("IMAGE");
+    auto image_size = image_properties.Out("SIZE");
+
+    // Region generation: which regions of the frame to look at.
+    auto& region_generation = graph.AddNode("PalmSearchRegionsCalculator");
+    region_generation.GetOptions<PalmSearchOptions>() = search_options;
+    image_size >> region_generation.In("IMAGE_SIZE");
+    norm_rect_in >> region_generation.In("NORM_RECT");
+    if (search_options.accepts_external_regions()) {
+      graph.In(kSearchRegionsTag) >> region_generation.In("EXTERNAL_REGIONS");
+    }
+    auto region_rects = region_generation.Out("RECTS");
+    auto regions = region_generation.Out("REGIONS");
+
+    // One iteration per region, on one model instance.
+    auto& begin_loop = graph.AddNode("BeginLoopNormalizedRectCalculator");
+    region_rects >> begin_loop.In("ITERABLE");
+    image_in >> begin_loop.In("CLONE");
+    auto batch_end = begin_loop.Out("BATCH_END");
+    auto region_image = begin_loop.Out("CLONE");
+    auto region_rect = begin_loop.Out("ITEM");
+
+    auto& preprocessing = graph.AddNode(
+        "mediapipe.tasks.components.processors.ImagePreprocessingGraph");
+    auto& image_to_tensor_options =
+        *preprocessing
+             .GetOptions<components::processors::proto::
+                             ImagePreprocessingGraphOptions>()
+             .mutable_image_to_tensor_options();
+    image_to_tensor_options.set_keep_aspect_ratio(true);
+    image_to_tensor_options.set_border_mode(
+        mediapipe::ImageToTensorCalculatorOptions::BORDER_ZERO);
+    bool use_gpu =
+        components::processors::DetermineImagePreprocessingGpuBackend(
+            subgraph_options.base_options().acceleration());
+    ABSL_RETURN_IF_ERROR(
+        components::processors::ConfigureImagePreprocessingGraph(
+            model_resources, use_gpu,
+            subgraph_options.base_options().gpu_origin(),
+            &preprocessing.GetOptions<components::processors::proto::
+                                          ImagePreprocessingGraphOptions>()));
+    region_image >> preprocessing.In("IMAGE");
+    region_rect >> preprocessing.In("NORM_RECT");
+    auto preprocessed_tensors = preprocessing.Out("TENSORS");
+    auto matrix = preprocessing.Out("MATRIX");
+
+    auto& inference = AddInference(
+        model_resources, subgraph_options.base_options().acceleration(), graph);
+    preprocessed_tensors >> inference.In("TENSORS");
+    auto model_output_tensors = inference.Out("TENSORS");
+
+    if (capture_tensors) {
+      graph.In(kCaptureTensorsTag) >> begin_loop.In("CLONE")[1];
+      auto& tensor_capture = graph.AddNode("TensorCaptureCalculator");
+      preprocessed_tensors >> tensor_capture.In("TENSORS");
+      begin_loop.Out("CLONE")[1] >> tensor_capture.In("ENABLE");
+      auto& end_loop_captures =
+          graph.AddNode("EndLoopTensorCaptureCalculator");
+      batch_end >> end_loop_captures.In("BATCH_END");
+      tensor_capture.Out("CAPTURE") >> end_loop_captures.In("ITEM");
+      end_loop_captures.Out("ITERABLE") >> graph.Out(kInputTensorCapturesTag);
+    }
+
+    auto& ssd_anchor = graph.AddNode("SsdAnchorsCalculator");
+    ConfigureSsdAnchorsCalculator(
+        &ssd_anchor.GetOptions<mediapipe::SsdAnchorsCalculatorOptions>());
+    auto anchors = ssd_anchor.SideOut("");
+
+    auto& tensors_to_detections =
+        graph.AddNode("TensorsToDetectionsCalculator");
+    ConfigureTensorsToDetectionsCalculator(
+        subgraph_options,
+        &tensors_to_detections
+             .GetOptions<mediapipe::TensorsToDetectionsCalculatorOptions>());
+    model_output_tensors >> tensors_to_detections.In("TENSORS");
+    anchors >> tensors_to_detections.SideIn("ANCHORS");
+    auto detections = tensors_to_detections.Out("DETECTIONS");
+
+    // The region's own suppression, in model input coordinates.
+    auto& non_maximum_suppression =
+        graph.AddNode("NonMaxSuppressionCalculator");
+    ConfigureNonMaxSuppressionCalculator(
+        &non_maximum_suppression
+             .GetOptions<mediapipe::NonMaxSuppressionCalculatorOptions>());
+    detections >> non_maximum_suppression.In("");
+    auto nms_detections = non_maximum_suppression.Out("");
+
+    auto& detection_label_id_to_text =
+        graph.AddNode("DetectionLabelIdToTextCalculator");
+    detection_label_id_to_text
+        .GetOptions<mediapipe::DetectionLabelIdToTextCalculatorOptions>()
+        .add_label("Palm");
+    nms_detections >> detection_label_id_to_text.In("");
+    auto detections_with_text = detection_label_id_to_text.Out("");
+
+    // Projects the region's detections into frame coordinates.
+    auto& detection_projection = graph.AddNode("DetectionProjectionCalculator");
+    detections_with_text >> detection_projection.In("DETECTIONS");
+    matrix >> detection_projection.In("PROJECTION_MATRIX");
+
+    auto& end_loop_detections =
+        graph.AddNode("EndLoopDetectionVectorCalculator");
+    batch_end >> end_loop_detections.In("BATCH_END");
+    detection_projection.Out("DETECTIONS") >> end_loop_detections.In("ITEM");
+
+    // Merge across regions, in frame coordinates.
+    auto& merge = graph.AddNode("PalmSearchMergeCalculator");
+    merge.GetOptions<PalmSearchOptions>() = search_options;
+    regions >> merge.In("REGIONS");
+    end_loop_detections.Out("ITERABLE") >> merge.In("REGION_DETECTIONS");
+    auto palm_detections =
+        merge[Output<std::vector<Detection>>("DETECTIONS")];
+    if (output_record) {
+      merge.Out("RECORD") >> graph.Out(kPalmSearchRecordTag);
+      // Clock stamps per region: when it enters the loop and when its
+      // projected detections leave it.
+      auto& region_start = graph.AddNode("MonotonicClockCalculator");
+      region_rect >> region_start.In("");
+      auto& end_loop_start = graph.AddNode("EndLoopInt64Calculator");
+      batch_end >> end_loop_start.In("BATCH_END");
+      region_start.Out("") >> end_loop_start.In("ITEM");
+      end_loop_start.Out("ITERABLE") >> merge.In("REGION_START_NS");
+
+      auto& region_ready = graph.AddNode("MonotonicClockCalculator");
+      detection_projection.Out("DETECTIONS") >> region_ready.In("");
+      auto& end_loop_ready = graph.AddNode("EndLoopInt64Calculator");
+      batch_end >> end_loop_ready.In("BATCH_END");
+      region_ready.Out("") >> end_loop_ready.In("ITEM");
+      end_loop_ready.Out("ITERABLE") >> merge.In("REGION_READY_NS");
+    }
+
+    if (palm_candidates) {
+      auto& end_loop_thresholded =
+          graph.AddNode("EndLoopDetectionVectorCalculator");
+      batch_end >> end_loop_thresholded.In("BATCH_END");
+      detections >> end_loop_thresholded.In("ITEM");
+      end_loop_thresholded.Out("ITERABLE") >> merge.In("REGION_THRESHOLDED");
+      merge.Out("THRESHOLDED") >> graph.Out(kPalmThresholdedDetectionsTag);
+
+      auto& top_candidates = graph.AddNode("TensorsToDetectionsCalculator");
+      auto& top_candidates_options =
+          top_candidates
+              .GetOptions<mediapipe::TensorsToDetectionsCalculatorOptions>();
+      ConfigureTensorsToDetectionsCalculator(subgraph_options,
+                                             &top_candidates_options);
+      top_candidates_options.clear_min_score_thresh();
+      top_candidates_options.set_top_k_by_score(
+          subgraph_options.debug_palm_candidates());
+      model_output_tensors >> top_candidates.In("TENSORS");
+      anchors >> top_candidates.SideIn("ANCHORS");
+
+      auto& candidate_projection =
+          graph.AddNode("DetectionProjectionCalculator");
+      top_candidates.Out("DETECTIONS") >>
+          candidate_projection.In("DETECTIONS");
+      matrix >> candidate_projection.In("PROJECTION_MATRIX");
+
+      auto& end_loop_candidates =
+          graph.AddNode("EndLoopDetectionVectorCalculator");
+      batch_end >> end_loop_candidates.In("BATCH_END");
+      candidate_projection.Out("DETECTIONS") >> end_loop_candidates.In("ITEM");
+      end_loop_candidates.Out("ITERABLE") >> merge.In("REGION_CANDIDATES");
+      merge.Out("CANDIDATES") >> graph.Out(kPalmCandidatesTag);
+    }
+
+    // From here on as without search regions, on the merged detections and
+    // the size of the frame.
+    auto& detections_to_rects = graph.AddNode("DetectionsToRectsCalculator");
+    ConfigureDetectionsToRectsCalculator(
+        &detections_to_rects
+             .GetOptions<mediapipe::DetectionsToRectsCalculatorOptions>());
+    palm_detections >> detections_to_rects.In("DETECTIONS");
+    image_size >> detections_to_rects.In("IMAGE_SIZE");
+    auto palm_rects =
+        detections_to_rects[Output<std::vector<NormalizedRect>>("NORM_RECTS")];
+
+    auto& rect_transformation = graph.AddNode("RectTransformationCalculator");
+    ConfigureRectTransformationCalculator(
+        &rect_transformation
+             .GetOptions<mediapipe::RectTransformationCalculatorOptions>());
+    palm_rects >> rect_transformation.In("NORM_RECTS");
+    image_size >> rect_transformation.In("IMAGE_SIZE");
+    auto hand_rects =
+        rect_transformation[Output<std::vector<NormalizedRect>>("")];
+
+    auto& pass_through = graph.AddNode("PassThroughCalculator");
+    image_in >> pass_through.In("");
+    auto image_out = pass_through[Output<Image>("")];
+
+    if (!search_options.clip_before_association()) {
+      return HandDetectionOuts{palm_detections, hand_rects, palm_rects,
+                               image_out};
+    }
+    auto& clip_normalized_rect_vector_size =
+        graph.AddNode("ClipNormalizedRectVectorSizeCalculator");
+    clip_normalized_rect_vector_size
+        .GetOptions<mediapipe::ClipVectorSizeCalculatorOptions>()
+        .set_max_vec_size(subgraph_options.num_hands());
+    hand_rects >> clip_normalized_rect_vector_size.In("");
+    auto clipped_hand_rects =
+        clip_normalized_rect_vector_size[Output<std::vector<NormalizedRect>>(
+            "")];
+    return HandDetectionOuts{palm_detections, clipped_hand_rects, palm_rects,
+                             image_out};
   }
 };
 

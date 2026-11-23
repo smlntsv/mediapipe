@@ -1,0 +1,81 @@
+/* Copyright 2026 The MediaPipe Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto2";
+
+package mediapipe.tasks.vision.hand_detector.proto;
+
+import "mediapipe/framework/calculator.proto";
+import "mediapipe/framework/calculator_options.proto";
+
+// Fork addition. Palm search regions: the palm detection model is run on a
+// list of regions of the frame and the detections of all regions are merged.
+// Setting this message on HandDetectorGraphOptions switches the detector graph
+// to that path; leaving it unset builds the graph exactly as before.
+//
+// The same message configures PalmSearchRegionsCalculator (which regions) and
+// PalmSearchMergeCalculator (what happens to their detections).
+message PalmSearchOptions {
+  extend mediapipe.CalculatorOptions {
+    optional PalmSearchOptions ext = 529730917;
+  }
+
+  // Region generation.
+
+  // The whole frame is one of the regions, on every detector frame.
+  optional bool include_full_frame = 1 [default = true];
+
+  // A grid of tiles over the frame. Off when rows or columns is 0.
+  optional int32 grid_rows = 2 [default = 0];
+  optional int32 grid_columns = 3 [default = 0];
+  // Fraction of a tile's width (height) shared with its horizontal (vertical)
+  // neighbour, in [0, 1).
+  optional float grid_overlap = 4 [default = 0];
+
+  // Number of grid tiles run per detector frame, cycling through the grid.
+  // 0: every tile on every detector frame.
+  optional int32 round_robin_tiles_per_frame = 5 [default = 0];
+
+  // Connects the per-call EXTERNAL_REGIONS input.
+  optional bool accepts_external_regions = 6 [default = false];
+
+  // Detection handling.
+
+  // Drops a detection whose box touches an edge of the window its region was
+  // sampled from, unless that edge lies on or outside the frame edge. Never
+  // applied to the full-frame region.
+  optional bool reject_truncated_detections = 7 [default = false];
+
+  // Drops a detection of a grid tile or external region whose box is wider or
+  // taller than this fraction of the frame. 0: off.
+  optional float max_palm_fraction = 8 [default = 0];
+
+  enum Merge {
+    // Boxes and keypoints of overlapping detections are averaged by score, as
+    // in the detector's own non-max suppression.
+    WEIGHTED = 0;
+    // The highest scored detection of a cluster is kept unchanged.
+    BEST_SCORE = 1;
+  }
+  optional Merge merge = 9 [default = WEIGHTED];
+  // Detections of different regions with a higher intersection over union
+  // are merged.
+  optional float merge_min_suppression_threshold = 10 [default = 0.3];
+
+  // Clips the hand rects to `num_hands` inside the detector graph, before the
+  // association with tracked hands, as the graph without search regions does.
+  // When false the only clip is the one after the association.
+  optional bool clip_before_association = 11 [default = false];
+}

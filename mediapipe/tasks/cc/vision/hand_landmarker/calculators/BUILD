@@ -95,6 +95,104 @@ cc_test(
 )
 
 cc_library(
+    name = "palm_search",
+    hdrs = ["palm_search.h"],
+    deps = [
+        "//mediapipe/framework/formats:detection_cc_proto",
+        "//mediapipe/framework/formats:rect_cc_proto",
+    ],
+)
+
+cc_library(
+    name = "palm_search_grid",
+    hdrs = ["palm_search_grid.h"],
+    deps = [
+        ":palm_search",
+        "//mediapipe/framework/formats:rect_cc_proto",
+    ],
+)
+
+cc_test(
+    name = "palm_search_grid_test",
+    srcs = ["palm_search_grid_test.cc"],
+    deps = [
+        ":palm_search",
+        ":palm_search_grid",
+        "//mediapipe/framework/formats:rect_cc_proto",
+        "//mediapipe/framework/port:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "monotonic_clock_calculator",
+    srcs = ["monotonic_clock_calculator.cc"],
+    deps = [
+        "//mediapipe/calculators/core:end_loop_calculator",
+        "//mediapipe/framework:calculator_framework",
+    ],
+    alwayslink = 1,
+)
+
+cc_test(
+    name = "palm_search_regions_calculator_test",
+    srcs = ["palm_search_regions_calculator_test.cc"],
+    deps = [
+        ":palm_search",
+        ":palm_search_regions_calculator",
+        "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework:calculator_runner",
+        "//mediapipe/framework/formats:rect_cc_proto",
+        "//mediapipe/framework/port:gtest_main",
+        "//mediapipe/framework/port:parse_text_proto",
+        "//mediapipe/framework/port:status_matchers",
+    ],
+)
+
+cc_library(
+    name = "palm_search_regions_calculator",
+    srcs = ["palm_search_regions_calculator.cc"],
+    deps = [
+        ":palm_search",
+        ":palm_search_grid",
+        "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework/formats:rect_cc_proto",
+        "//mediapipe/tasks/cc/vision/hand_detector/proto:palm_search_options_cc_proto",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "palm_search_merge_calculator",
+    srcs = ["palm_search_merge_calculator.cc"],
+    deps = [
+        ":palm_search",
+        "//mediapipe/calculators/core:end_loop_calculator",
+        "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework/formats:detection_cc_proto",
+        "//mediapipe/framework/formats:location_data_cc_proto",
+        "//mediapipe/framework/port:rectangle",
+        "//mediapipe/tasks/cc/vision/hand_detector/proto:palm_search_options_cc_proto",
+    ],
+    alwayslink = 1,
+)
+
+cc_test(
+    name = "palm_search_merge_calculator_test",
+    srcs = ["palm_search_merge_calculator_test.cc"],
+    deps = [
+        ":palm_search",
+        ":palm_search_merge_calculator",
+        "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework:calculator_runner",
+        "//mediapipe/framework/formats:detection_cc_proto",
+        "//mediapipe/framework/formats:location_data_cc_proto",
+        "//mediapipe/framework/port:gtest_main",
+        "//mediapipe/framework/port:parse_text_proto",
+        "//mediapipe/framework/port:status_matchers",
+    ],
+)
+
+cc_library(
     name = "tensor_capture",
     hdrs = ["tensor_capture.h"],
     deps = ["//mediapipe/framework/formats:tensor"],

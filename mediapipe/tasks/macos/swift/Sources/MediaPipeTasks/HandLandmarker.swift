@@ -82,6 +82,11 @@ public final class HandLandmarkerOptions {
     /// `HandLandmarkerPalmCandidates`). Default 0, which leaves the pipeline
     /// and the results unchanged.
     public var palmCandidateLimit: Int
+    /// Palm search regions: runs the palm detector on regions of the frame
+    /// as well as, or instead of, the whole frame (see `PalmSearchOptions`).
+    /// With `stageOutputs` every result then carries `palmSearch`. Default
+    /// nil, which leaves the pipeline and the results unchanged.
+    public var palmSearch: PalmSearchOptions?
 
     public init(modelPath: String = "",
                 numHands: Int = 1,
@@ -95,7 +100,8 @@ public final class HandLandmarkerOptions {
                 runningMode: RunningMode = .image,
                 stageOutputs: Bool = false,
                 tensorCapture: Bool = false,
-                palmCandidateLimit: Int = 0) {
+                palmCandidateLimit: Int = 0,
+                palmSearch: PalmSearchOptions? = nil) {
         self.modelPath = modelPath
         self.numHands = numHands
         self.minHandDetectionConfidence = minHandDetectionConfidence
@@ -109,6 +115,7 @@ public final class HandLandmarkerOptions {
         self.stageOutputs = stageOutputs
         self.tensorCapture = tensorCapture
         self.palmCandidateLimit = palmCandidateLimit
+        self.palmSearch = palmSearch
     }
 }
 
@@ -364,6 +371,9 @@ public struct HandLandmarkerResult: Sendable {
     /// Palm candidate diagnostics for this frame. Nil unless
     /// `HandLandmarkerOptions.palmCandidateLimit` is positive.
     public var palmCandidates: HandLandmarkerPalmCandidates?
+    /// Palm search record for this frame. Nil unless
+    /// `HandLandmarkerOptions.palmSearch` is set and `stageOutputs` is true.
+    public var palmSearch: HandLandmarkerPalmSearch?
 
     /// Deprecated alias for `handedness`, kept for parity with older MediaPipe
     /// result shapes.
@@ -377,6 +387,7 @@ public struct HandLandmarkerResult: Sendable {
         stages = result.stages.map(HandLandmarkerStages.init)
         tensorCapture = result.tensorCapture.map(HandLandmarkerTensorCapture.init)
         palmCandidates = result.palmCandidates.map(HandLandmarkerPalmCandidates.init)
+        palmSearch = result.palmSearch.map(HandLandmarkerPalmSearch.init)
     }
 }
 
@@ -385,11 +396,13 @@ public final class HandLandmarker {
     private let impl: MPCHandLandmarker
     private let runningMode: RunningMode
     private let tensorCaptureEnabled: Bool
+    private let externalRegionsEnabled: Bool
 
     public init(options: HandLandmarkerOptions) throws {
         try checkDelegate(options.delegate)
         runningMode = options.runningMode
         tensorCaptureEnabled = options.tensorCapture
+        externalRegionsEnabled = options.palmSearch?.acceptsExternalRegions ?? false
         impl = try MPCHandLandmarker(
             modelPath: options.modelPath,
             numHands: options.numHands,
@@ -406,7 +419,31 @@ public final class HandLandmarker {
             runningMode: options.runningMode.cValue,
             stageOutputs: options.stageOutputs,
             tensorCapture: options.tensorCapture,
-            palmCandidateLimit: options.palmCandidateLimit)
+            palmCandidateLimit: options.palmCandidateLimit,
+            palmSearch: options.palmSearch?.bridged)
+    }
+
+    /// Checks the per-call regions and flattens them to {left, top, right,
+    /// bottom} quadruples for the bridge.
+    private func bridgedSearchRegions(_ regions: [CGRect]) throws -> [NSNumber]? {
+        if regions.isEmpty { return nil }
+        guard externalRegionsEnabled else {
+            throw MediaPipeError.invalidArgument(
+                "searchRegions requires HandLandmarkerOptions.palmSearch.acceptsExternalRegions")
+        }
+        var flat: [NSNumber] = []
+        flat.reserveCapacity(regions.count * 4)
+        for region in regions {
+            guard region.width > 0, region.height > 0 else {
+                throw MediaPipeError.invalidArgument(
+                    "searchRegions must have a positive width and height")
+            }
+            flat.append(NSNumber(value: Float(region.minX)))
+            flat.append(NSNumber(value: Float(region.minY)))
+            flat.append(NSNumber(value: Float(region.maxX)))
+            flat.append(NSNumber(value: Float(region.maxY)))
+        }
+        return flat
     }
 
     private func requireTensorCapture(_ captureTensors: Bool) throws {
@@ -420,18 +457,27 @@ public final class HandLandmarker {
     ///
     /// `captureTensors` (on every detect method) makes the result carry
     /// `tensorCapture`. It requires `HandLandmarkerOptions.tensorCapture`.
+    ///
+    /// `searchRegions` (on every detect method) are regions of this frame for
+    /// the palm detector to look at, normalized to the image as passed in
+    /// (origin top-left). They require
+    /// `HandLandmarkerOptions.palmSearch.acceptsExternalRegions`, and are not
+    /// used on a video frame on which the palm detector is skipped.
     public func detect(cgImage: CGImage,
                        imageProcessingOptions: ImageProcessingOptions = ImageProcessingOptions(),
-                       captureTensors: Bool = false)
+                       captureTensors: Bool = false,
+                       searchRegions: [CGRect] = [])
         throws -> HandLandmarkerResult {
         try requireRunningMode(.image, actual: runningMode, method: "detect(cgImage:)")
         try imageProcessingOptions.validated()
         try requireTensorCapture(captureTensors)
+        let regions = try bridgedSearchRegions(searchRegions)
         let image = try MPCImage(cgImage: cgImage)
         return HandLandmarkerResult(try impl.detect(
             image,
             rotationDegrees: Int32(imageProcessingOptions.rotationDegrees),
-            captureTensors: captureTensors))
+            captureTensors: captureTensors,
+            searchRegions: regions))
     }
 
     /// Runs hand landmark detection on a video frame. Requires `.video` mode.
@@ -439,33 +485,39 @@ public final class HandLandmarker {
     public func detectForVideo(cgImage: CGImage,
                                timestampInMilliseconds: Int,
                                imageProcessingOptions: ImageProcessingOptions = ImageProcessingOptions(),
-                               captureTensors: Bool = false)
+                               captureTensors: Bool = false,
+                               searchRegions: [CGRect] = [])
         throws -> HandLandmarkerResult {
         try requireRunningMode(.video, actual: runningMode, method: "detectForVideo(cgImage:timestampInMilliseconds:)")
         try imageProcessingOptions.validated()
         try requireTensorCapture(captureTensors)
+        let regions = try bridgedSearchRegions(searchRegions)
         let image = try MPCImage(cgImage: cgImage)
         return HandLandmarkerResult(try impl.detect(
             forVideoImage: image,
             rotationDegrees: Int32(imageProcessingOptions.rotationDegrees),
             timestampMs: Int64(timestampInMilliseconds),
-            captureTensors: captureTensors))
+            captureTensors: captureTensors,
+            searchRegions: regions))
     }
 
     /// Runs hand landmark detection on a `CVPixelBuffer` (`kCVPixelFormatType_32BGRA`).
     /// Requires `.image` mode.
     public func detect(pixelBuffer: CVPixelBuffer,
                        imageProcessingOptions: ImageProcessingOptions = ImageProcessingOptions(),
-                       captureTensors: Bool = false)
+                       captureTensors: Bool = false,
+                       searchRegions: [CGRect] = [])
         throws -> HandLandmarkerResult {
         try requireRunningMode(.image, actual: runningMode, method: "detect(pixelBuffer:)")
         try imageProcessingOptions.validated()
         try requireTensorCapture(captureTensors)
+        let regions = try bridgedSearchRegions(searchRegions)
         let image = try MPCImage(pixelBuffer: pixelBuffer)
         return HandLandmarkerResult(try impl.detect(
             image,
             rotationDegrees: Int32(imageProcessingOptions.rotationDegrees),
-            captureTensors: captureTensors))
+            captureTensors: captureTensors,
+            searchRegions: regions))
     }
 
     /// Runs hand landmark detection on a `CVPixelBuffer` video frame
@@ -473,16 +525,19 @@ public final class HandLandmarker {
     public func detectForVideo(pixelBuffer: CVPixelBuffer,
                                timestampInMilliseconds: Int,
                                imageProcessingOptions: ImageProcessingOptions = ImageProcessingOptions(),
-                               captureTensors: Bool = false)
+                               captureTensors: Bool = false,
+                               searchRegions: [CGRect] = [])
         throws -> HandLandmarkerResult {
         try requireRunningMode(.video, actual: runningMode, method: "detectForVideo(pixelBuffer:timestampInMilliseconds:)")
         try imageProcessingOptions.validated()
         try requireTensorCapture(captureTensors)
+        let regions = try bridgedSearchRegions(searchRegions)
         let image = try MPCImage(pixelBuffer: pixelBuffer)
         return HandLandmarkerResult(try impl.detect(
             forVideoImage: image,
             rotationDegrees: Int32(imageProcessingOptions.rotationDegrees),
             timestampMs: Int64(timestampInMilliseconds),
-            captureTensors: captureTensors))
+            captureTensors: captureTensors,
+            searchRegions: regions))
     }
 }

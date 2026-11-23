@@ -70,6 +70,49 @@ typedef void (*MpHandLandmarkerResultCallback)(
 // written is indeterminate. Zero-initialize the struct (`= {0}` in C, `= {}`
 // in C++) and then set its fields; the suggested defaults are listed below.
 // Zero is not a valid `running_mode`, so that field must always be set.
+// Configures the palm search regions path: the palm detection model runs on a
+// list of regions of the frame and the detections of all regions are merged.
+// The zero value of every field except `include_full_frame` is "off"; no
+// combination here is a recommended configuration.
+typedef struct MpPalmSearchOptions {
+  // The whole frame is one of the regions on every detector frame.
+  bool include_full_frame;
+
+  // A grid of tiles over the frame, each of them a region. Off when rows or
+  // columns is 0. `grid_overlap` is the fraction of a tile's width (height)
+  // shared with its horizontal (vertical) neighbour, in [0, 1).
+  int grid_rows;
+  int grid_columns;
+  float grid_overlap;
+
+  // Number of grid tiles run per detector frame, cycling through the grid. 0:
+  // every tile on every detector frame. The cycle advances only on frames on
+  // which the palm detector runs.
+  int round_robin_tiles_per_frame;
+
+  // Honors `MpImageProcessingOptions::search_regions`.
+  bool accepts_external_regions;
+
+  // Drops a detection whose box touches an edge of the window its region was
+  // sampled from, unless that edge is a frame edge. Never applied to the
+  // full-frame region.
+  bool reject_truncated_detections;
+
+  // Drops a detection of a grid tile or external region whose box is wider or
+  // taller than this fraction of the frame. 0: off.
+  float max_palm_fraction;
+
+  // How overlapping detections of different regions are merged. 0: boxes and
+  // keypoints averaged by score, as in the detector's own non-max
+  // suppression. 1: the highest scored detection, unchanged.
+  int merge;
+
+  // Clips the detector's hand rects to `num_hands` before the association
+  // with tracked hands, as without search regions. When false the only clip
+  // is the one after the association.
+  bool clip_before_association;
+} MpPalmSearchOptions;
+
 typedef struct MpHandLandmarkerOptions {
   // Base options for configuring MediaPipe Tasks, such as specifying the model
   // file with metadata, accelerator options, op resolver, etc.
@@ -148,6 +191,13 @@ typedef struct MpHandLandmarkerOptions {
   // MpHandLandmarkerPalmCandidates). Suggested default: 0, which leaves the
   // graph and the results unchanged.
   int debug_palm_candidates;
+
+  // Palm search regions. When `palm_search_enabled` is false (suggested
+  // default) `palm_search` is ignored and the graph and the results are
+  // unchanged. With `debug_stage_outputs` as well, every result carries
+  // `palm_search` (see MpHandLandmarkerPalmSearch).
+  bool palm_search_enabled;
+  struct MpPalmSearchOptions palm_search;
 } MpHandLandmarkerOptions;
 
 // Creates an HandLandmarker from the provided `options`.
